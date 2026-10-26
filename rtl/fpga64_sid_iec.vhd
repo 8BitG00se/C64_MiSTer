@@ -132,6 +132,8 @@ port(
 	sid_ld_data : in  std_logic_vector(15 downto 0);
 	sid_ld_wr   : in  std_logic;
 	sid_digifix : in  std_logic;
+	-- OCTOPHONIC: '1' four SIDs - $D400, $D420, $D500, $D520 (the Ultimate 64's layout)
+	sid_quad    : in  std_logic := '0';
 	
 	-- USER
 	pb_i        : in  unsigned(7 downto 0);
@@ -270,6 +272,16 @@ signal turbo_state  : std_logic;
 signal sid_do       : unsigned(7 downto 0);
 signal sid_sel_l    : std_logic;
 signal sid_sel_r    : std_logic;
+signal sid_sel_ln   : std_logic;
+signal sid_sel_rn   : std_logic;
+-- OCTOPHONIC: the second pair, SIDs 3 and 4
+signal sid2_do      : unsigned(7 downto 0);
+signal sid2_sel_l   : std_logic;
+signal sid2_sel_r   : std_logic;
+signal sid1_aud_l   : std_logic_vector(17 downto 0);
+signal sid1_aud_r   : std_logic_vector(17 downto 0);
+signal sid2_aud_l   : std_logic_vector(17 downto 0);
+signal sid2_aud_r   : std_logic_vector(17 downto 0);
 signal pot_x1       : std_logic_vector(7 downto 0);
 signal pot_y1       : std_logic_vector(7 downto 0);
 signal pot_x2       : std_logic_vector(7 downto 0);
@@ -461,7 +473,7 @@ port map (
 	game => game,
 	exrom => exrom,
 	io_rom => io_rom,
-	io_ext => io_ext or sid_sel_r,
+	io_ext => io_ext or sid_sel_r or sid2_sel_l or sid2_sel_r,
 	io_data => io_data_i,
 
 	ramData => ramDin,
@@ -648,9 +660,24 @@ end process;
 
 --	Right SID Port: Same,DE00,D420,D500,DF00
 
-sid_sel_l <= cs_sid when sid_mode(2 downto 1) /= 1 else (cs_sid and ((not sid_mode(0) and not cpuAddr(5)) or (sid_mode(0) and not cpuAddr(8))));
-sid_sel_r <= sid_sel_l when sid_mode = 0 else ioe_i when sid_mode = 1 else iof_i when sid_mode = 4 else (cs_sid and not sid_sel_l);
-io_data_i <= io_data when io_ext = '1' else sid_do when sid_sel_r = '1' else (others => '1');
+sid_sel_ln <= cs_sid when sid_mode(2 downto 1) /= 1 else (cs_sid and ((not sid_mode(0) and not cpuAddr(5)) or (sid_mode(0) and not cpuAddr(8))));
+sid_sel_rn <= sid_sel_ln when sid_mode = 0 else ioe_i when sid_mode = 1 else iof_i when sid_mode = 4 else (cs_sid and not sid_sel_ln);
+
+-- OCTOPHONIC (four SIDs): A5 picks the left or right of a pair, A8 the pair -
+-- $D400 SID 1, $D420 SID 2, $D500 SID 3, $D520 SID 4. Off, the core is as it was.
+sid_sel_l  <= sid_sel_ln when sid_quad = '0' else (cs_sid and not cpuAddr(5) and not cpuAddr(8));
+sid_sel_r  <= sid_sel_rn when sid_quad = '0' else (cs_sid and     cpuAddr(5) and not cpuAddr(8));
+sid2_sel_l <= '0'        when sid_quad = '0' else (cs_sid and not cpuAddr(5) and     cpuAddr(8));
+sid2_sel_r <= '0'        when sid_quad = '0' else (cs_sid and     cpuAddr(5) and     cpuAddr(8));
+
+io_data_i <= io_data when io_ext = '1' else sid2_do when (sid2_sel_l or sid2_sel_r) = '1' else sid_do when sid_sel_r = '1' else (others => '1');
+
+-- the sound: off, the first pair as it was; four SIDs, SIDs 1 and 3 left, 2 and 4 right,
+-- each half as loud so two at full level cannot overflow
+audio_l <= sid1_aud_l when sid_quad = '0' else
+           std_logic_vector(resize(signed(sid1_aud_l(17 downto 1)), 18) + resize(signed(sid2_aud_l(17 downto 1)), 18));
+audio_r <= sid1_aud_r when sid_quad = '0' else
+           std_logic_vector(resize(signed(sid1_aud_r(17 downto 1)), 18) + resize(signed(sid2_aud_r(17 downto 1)), 18));
 
 pot_x1 <= (others => '1' ) when cia1_pao(6) = '0' else not pot1;
 pot_y1 <= (others => '1' ) when cia1_pao(6) = '0' else not pot2;
@@ -670,8 +697,45 @@ port map (
 	pot_x_l => pot_x1 and pot_x2,
 	pot_y_l => pot_y1 and pot_y2,
 
-	audio_l => audio_l,
-	audio_r => audio_r,
+	audio_l => sid1_aud_l,
+	audio_r => sid1_aud_r,
+
+	ext_in_l(17) => sid_ver(0) and sid_digifix,
+	ext_in_l(16 downto 0) => (others => '0'),
+
+	ext_in_r(17) => sid_ver(1) and sid_digifix,
+	ext_in_r(16 downto 0) => (others => '0'),
+
+	filter_en => sid_filter,
+	mode    => sid_ver,
+	cfg     => sid_cfg,
+	
+	fc_offset_l => sid_fc_off_l,
+	fc_offset_r => sid_fc_off_r,
+
+	ld_clk  => sid_ld_clk,
+	ld_addr => sid_ld_addr,
+	ld_data => sid_ld_data,
+	ld_wr   => sid_ld_wr
+);
+
+-- OCTOPHONIC: SIDs 3 and 4 - a second pair, the same as the first (its own
+-- waveform tables and filter), the same types and filters as SIDs 1 and 2
+sid2 : sid_top
+port map (
+	reset => reset or not sid_quad,
+	clk => clk32,
+	ce_1m => enableSid,
+	we => pulseWr_io,
+	cs => sid2_sel_r & sid2_sel_l,
+	addr => cpuAddr(4 downto 0),
+	data_in => cpuDo,
+	data_out => sid2_do,
+	pot_x_l => pot_x1 and pot_x2,
+	pot_y_l => pot_y1 and pot_y2,
+
+	audio_l => sid2_aud_l,
+	audio_r => sid2_aud_r,
 
 	ext_in_l(17) => sid_ver(0) and sid_digifix,
 	ext_in_l(16 downto 0) => (others => '0'),

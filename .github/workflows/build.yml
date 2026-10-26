@@ -1,0 +1,40 @@
+# OCTOPHONIC: builds the core on GitHub - every push to master, or by hand from the
+# Actions tab (Run workflow). The core comes out as the artifact "C64_Octophonic":
+# open the run, download it, unzip, and copy the .rbf to the MiSTer's _Computer folder.
+name: Build core
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make room for Quartus
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Compile with Quartus 17.0 Lite
+        run: |
+          docker run --rm -v "$PWD":/build -w /build raetro/quartus:17.0 \
+            quartus_sh --flow compile C64.qpf
+
+      - name: Name the core
+        run: |
+          mkdir -p out
+          cp output_files/C64.rbf "out/C64_Octophonic_$(date +%Y%m%d).rbf"
+          grep -h -A3 "Fitter Resource Usage Summary" output_files/*.fit.summary output_files/*.fit.rpt 2>/dev/null | head -20 || true
+          cat output_files/C64.fit.summary || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: C64_Octophonic
+          path: |
+            out/*.rbf
+            output_files/*.summary
