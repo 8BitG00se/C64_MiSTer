@@ -49,19 +49,18 @@ jobs:
       - name: Keep the reports
         if: always()
         run: |
+          # Quartus ran as root in its container: its files are root's
+          sudo chown -R "$(id -u):$(id -g)" output_files 2>/dev/null || true
           mkdir -p /tmp/reports
           cp output_files/*.summary /tmp/reports/ 2>/dev/null || true
-          grep -h -iE "error|critical warning" output_files/*.rpt 2>/dev/null | head -200 > /tmp/reports/errors.txt || true
+          grep -h -iE "^error|critical warning" output_files/*.rpt 2>/dev/null | head -200 > /tmp/reports/errors.txt || true
           echo "${{ steps.compile.outcome }} $(git rev-parse --short HEAD) $(date -u +%Y-%m-%dT%H:%MZ)" > /tmp/reports/result.txt
-          git config user.name "Octophonic build"
-          git config user.email "noreply@github.com"
-          git fetch origin build-reports || true
-          git switch --orphan build-reports-new
-          git rm -rfq . || true
-          cp /tmp/reports/* .
+          cd /tmp/reports
+          git init -q
+          git checkout -q -b build-reports
           git add -A
-          git commit -qm "Reports for $(cat result.txt)"
-          git push -f origin HEAD:build-reports
+          git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Reports: $(cat result.txt)"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" build-reports
 
       - name: Fail if Quartus failed
         if: steps.compile.outcome != 'success'
