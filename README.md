@@ -1,3 +1,28 @@
+# C64 Octophonic for [MiSTer](https://github.com/MiSTer-devel/Main_MiSTer/wiki)
+
+**Up to eight SIDs on the MiSTer C64 core.** A fork of the MiSTer C64 core with an
+Octophonic option in the Audio & Video menu: Off (the stock core's one or two SIDs),
+4 SIDs, or 8 SIDs - each a full SID of the core's own, at its own address, in stereo.
+
+| SID | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Address | $D400 | $D420 | $D500 | $D520 | $D480 | $D4A0 | $D580 | $D5A0 |
+| Side | left | right | left | right | left | right | left | right |
+
+The same layout as the Ultimate 64's, so a program written for one plays on the other:
+A5 picks left or right, A8 the second pair, A7 the third and fourth. 4 SIDs mode is
+SIDs 1-4. "Left SIDs 1357" and "Right SIDs 2468" in the menu set the model of the odd and even SIDs.
+With all of them playing each side is mixed at a half (4 SIDs) or a quarter (8 SIDs)
+so it never clips.
+
+Made with SIDWeaver, whose sequencer writes 4- and
+8-SID tunes to a .d64 that plays here with the REU (16MB) switched on.
+
+Builds on GitHub: every push to master builds the core (Actions, artifact
+C64_Octophonic); its fit and timing reports are kept on the build-reports branch.
+
+---
+
 # C64 for [MiSTer](https://github.com/MiSTer-devel/Main_MiSTer/wiki)
 
 Based on FPGA64 by Peter Wendrich with heavy later modifications by different people.
