@@ -116,7 +116,7 @@ localparam CONF_STR = {
 	"P2,Hardware;", 
 	"P2O[52],GeoRAM,Disabled,4MB;",
 	"P2O[54:53],REU,16MB,2MB,512KB,Disabled;",
-	"hCP2O[63],REU wrap,512KB,None;",
+	"hCP2O[63],REU wrap,None,512KB;",
 	"P2-;",
 	"P2O[25],External IEC,Disabled,Enabled;",
 	"P2O[43],Expansion,Joysticks,RS232;",
@@ -515,7 +515,7 @@ wire        reu_irq;
 
 wire        reu_oe  = IOF && reu_cfg;
 wire  [1:0] reu_cfg = ~status[54:53];    // OCTOPHONIC: the menu lists 16MB first, so a fresh core has it
-wire        reu_wrap = ~status[63] & reu_cfg[1];
+wire        reu_wrap = status[63] & reu_cfg[1];   // OCTOPHONIC: no wrap unless asked - a 16MB REU is all one memory, a DMA runs on past each 512K
 
 reu reu
 (
