@@ -8,6 +8,9 @@ on:
     branches: [ master ]
   workflow_dispatch:
 
+permissions:
+  contents: write          # to keep the fit and timing reports on the build-reports branch
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,6 +24,8 @@ jobs:
           df -h /
 
       - name: Compile with Quartus 17.0 Lite
+        continue-on-error: true
+        id: compile
         run: |
           docker run --rm -v "$PWD":/build -w /build raetro/quartus:17.0 \
             quartus_sh --flow compile C64.qpf
@@ -38,3 +43,26 @@ jobs:
           path: |
             out/*.rbf
             output_files/*.summary
+
+      # the reports where they can be read without downloading anything: the fit (how full the
+      # FPGA is) and the timing (whether it runs fast enough), kept even when the build fails
+      - name: Keep the reports
+        if: always()
+        run: |
+          mkdir -p /tmp/reports
+          cp output_files/*.summary /tmp/reports/ 2>/dev/null || true
+          grep -h -iE "error|critical warning" output_files/*.rpt 2>/dev/null | head -200 > /tmp/reports/errors.txt || true
+          echo "${{ steps.compile.outcome }} $(git rev-parse --short HEAD) $(date -u +%Y-%m-%dT%H:%MZ)" > /tmp/reports/result.txt
+          git config user.name "Octophonic build"
+          git config user.email "noreply@github.com"
+          git fetch origin build-reports || true
+          git switch --orphan build-reports-new
+          git rm -rfq . || true
+          cp /tmp/reports/* .
+          git add -A
+          git commit -qm "Reports for $(cat result.txt)"
+          git push -f origin HEAD:build-reports
+
+      - name: Fail if Quartus failed
+        if: steps.compile.outcome != 'success'
+        run: exit 1

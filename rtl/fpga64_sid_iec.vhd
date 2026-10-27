@@ -134,6 +134,9 @@ port(
 	sid_digifix : in  std_logic;
 	-- OCTOPHONIC: '1' four SIDs - $D400, $D420, $D500, $D520 (the Ultimate 64's layout)
 	sid_quad    : in  std_logic := '0';
+	-- OCTOPHONIC: '1' (with sid_quad) eight SIDs - A7 picks two more pairs:
+	-- $D480, $D4A0, $D580, $D5A0 (the layout 8-SID music such as The Tuneful Eight uses)
+	sid_oct     : in  std_logic := '0';
 	
 	-- USER
 	pb_i        : in  unsigned(7 downto 0);
@@ -282,6 +285,18 @@ signal sid1_aud_l   : std_logic_vector(17 downto 0);
 signal sid1_aud_r   : std_logic_vector(17 downto 0);
 signal sid2_aud_l   : std_logic_vector(17 downto 0);
 signal sid2_aud_r   : std_logic_vector(17 downto 0);
+-- OCTOPHONIC: the third and fourth pairs, SIDs 5 to 8
+signal sid_a7       : std_logic;
+signal sid3_do      : unsigned(7 downto 0);
+signal sid3_sel_l   : std_logic;
+signal sid3_sel_r   : std_logic;
+signal sid4_do      : unsigned(7 downto 0);
+signal sid4_sel_l   : std_logic;
+signal sid4_sel_r   : std_logic;
+signal sid3_aud_l   : std_logic_vector(17 downto 0);
+signal sid3_aud_r   : std_logic_vector(17 downto 0);
+signal sid4_aud_l   : std_logic_vector(17 downto 0);
+signal sid4_aud_r   : std_logic_vector(17 downto 0);
 signal pot_x1       : std_logic_vector(7 downto 0);
 signal pot_y1       : std_logic_vector(7 downto 0);
 signal pot_x2       : std_logic_vector(7 downto 0);
@@ -473,7 +488,7 @@ port map (
 	game => game,
 	exrom => exrom,
 	io_rom => io_rom,
-	io_ext => io_ext or sid_sel_r or sid2_sel_l or sid2_sel_r,
+	io_ext => io_ext or sid_sel_r or sid2_sel_l or sid2_sel_r or sid3_sel_l or sid3_sel_r or sid4_sel_l or sid4_sel_r,
 	io_data => io_data_i,
 
 	ramData => ramDin,
@@ -665,19 +680,35 @@ sid_sel_rn <= sid_sel_ln when sid_mode = 0 else ioe_i when sid_mode = 1 else iof
 
 -- OCTOPHONIC (four SIDs): A5 picks the left or right of a pair, A8 the pair -
 -- $D400 SID 1, $D420 SID 2, $D500 SID 3, $D520 SID 4. Off, the core is as it was.
-sid_sel_l  <= sid_sel_ln when sid_quad = '0' else (cs_sid and not cpuAddr(5) and not cpuAddr(8));
-sid_sel_r  <= sid_sel_rn when sid_quad = '0' else (cs_sid and     cpuAddr(5) and not cpuAddr(8));
-sid2_sel_l <= '0'        when sid_quad = '0' else (cs_sid and not cpuAddr(5) and     cpuAddr(8));
-sid2_sel_r <= '0'        when sid_quad = '0' else (cs_sid and     cpuAddr(5) and     cpuAddr(8));
+-- Eight SIDs: A7 as well - $D480 SID 5, $D4A0 SID 6, $D580 SID 7, $D5A0 SID 8 (four,
+-- A7 is ignored: those addresses mirror SIDs 1 to 4, as before).
+sid_a7     <= cpuAddr(7) and sid_oct;
+sid_sel_l  <= sid_sel_ln when sid_quad = '0' else (cs_sid and not cpuAddr(5) and not cpuAddr(8) and not sid_a7);
+sid_sel_r  <= sid_sel_rn when sid_quad = '0' else (cs_sid and     cpuAddr(5) and not cpuAddr(8) and not sid_a7);
+sid2_sel_l <= '0'        when sid_quad = '0' else (cs_sid and not cpuAddr(5) and     cpuAddr(8) and not sid_a7);
+sid2_sel_r <= '0'        when sid_quad = '0' else (cs_sid and     cpuAddr(5) and     cpuAddr(8) and not sid_a7);
+sid3_sel_l <= '0'        when sid_quad = '0' else (cs_sid and not cpuAddr(5) and not cpuAddr(8) and     sid_a7);
+sid3_sel_r <= '0'        when sid_quad = '0' else (cs_sid and     cpuAddr(5) and not cpuAddr(8) and     sid_a7);
+sid4_sel_l <= '0'        when sid_quad = '0' else (cs_sid and not cpuAddr(5) and     cpuAddr(8) and     sid_a7);
+sid4_sel_r <= '0'        when sid_quad = '0' else (cs_sid and     cpuAddr(5) and     cpuAddr(8) and     sid_a7);
 
-io_data_i <= io_data when io_ext = '1' else sid2_do when (sid2_sel_l or sid2_sel_r) = '1' else sid_do when sid_sel_r = '1' else (others => '1');
+io_data_i <= io_data when io_ext = '1' else
+             sid4_do when (sid4_sel_l or sid4_sel_r) = '1' else
+             sid3_do when (sid3_sel_l or sid3_sel_r) = '1' else
+             sid2_do when (sid2_sel_l or sid2_sel_r) = '1' else
+             sid_do  when sid_sel_r = '1' else (others => '1');
 
 -- the sound: off, the first pair as it was; four SIDs, SIDs 1 and 3 left, 2 and 4 right,
 -- each half as loud so two at full level cannot overflow
+-- eight, the odd SIDs (1, 3, 5, 7) left and the even right, each a quarter as loud
 audio_l <= sid1_aud_l when sid_quad = '0' else
-           std_logic_vector(resize(signed(sid1_aud_l(17 downto 1)), 18) + resize(signed(sid2_aud_l(17 downto 1)), 18));
+           std_logic_vector(resize(signed(sid1_aud_l(17 downto 1)), 18) + resize(signed(sid2_aud_l(17 downto 1)), 18)) when sid_oct = '0' else
+           std_logic_vector(resize(signed(sid1_aud_l(17 downto 2)), 18) + resize(signed(sid2_aud_l(17 downto 2)), 18)
+                          + resize(signed(sid3_aud_l(17 downto 2)), 18) + resize(signed(sid4_aud_l(17 downto 2)), 18));
 audio_r <= sid1_aud_r when sid_quad = '0' else
-           std_logic_vector(resize(signed(sid1_aud_r(17 downto 1)), 18) + resize(signed(sid2_aud_r(17 downto 1)), 18));
+           std_logic_vector(resize(signed(sid1_aud_r(17 downto 1)), 18) + resize(signed(sid2_aud_r(17 downto 1)), 18)) when sid_oct = '0' else
+           std_logic_vector(resize(signed(sid1_aud_r(17 downto 2)), 18) + resize(signed(sid2_aud_r(17 downto 2)), 18)
+                          + resize(signed(sid3_aud_r(17 downto 2)), 18) + resize(signed(sid4_aud_r(17 downto 2)), 18));
 
 pot_x1 <= (others => '1' ) when cia1_pao(6) = '0' else not pot1;
 pot_y1 <= (others => '1' ) when cia1_pao(6) = '0' else not pot2;
@@ -736,6 +767,78 @@ port map (
 
 	audio_l => sid2_aud_l,
 	audio_r => sid2_aud_r,
+
+	ext_in_l(17) => sid_ver(0) and sid_digifix,
+	ext_in_l(16 downto 0) => (others => '0'),
+
+	ext_in_r(17) => sid_ver(1) and sid_digifix,
+	ext_in_r(16 downto 0) => (others => '0'),
+
+	filter_en => sid_filter,
+	mode    => sid_ver,
+	cfg     => sid_cfg,
+	
+	fc_offset_l => sid_fc_off_l,
+	fc_offset_r => sid_fc_off_r,
+
+	ld_clk  => sid_ld_clk,
+	ld_addr => sid_ld_addr,
+	ld_data => sid_ld_data,
+	ld_wr   => sid_ld_wr
+);
+
+-- OCTOPHONIC: SIDs 5 and 6 ($D480, $D4A0)
+sid3 : sid_top
+port map (
+	reset => reset or not sid_oct,
+	clk => clk32,
+	ce_1m => enableSid,
+	we => pulseWr_io,
+	cs => sid3_sel_r & sid3_sel_l,
+	addr => cpuAddr(4 downto 0),
+	data_in => cpuDo,
+	data_out => sid3_do,
+	pot_x_l => pot_x1 and pot_x2,
+	pot_y_l => pot_y1 and pot_y2,
+
+	audio_l => sid3_aud_l,
+	audio_r => sid3_aud_r,
+
+	ext_in_l(17) => sid_ver(0) and sid_digifix,
+	ext_in_l(16 downto 0) => (others => '0'),
+
+	ext_in_r(17) => sid_ver(1) and sid_digifix,
+	ext_in_r(16 downto 0) => (others => '0'),
+
+	filter_en => sid_filter,
+	mode    => sid_ver,
+	cfg     => sid_cfg,
+	
+	fc_offset_l => sid_fc_off_l,
+	fc_offset_r => sid_fc_off_r,
+
+	ld_clk  => sid_ld_clk,
+	ld_addr => sid_ld_addr,
+	ld_data => sid_ld_data,
+	ld_wr   => sid_ld_wr
+);
+
+-- OCTOPHONIC: SIDs 7 and 8 ($D580, $D5A0)
+sid4 : sid_top
+port map (
+	reset => reset or not sid_oct,
+	clk => clk32,
+	ce_1m => enableSid,
+	we => pulseWr_io,
+	cs => sid4_sel_r & sid4_sel_l,
+	addr => cpuAddr(4 downto 0),
+	data_in => cpuDo,
+	data_out => sid4_do,
+	pot_x_l => pot_x1 and pot_x2,
+	pot_y_l => pot_y1 and pot_y2,
+
+	audio_l => sid4_aud_l,
+	audio_r => sid4_aud_r,
 
 	ext_in_l(17) => sid_ver(0) and sid_digifix,
 	ext_in_l(16 downto 0) => (others => '0'),
