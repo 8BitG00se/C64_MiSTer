@@ -105,7 +105,7 @@ localparam CONF_STR = {
 	"D4D8P1O[72:70],Left Fc Offset,0,1,2,3,4,5;",
 	"D5D9P1O[75:73],Right Fc Offset,0,1,2,3,4,5;",
 	"P1O[22:20],Right SID Port,Same,DE00,D420,D500,DF00;",
-	"P1O[98:97],Octophonic,Off,4 SIDs,8 SIDs;",
+	"P1O[98:97],Octophonic,8 SIDs,4 SIDs,Off;",
 	"P1O[37],8580 Digifix,On,Off;",
 	"P1FC7,FLT,Load Custom Filters;",
 	"P1-;",
@@ -115,7 +115,7 @@ localparam CONF_STR = {
 
 	"P2,Hardware;", 
 	"P2O[52],GeoRAM,Disabled,4MB;",
-	"P2O[54:53],REU,Disabled,512KB,2MB,16MB;",
+	"P2O[54:53],REU,16MB,2MB,512KB,Disabled;",
 	"hCP2O[63],REU wrap,512KB,None;",
 	"P2-;",
 	"P2O[25],External IEC,Disabled,Enabled;",
@@ -375,7 +375,7 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(2), .BLKSZ(1)) hps_io
 	.paddle_3(pd4),
 
 	.status(status),
-	.status_menumask({status[54], ezfl_mod || ezfl_save_en, cart_ezfl, ~status[69], ~status[66], status[58], |status[47:46], status[16], status[13], tap_loaded, 1'b0, |vcrop, status[56]}), .buttons(buttons),
+	.status_menumask({~status[54], ezfl_mod || ezfl_save_en, cart_ezfl, ~status[69], ~status[66], status[58], |status[47:46], status[16], status[13], tap_loaded, 1'b0, |vcrop, status[56]}), .buttons(buttons),
 	.forced_scandoubler(forced_scandoubler),
 	.gamma_bus(gamma_bus),
 
@@ -514,8 +514,8 @@ wire  [7:0] reu_dout;
 wire        reu_irq;
 
 wire        reu_oe  = IOF && reu_cfg;
-wire  [1:0] reu_cfg = status[54:53];
-wire        reu_wrap = ~status[63] & status[54];
+wire  [1:0] reu_cfg = ~status[54:53];    // OCTOPHONIC: the menu lists 16MB first, so a fresh core has it
+wire        reu_wrap = ~status[63] & reu_cfg[1];
 
 reu reu
 (
@@ -1007,8 +1007,8 @@ fpga64_sid_iec fpga64
 	.sid_fc_off_l(status[66] ? (13'h600 - {status[72:70],7'd0}) : 13'd0),
 	.sid_fc_off_r(status[69] ? (13'h600 - {status[75:73],7'd0}) : 13'd0),
 	.sid_digifix(~status[37]),
-	.sid_quad(status[97] | status[98]),   // OCTOPHONIC: SIDs at $D400, $D420, $D500, $D520
-	.sid_oct(status[98]),                 // and with 8: $D480, $D4A0, $D580, $D5A0
+	.sid_quad(~status[98]),               // OCTOPHONIC (8 SIDs, 4 SIDs, Off): SIDs at $D400, $D420, $D500, $D520
+	.sid_oct(status[98:97] == 2'b00),    // and with 8 (the default): $D480, $D4A0, $D580, $D5A0
 	.audio_l(audio_l),
 	.audio_r(audio_r),
 

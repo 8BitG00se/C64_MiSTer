@@ -287,6 +287,8 @@ signal sid2_aud_l   : std_logic_vector(17 downto 0);
 signal sid2_aud_r   : std_logic_vector(17 downto 0);
 -- OCTOPHONIC: the third and fourth pairs, SIDs 5 to 8
 signal sid_a7       : std_logic;
+signal sid_played   : std_logic_vector(7 downto 0);
+signal mix_l, mix_r : signed(17 downto 0);
 signal sid3_do      : unsigned(7 downto 0);
 signal sid3_sel_l   : std_logic;
 signal sid3_sel_r   : std_logic;
@@ -698,17 +700,75 @@ io_data_i <= io_data when io_ext = '1' else
              sid2_do when (sid2_sel_l or sid2_sel_r) = '1' else
              sid_do  when sid_sel_r = '1' else (others => '1');
 
--- the sound: off, the first pair as it was; four SIDs, SIDs 1 and 3 left, 2 and 4 right,
--- each half as loud so two at full level cannot overflow
--- eight, the odd SIDs (1, 3, 5, 7) left and the even right, each a quarter as loud
-audio_l <= sid1_aud_l when sid_quad = '0' else
-           std_logic_vector(resize(signed(sid1_aud_l(17 downto 1)), 18) + resize(signed(sid2_aud_l(17 downto 1)), 18)) when sid_oct = '0' else
-           std_logic_vector(resize(signed(sid1_aud_l(17 downto 2)), 18) + resize(signed(sid2_aud_l(17 downto 2)), 18)
-                          + resize(signed(sid3_aud_l(17 downto 2)), 18) + resize(signed(sid4_aud_l(17 downto 2)), 18));
-audio_r <= sid1_aud_r when sid_quad = '0' else
-           std_logic_vector(resize(signed(sid1_aud_r(17 downto 1)), 18) + resize(signed(sid2_aud_r(17 downto 1)), 18)) when sid_oct = '0' else
-           std_logic_vector(resize(signed(sid1_aud_r(17 downto 2)), 18) + resize(signed(sid2_aud_r(17 downto 2)), 18)
-                          + resize(signed(sid3_aud_r(17 downto 2)), 18) + resize(signed(sid4_aud_r(17 downto 2)), 18));
+-- THE SOUND. Off: the first pair as it was. Octophonic: SIDs in left/right pairs, odd SIDs
+-- (1, 3, 5, 7) left and even right - but a SID whose partner has not played since the reset
+-- is in the middle, on both sides, so a one-SID game in 8 SIDs mode sounds as it does on the
+-- stock core, a 2SID tune at $D420 is in stereo, and a 4- or 8-SID demo is spread out.
+-- "Played" is a gate opened (a control register written with bit 0 set) or a volume set -
+-- a game clearing the whole SID area with zeros does not count; SID 1 always counts. Each side is divided by how many SIDs
+-- play into it (1, 2, up to 4, up to 8), so nothing overflows and one SID is never quiet.
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if reset = '1' then
+			sid_played <= (others => '0');
+		elsif pulseWr_io = '1'
+		      and ((cpuDo(0) = '1' and (cpuAddr(4 downto 0) = "00100" or cpuAddr(4 downto 0) = "01011" or cpuAddr(4 downto 0) = "10010"))
+		           or (cpuAddr(4 downto 0) = "11000" and cpuDo(3 downto 0) /= "0000")) then
+			if sid_sel_l  = '1' then sid_played(0) <= '1'; end if;
+			if sid_sel_r  = '1' then sid_played(1) <= '1'; end if;
+			if sid2_sel_l = '1' then sid_played(2) <= '1'; end if;
+			if sid2_sel_r = '1' then sid_played(3) <= '1'; end if;
+			if sid3_sel_l = '1' then sid_played(4) <= '1'; end if;
+			if sid3_sel_r = '1' then sid_played(5) <= '1'; end if;
+			if sid4_sel_l = '1' then sid_played(6) <= '1'; end if;
+			if sid4_sel_r = '1' then sid_played(7) <= '1'; end if;
+		end if;
+	end if;
+end process;
+
+process(clk32)
+	type chip_out is array (0 to 7) of signed(17 downto 0);
+	variable o         : chip_out;
+	variable sl, sr    : signed(20 downto 0);
+	variable nl, nr    : integer range 0 to 8;
+	variable onl, onr  : boolean;
+	variable pl        : std_logic_vector(7 downto 0);
+begin
+	if rising_edge(clk32) then
+		o := (signed(sid1_aud_l), signed(sid1_aud_r), signed(sid2_aud_l), signed(sid2_aud_r),
+		      signed(sid3_aud_l), signed(sid3_aud_r), signed(sid4_aud_l), signed(sid4_aud_r));
+		sl := (others => '0'); sr := (others => '0'); nl := 0; nr := 0;
+		pl := sid_played; pl(0) := '1';         -- SID 1 always: a digi with no gate is still sound
+		for c in 0 to 7 loop
+			-- which side(s): its own, or both when its partner (c xor 1) has not played
+			if c mod 2 = 0 then
+				onl := true;  onr := pl(c + 1) = '0';
+			else
+				onr := true;  onl := pl(c - 1) = '0';
+			end if;
+			-- a pair past the mode, and a SID that has never played, add nothing
+			if (c >= 2 and sid_quad = '0') or (c >= 4 and sid_oct = '0') or pl(c) = '0' then
+				onl := false; onr := false;
+			end if;
+			if onl then sl := sl + resize(o(c), 21); nl := nl + 1; end if;
+			if onr then sr := sr + resize(o(c), 21); nr := nr + 1; end if;
+		end loop;
+		if    nl <= 1 then mix_l <= sl(17 downto 0);
+		elsif nl = 2  then mix_l <= sl(18 downto 1);
+		elsif nl <= 4 then mix_l <= sl(19 downto 2);
+		else               mix_l <= sl(20 downto 3);
+		end if;
+		if    nr <= 1 then mix_r <= sr(17 downto 0);
+		elsif nr = 2  then mix_r <= sr(18 downto 1);
+		elsif nr <= 4 then mix_r <= sr(19 downto 2);
+		else               mix_r <= sr(20 downto 3);
+		end if;
+	end if;
+end process;
+
+audio_l <= sid1_aud_l when sid_quad = '0' else std_logic_vector(mix_l);
+audio_r <= sid1_aud_r when sid_quad = '0' else std_logic_vector(mix_r);
 
 pot_x1 <= (others => '1' ) when cia1_pao(6) = '0' else not pot1;
 pot_y1 <= (others => '1' ) when cia1_pao(6) = '0' else not pot2;
