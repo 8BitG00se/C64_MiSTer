@@ -273,6 +273,7 @@ signal turbo_state  : std_logic;
 
 -- SID signals
 signal sid_do       : unsigned(7 downto 0);
+signal sid_rd       : unsigned(7 downto 0);
 signal sid_sel_l    : std_logic;
 signal sid_sel_r    : std_logic;
 signal sid_sel_ln   : std_logic;
@@ -500,7 +501,7 @@ port map (
 	cpuData => cpuDo,
 	vicAddr => vicAddr,
 	vicData => vicData,
-	sidData => sid_do,
+	sidData => sid_rd,
 	colorData => colorData,
 	cia1Data => cia1Do,
 	cia2Data => cia2Do,
@@ -699,6 +700,15 @@ io_data_i <= io_data when io_ext = '1' else
              sid3_do when (sid3_sel_l or sid3_sel_r) = '1' else
              sid2_do when (sid2_sel_l or sid2_sel_r) = '1' else
              sid_do  when sid_sel_r = '1' else (others => '1');
+
+-- A READ of SIDs 3 to 8 (OCTOPHONIC): the bus logic hands the processor sidData for all of
+-- $D400-$D7FF (io_data only for $DE00/$DF00), so sidData is the SID picked, not always the
+-- first pair - before this, SIDs 3 to 8 read back SID 2's last byte, their OSC3 and ENV3
+-- never moved, and a SID finder (the OCTOPHONIC launcher's) saw three SIDs of eight.
+sid_rd <= sid4_do when (sid4_sel_l or sid4_sel_r) = '1' else
+          sid3_do when (sid3_sel_l or sid3_sel_r) = '1' else
+          sid2_do when (sid2_sel_l or sid2_sel_r) = '1' else
+          sid_do;
 
 -- THE SOUND. Off: the first pair as it was. Octophonic: SIDs in left/right pairs, odd SIDs
 -- (1, 3, 5, 7) left and even right - but a SID whose partner has not played since the reset
