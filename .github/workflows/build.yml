@@ -5,7 +5,7 @@ name: Build core
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, octovic ]
   workflow_dispatch:
 
 permissions:

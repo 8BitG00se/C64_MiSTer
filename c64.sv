@@ -35,13 +35,28 @@ wire        drv_ddram_we;
 wire [63:0] drv_ddram_din;
 wire [7:0]  drv_ddram_be;
 
+// OCTOPHONIC: the DDR3 shared by the drives (their track buffers) and OctoVIC (its VRAM)
+wire [7:0]  ogx_ddram_burstcnt;
+wire [28:0] ogx_ddram_addr;
+wire        ogx_ddram_rd;
+wire        ogx_ddram_we;
+wire [63:0] ogx_ddram_din;
+wire [7:0]  ogx_ddram_be;
+wire        drv_ddram_busy, drv_ddram_ready, ogx_ddram_busy, ogx_ddram_ready;
+
 assign DDRAM_CLK      = clk_sys;
-assign DDRAM_BURSTCNT = drv_ddram_burstcnt;
-assign DDRAM_ADDR     = drv_ddram_addr;
-assign DDRAM_RD       = drv_ddram_rd;
-assign DDRAM_WE       = drv_ddram_we;
-assign DDRAM_DIN      = drv_ddram_din;
-assign DDRAM_BE       = drv_ddram_be;
+
+ddram_arb2 ddram_arb
+(
+	.clk(clk_sys),
+	.reset(~pll_locked),
+	.a_addr(drv_ddram_addr), .a_burstcnt(drv_ddram_burstcnt), .a_rd(drv_ddram_rd), .a_we(drv_ddram_we),
+	.a_din(drv_ddram_din), .a_be(drv_ddram_be), .a_busy(drv_ddram_busy), .a_ready(drv_ddram_ready),
+	.b_addr(ogx_ddram_addr), .b_burstcnt(ogx_ddram_burstcnt), .b_rd(ogx_ddram_rd), .b_we(ogx_ddram_we),
+	.b_din(ogx_ddram_din), .b_be(ogx_ddram_be), .b_busy(ogx_ddram_busy), .b_ready(ogx_ddram_ready),
+	.addr(DDRAM_ADDR), .burstcnt(DDRAM_BURSTCNT), .rd(DDRAM_RD), .we(DDRAM_WE), .din(DDRAM_DIN), .be(DDRAM_BE),
+	.busy(DDRAM_BUSY), .ready(DDRAM_DOUT_READY)
+);
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 assign LED_DISK   = 0;
@@ -1008,7 +1023,17 @@ fpga64_sid_iec fpga64
 	.sid_fc_off_r(status[69] ? (13'h600 - {status[75:73],7'd0}) : 13'd0),
 	.sid_digifix(~status[37]),
 	.sid_quad(~status[98]),               // OCTOPHONIC (8 SIDs, 4 SIDs, Off): SIDs at $D400, $D420, $D500, $D520
-	.sid_oct(status[98:97] == 2'b00),    // and with 8 (the default): $D480, $D4A0, $D580, $D5A0
+	.sid_oct(status[98:97] == 2'b00),
+
+	.ogx_ddr_addr(ogx_ddram_addr),
+	.ogx_ddr_burstcnt(ogx_ddram_burstcnt),
+	.ogx_ddr_rd(ogx_ddram_rd),
+	.ogx_ddr_we(ogx_ddram_we),
+	.ogx_ddr_din(ogx_ddram_din),
+	.ogx_ddr_be(ogx_ddram_be),
+	.ogx_ddr_busy(ogx_ddram_busy),
+	.ogx_ddr_dout(DDRAM_DOUT),
+	.ogx_ddr_dout_ready(ogx_ddram_ready),    // and with 8 (the default): $D480, $D4A0, $D580, $D5A0
 	.audio_l(audio_l),
 	.audio_r(audio_r),
 
@@ -1142,11 +1167,11 @@ iec_drive iec_drive
 	.rom_wr(((load_rom && ioctl_addr[16:14]) || load_c1581) && ioctl_download && ioctl_wr),
 	.rom_std(status[14]),
 
-	.DDRAM_BUSY(DDRAM_BUSY),
+	.DDRAM_BUSY(drv_ddram_busy),
 	.DDRAM_BURSTCNT(drv_ddram_burstcnt),
 	.DDRAM_ADDR(drv_ddram_addr),
 	.DDRAM_DOUT(DDRAM_DOUT),
-	.DDRAM_DOUT_READY(DDRAM_DOUT_READY),
+	.DDRAM_DOUT_READY(drv_ddram_ready),
 	.DDRAM_RD(drv_ddram_rd),
 	.DDRAM_WE(drv_ddram_we),
 	.DDRAM_DIN(drv_ddram_din),
@@ -1320,7 +1345,7 @@ always @(posedge clk_sys) begin
         dbg_wait_data <= 1;
 		end
 
-		if (DDRAM_DOUT_READY && dbg_wait_data) begin
+		if (drv_ddram_ready && dbg_wait_data) begin
 			dbg_ddram_data <= DDRAM_DOUT;
 			dbg_out_addr   <= dbg_ddram_addr;
 			dbg_valid      <= 1;

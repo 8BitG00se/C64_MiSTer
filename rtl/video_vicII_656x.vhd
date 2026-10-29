@@ -67,6 +67,10 @@ entity video_vicii_656x is
 		vSync : out std_logic;
 		colorIndex : out unsigned(3 downto 0);
 
+		-- OCTOPHONIC: the raster position of the pixel coming out (OctoVIC draws by it)
+		rasterXo : out unsigned(9 downto 0);
+		rasterYo : out unsigned(8 downto 0);
+
 		-- Debug outputs
 		debugX  : out unsigned(9 downto 0);
 		debugY  : out unsigned(8 downto 0);
@@ -308,6 +312,8 @@ begin
 -- debug signals
 -- -----------------------------------------------------------------------
 	debugX <= rasterXDelay;
+	rasterXo <= rasterX;
+	rasterYo <= rasterY;
 	debugY <= rasterY;
 
 -- -----------------------------------------------------------------------

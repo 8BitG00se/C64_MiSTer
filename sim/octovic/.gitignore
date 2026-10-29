@@ -1,0 +1,6 @@
+obj/
+*.rgb
+vram.bin
+script.txt
+*.png
+__pycache__/

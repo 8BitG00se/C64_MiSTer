@@ -137,6 +137,17 @@ port(
 	-- OCTOPHONIC: '1' (with sid_quad) eight SIDs - A7 picks two more pairs:
 	-- $D480, $D4A0, $D580, $D5A0 (the layout 8-SID music such as The Tuneful Eight uses)
 	sid_oct     : in  std_logic := '0';
+
+	-- OCTOPHONIC: OctoVIC's VRAM, in the DDR3 (docs/OCTOVIC.md)
+	ogx_ddr_addr       : out std_logic_vector(28 downto 0);
+	ogx_ddr_burstcnt   : out std_logic_vector(7 downto 0);
+	ogx_ddr_rd         : out std_logic;
+	ogx_ddr_we         : out std_logic;
+	ogx_ddr_din        : out std_logic_vector(63 downto 0);
+	ogx_ddr_be         : out std_logic_vector(7 downto 0);
+	ogx_ddr_busy       : in  std_logic := '1';
+	ogx_ddr_dout       : in  std_logic_vector(63 downto 0) := (others => '0');
+	ogx_ddr_dout_ready : in  std_logic := '0';
 	
 	-- USER
 	pb_i        : in  unsigned(7 downto 0);
@@ -259,6 +270,19 @@ signal todclk       : std_logic;
 
 -- video
 signal vicColorIndex: unsigned(3 downto 0);
+-- OCTOPHONIC: OctoVIC
+signal vicRasterX   : unsigned(9 downto 0);
+signal vicRasterY   : unsigned(8 downto 0);
+signal pal_r        : unsigned(7 downto 0);
+signal pal_g        : unsigned(7 downto 0);
+signal pal_b        : unsigned(7 downto 0);
+signal octo_unlock  : std_logic := '0';
+signal octo_stage   : std_logic := '0';
+signal cs_octo      : std_logic;
+signal cs_sid_s     : std_logic;
+signal octo_do      : std_logic_vector(7 downto 0);
+signal pulseRd_io   : std_logic;
+signal octo_rgb     : std_logic_vector(23 downto 0);
 signal vicBus       : unsigned(7 downto 0);
 signal vicDi        : unsigned(7 downto 0);
 signal vicDiAec     : unsigned(7 downto 0);
@@ -340,6 +364,34 @@ component sid_top
 		ld_data       : in  std_logic_vector(15 downto 0);
 		ld_wr         : in  std_logic
   );
+end component;
+
+component octovic
+port (
+	clk            : in  std_logic;
+	reset          : in  std_logic;
+	cs             : in  std_logic;
+	wr             : in  std_logic;
+	rd             : in  std_logic;
+	addr           : in  std_logic_vector(7 downto 0);
+	din            : in  std_logic_vector(7 downto 0);
+	dout           : out std_logic_vector(7 downto 0);
+	pix_en         : in  std_logic;
+	vic_x          : in  std_logic_vector(9 downto 0);
+	vic_y          : in  std_logic_vector(8 downto 0);
+	vic_index      : in  std_logic_vector(3 downto 0);
+	vic_rgb        : in  std_logic_vector(23 downto 0);
+	rgb            : out std_logic_vector(23 downto 0);
+	ddr_addr       : out std_logic_vector(28 downto 0);
+	ddr_burstcnt   : out std_logic_vector(7 downto 0);
+	ddr_rd         : out std_logic;
+	ddr_we         : out std_logic;
+	ddr_din        : out std_logic_vector(63 downto 0);
+	ddr_be         : out std_logic_vector(7 downto 0);
+	ddr_busy       : in  std_logic;
+	ddr_dout       : in  std_logic_vector(63 downto 0);
+	ddr_dout_ready : in  std_logic
+);
 end component;
 
 component mos6526
@@ -612,6 +664,8 @@ port map (
 	hsync => hSync,
 	vsync => vSync,
 	colorIndex => vicColorIndex,
+	rasterXo => vicRasterX,
+	rasterYo => vicRasterY,
 
 	irq_n => irq_vic
 );
@@ -620,10 +674,74 @@ c64colors: entity work.fpga64_rgbcolor
 port map (
 	palette => palette,
 	index => vicColorIndex,
-	r => r,
-	g => g,
-	b => b
+	r => pal_r,
+	g => pal_g,
+	b => pal_b
 );
+
+-- OCTOPHONIC: OctoVIC (docs/OCTOVIC.md). Hidden until $4F then $38 are written to $D03F (an
+-- unused VIC register); then $D600-$D6FF are its registers instead of SID mirrors.
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if reset = '1' then
+			octo_unlock <= '0'; octo_stage <= '0';
+		elsif pulseWr_io = '1' and cs_vic = '1' and cpuAddr(5 downto 0) = "111111" then
+			if cpuDo = x"4F" then
+				octo_stage <= '1';
+			elsif cpuDo = x"38" and octo_stage = '1' then
+				octo_unlock <= '1'; octo_stage <= '0';
+			else
+				octo_unlock <= '0'; octo_stage <= '0';
+			end if;
+		end if;
+	end if;
+end process;
+
+cs_octo  <= cs_sid and octo_unlock and cpuAddr(9) and not cpuAddr(8);
+cs_sid_s <= cs_sid and not cs_octo;
+
+-- a read of OctoVIC: its side effects (VDATA moving on) want a pulse
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		pulseRd_io <= '0';
+		if cpuWe = '0' and sysCycle = CYCLE_CPUC then
+			pulseRd_io <= '1';
+		end if;
+	end if;
+end process;
+
+octo: octovic
+port map (
+	clk            => clk32,
+	reset          => reset,
+	cs             => cs_octo,
+	wr             => pulseWr_io,
+	rd             => pulseRd_io,
+	addr           => std_logic_vector(cpuAddr(7 downto 0)),
+	din            => std_logic_vector(cpuDo),
+	dout           => octo_do,
+	pix_en         => enablePixel,
+	vic_x          => std_logic_vector(vicRasterX),
+	vic_y          => std_logic_vector(vicRasterY),
+	vic_index      => std_logic_vector(vicColorIndex),
+	vic_rgb        => std_logic_vector(pal_r & pal_g & pal_b),
+	rgb            => octo_rgb,
+	ddr_addr       => ogx_ddr_addr,
+	ddr_burstcnt   => ogx_ddr_burstcnt,
+	ddr_rd         => ogx_ddr_rd,
+	ddr_we         => ogx_ddr_we,
+	ddr_din        => ogx_ddr_din,
+	ddr_be         => ogx_ddr_be,
+	ddr_busy       => ogx_ddr_busy,
+	ddr_dout       => ogx_ddr_dout,
+	ddr_dout_ready => ogx_ddr_dout_ready
+);
+
+r <= unsigned(octo_rgb(23 downto 16));
+g <= unsigned(octo_rgb(15 downto 8));
+b <= unsigned(octo_rgb(7 downto 0));
 
 process(clk32)
 begin
@@ -678,22 +796,22 @@ end process;
 
 --	Right SID Port: Same,DE00,D420,D500,DF00
 
-sid_sel_ln <= cs_sid when sid_mode(2 downto 1) /= 1 else (cs_sid and ((not sid_mode(0) and not cpuAddr(5)) or (sid_mode(0) and not cpuAddr(8))));
-sid_sel_rn <= sid_sel_ln when sid_mode = 0 else ioe_i when sid_mode = 1 else iof_i when sid_mode = 4 else (cs_sid and not sid_sel_ln);
+sid_sel_ln <= cs_sid_s when sid_mode(2 downto 1) /= 1 else (cs_sid_s and ((not sid_mode(0) and not cpuAddr(5)) or (sid_mode(0) and not cpuAddr(8))));
+sid_sel_rn <= sid_sel_ln when sid_mode = 0 else ioe_i when sid_mode = 1 else iof_i when sid_mode = 4 else (cs_sid_s and not sid_sel_ln);
 
 -- OCTOPHONIC (four SIDs): A5 picks the left or right of a pair, A8 the pair -
 -- $D400 SID 1, $D420 SID 2, $D500 SID 3, $D520 SID 4. Off, the core is as it was.
 -- Eight SIDs: A7 as well - $D480 SID 5, $D4A0 SID 6, $D580 SID 7, $D5A0 SID 8 (four,
 -- A7 is ignored: those addresses mirror SIDs 1 to 4, as before).
 sid_a7     <= cpuAddr(7) and sid_oct;
-sid_sel_l  <= sid_sel_ln when sid_quad = '0' else (cs_sid and not cpuAddr(5) and not cpuAddr(8) and not sid_a7);
-sid_sel_r  <= sid_sel_rn when sid_quad = '0' else (cs_sid and     cpuAddr(5) and not cpuAddr(8) and not sid_a7);
-sid2_sel_l <= '0'        when sid_quad = '0' else (cs_sid and not cpuAddr(5) and     cpuAddr(8) and not sid_a7);
-sid2_sel_r <= '0'        when sid_quad = '0' else (cs_sid and     cpuAddr(5) and     cpuAddr(8) and not sid_a7);
-sid3_sel_l <= '0'        when sid_quad = '0' else (cs_sid and not cpuAddr(5) and not cpuAddr(8) and     sid_a7);
-sid3_sel_r <= '0'        when sid_quad = '0' else (cs_sid and     cpuAddr(5) and not cpuAddr(8) and     sid_a7);
-sid4_sel_l <= '0'        when sid_quad = '0' else (cs_sid and not cpuAddr(5) and     cpuAddr(8) and     sid_a7);
-sid4_sel_r <= '0'        when sid_quad = '0' else (cs_sid and     cpuAddr(5) and     cpuAddr(8) and     sid_a7);
+sid_sel_l  <= sid_sel_ln when sid_quad = '0' else (cs_sid_s and not cpuAddr(5) and not cpuAddr(8) and not sid_a7);
+sid_sel_r  <= sid_sel_rn when sid_quad = '0' else (cs_sid_s and     cpuAddr(5) and not cpuAddr(8) and not sid_a7);
+sid2_sel_l <= '0'        when sid_quad = '0' else (cs_sid_s and not cpuAddr(5) and     cpuAddr(8) and not sid_a7);
+sid2_sel_r <= '0'        when sid_quad = '0' else (cs_sid_s and     cpuAddr(5) and     cpuAddr(8) and not sid_a7);
+sid3_sel_l <= '0'        when sid_quad = '0' else (cs_sid_s and not cpuAddr(5) and not cpuAddr(8) and     sid_a7);
+sid3_sel_r <= '0'        when sid_quad = '0' else (cs_sid_s and     cpuAddr(5) and not cpuAddr(8) and     sid_a7);
+sid4_sel_l <= '0'        when sid_quad = '0' else (cs_sid_s and not cpuAddr(5) and     cpuAddr(8) and     sid_a7);
+sid4_sel_r <= '0'        when sid_quad = '0' else (cs_sid_s and     cpuAddr(5) and     cpuAddr(8) and     sid_a7);
 
 io_data_i <= io_data when io_ext = '1' else
              sid4_do when (sid4_sel_l or sid4_sel_r) = '1' else
@@ -705,7 +823,8 @@ io_data_i <= io_data when io_ext = '1' else
 -- $D400-$D7FF (io_data only for $DE00/$DF00), so sidData is the SID picked, not always the
 -- first pair - before this, SIDs 3 to 8 read back SID 2's last byte, their OSC3 and ENV3
 -- never moved, and a SID finder (the OCTOPHONIC launcher's) saw three SIDs of eight.
-sid_rd <= sid4_do when (sid4_sel_l or sid4_sel_r) = '1' else
+sid_rd <= unsigned(octo_do) when cs_octo = '1' else
+          sid4_do when (sid4_sel_l or sid4_sel_r) = '1' else
           sid3_do when (sid3_sel_l or sid3_sel_r) = '1' else
           sid2_do when (sid2_sel_l or sid2_sel_r) = '1' else
           sid_do;
