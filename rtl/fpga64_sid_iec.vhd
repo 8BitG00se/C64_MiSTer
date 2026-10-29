@@ -701,16 +701,9 @@ end process;
 cs_octo  <= cs_sid and octo_unlock and cpuAddr(9) and not cpuAddr(8);
 cs_sid_s <= cs_sid and not cs_octo;
 
--- a read of OctoVIC: its side effects (VDATA moving on) want a pulse
-process(clk32)
-begin
-	if rising_edge(clk32) then
-		pulseRd_io <= '0';
-		if cpuWe = '0' and sysCycle = CYCLE_CPUC then
-			pulseRd_io <= '1';
-		end if;
-	end if;
-end process;
+-- a read of OctoVIC: its side effects (VDATA moving on) want a pulse - the clock the 6510
+-- really takes the byte (not while the VIC holds it with RDY, when it would read again)
+pulseRd_io <= enableCpu and not dma_active and baLoc and not cpuWe;
 
 octo: octovic
 port map (
