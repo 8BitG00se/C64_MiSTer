@@ -27,3 +27,4 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/tape_subsystem.sv
 set_global_assignment -name SYSTEMVERILOG_FILE c64.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/octovic/octovic.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/octovic/ddram_arb2.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/octovic/ovram.sv

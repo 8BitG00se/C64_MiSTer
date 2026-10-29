@@ -296,11 +296,17 @@ reg  [24:0] lb_q[4];
 genvar gb;
 generate
 	for (gb = 0; gb < 4; gb = gb + 1) begin : bank
-		reg [24:0] m[512];
-		always @(posedge clk)
-			if (clr_we) m[clr_a] <= 25'd0;
-			else if (bw_we[gb]) m[bw_a[gb]] <= {1'b1, bw_d[gb]};
-		always @(posedge clk) lb_q[gb] <= m[{vic_y[1:0], vic_x[8:2]}];
+		wire [24:0] q;
+		ovram #(.AW(9), .DW(25)) lbm
+		(
+			.clk(clk),
+			.we(clr_we | bw_we[gb]),
+			.wa(clr_we ? clr_a : bw_a[gb]),
+			.wd(clr_we ? 25'd0 : {1'b1, bw_d[gb]}),
+			.ra({vic_y[1:0], vic_x[8:2]}),
+			.q(q)
+		);
+		always @(*) lb_q[gb] = q;
 	end
 endgenerate
 
@@ -335,16 +341,12 @@ end
 // ---------------------------------------------------------------------------------
 //  THE SPRITE TABLE: copied in from VRAM once a frame
 // ---------------------------------------------------------------------------------
-reg  [63:0] sat[128];
 reg         sat_we;
 reg   [6:0] sat_wa;
 reg  [63:0] sat_wd;
 reg   [6:0] sat_ra;
-reg  [63:0] sat_q;
-always @(posedge clk) begin
-	if (sat_we) sat[sat_wa] <= sat_wd;
-	sat_q <= sat[sat_ra];
-end
+wire [63:0] sat_q;
+ovram #(.AW(7), .DW(64)) satm(.clk(clk), .we(sat_we), .wa(sat_wa), .wd(sat_wd), .ra(sat_ra), .q(sat_q));
 
 // the map entries of the layer being drawn: in four banks (entry i in bank i mod 4), so a
 // word's four entries go in at once
@@ -422,11 +424,9 @@ end
 reg  [23:0] palq[4];
 generate
 	for (gb = 0; gb < 4; gb = gb + 1) begin : palc
-		reg [23:0] m[256];
-		integer pi;
-		initial for (pi = 0; pi < 256; pi = pi + 1) m[pi] = {pi[7:0], pi[7:0], pi[7:0]};
-		always @(posedge clk) if (pal_we) m[pal_wa] <= pal_wd;
-		always @(posedge clk) palq[gb] <= m[c_idx[gb]];
+		wire [23:0] q;
+		ovram #(.AW(8), .DW(24), .GREY(1)) palm(.clk(clk), .we(pal_we), .wa(pal_wa), .wd(pal_wd), .ra(c_idx[gb]), .q(q));
+		always @(*) palq[gb] = q;
 	end
 endgenerate
 

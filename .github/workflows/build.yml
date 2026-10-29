@@ -54,6 +54,10 @@ jobs:
           mkdir -p /tmp/reports
           cp output_files/*.summary /tmp/reports/ 2>/dev/null || true
           grep -h -iE "^error|critical warning" output_files/*.rpt 2>/dev/null | head -200 > /tmp/reports/errors.txt || true
+          # where the memories went (block RAM or logic), and what each part of the design costs
+          grep -h -E "uninferred|Inferred .*RAM|ram_block|altsyncram" output_files/C64.map.rpt 2>/dev/null | head -100 > /tmp/reports/rams.txt || true
+          awk '/Analysis & Synthesis Resource Utilization by Entity/{f=1} f{print; n++} n>400{exit}' output_files/C64.map.rpt 2>/dev/null \
+            | grep -E "Compilation Hierarchy Node|octovic|ddram_arb|fpga64_sid_iec:fpga64\||sid_top|emu\|" | head -60 > /tmp/reports/entities.txt || true
           echo "${{ steps.compile.outcome }} $(git rev-parse --short HEAD) $(date -u +%Y-%m-%dT%H:%MZ)" > /tmp/reports/result.txt
           cd /tmp/reports
           git init -q
