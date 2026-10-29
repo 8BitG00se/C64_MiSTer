@@ -99,10 +99,10 @@ or COPBASE is written, it waits for the next line 0 before it does anything. Reg
 
 Each raster line is drawn into a line buffer up to three lines ahead of the beam, in this order:
 sprites of priority 2, layer 0, sprites of priority 1, layer 1, sprites of priority 0 - each
-opaque pixel over what is there. The palette and the backdrop are taken as the line is drawn,
-so a change to either by the copper takes effect on its line (a gradient sky: a backdrop colour a
-line). CTRL, KEY and the VIC palette act as the beam gets there: written by the copper, they land
-up to three lines early. On screen, the VIC's pixel is then put in front
-(see-through where it is the KEY colour) or behind.
+opaque pixel over what is there. The palette, the backdrop, CTRL and KEY are taken as the line is drawn,
+so a change to any of them by the copper takes effect on its own line (a gradient sky: a backdrop
+colour a line; a split: the VIC in front of one band and behind the next). Written by the 6510
+instead, CTRL and KEY show up to three lines later. The VIC palette acts as the beam gets there.
+On screen, the VIC's pixel is then put in front (see-through where it is the KEY colour) or behind.
 
 VRAM is at DDR3 byte address $32000000 (16 MB); the 1541's track buffers are at $30000000.

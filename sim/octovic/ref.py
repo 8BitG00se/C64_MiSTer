@@ -114,7 +114,7 @@ class Octo:
     # --- a frame: the copper and the sprite table as the chip does them, then the picture
     def frame(s):
         pic = np.zeros((NL, 504, 3), np.uint8)
-        lines = {}; bd = {}
+        lines = {}; bd = {}; ck = {}
         cop = s.g24(0x10)
         for L in range(NL):
             if s.g(0x0E) & 1:
@@ -127,8 +127,9 @@ class Octo:
             if L == 0: s.sat = bytes(s.vram[s.g24(0x13) & ~7: (s.g24(0x13) & ~7) + 1024])
             if FIRST <= L <= LAST and s.g(0x05) & 1: lines[L] = s.line(L)
             bd[L] = s.backdrop                          # the backdrop as it was when the line was drawn
-        ctrl, key = s.g(0x05), s.g(0x06) & 15
+            ck[L] = (s.g(0x05), s.g(0x06) & 15)        # and CTRL and KEY
         for yy in range(NL):
+            ctrl, key = ck[yy]
             buf = lines.get(yy)
             for R in range(504):
                 vi = vic_colour(R, yy)

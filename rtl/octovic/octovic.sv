@@ -312,6 +312,9 @@ endgenerate
 
 // the backdrop as it was when each line was drawn (the copper changes it a line at a time)
 reg [23:0] bdl[4];
+// and CTRL and KEY: a copper split lands on its own line, not up to three lines early
+reg  [3:0] cdl[4];
+reg  [3:0] kdl[4];
 
 // the display: the VIC's pixel and ours
 reg        d1;                 // the clock after the strobe
@@ -328,13 +331,15 @@ always @(posedge clk) begin
 		reg [23:0] vc;
 		reg [24:0] q;
 		reg        op;
-		vc = VICPAL ? vpal[vic_index] : vic_rgb;
+		reg  [3:0] c;
+		c  = cdl[d_slot];
+		vc = c[1] ? vpal[vic_index] : vic_rgb;
 		q  = lb_q[d_bank];
 		op = d1_in & q[24];
-		if (!ENABLE)                          rgb <= vc;
-		else if (VICBACK)                     rgb <= op ? q[23:0] : vc;
-		else if (KEYEN && vic_index == key)   rgb <= op ? q[23:0] : bdl[d_slot];
-		else                                  rgb <= vc;
+		if (!c[0])                                  rgb <= vc;
+		else if (c[2])                              rgb <= op ? q[23:0] : vc;
+		else if (c[3] && vic_index == kdl[d_slot])  rgb <= op ? q[23:0] : bdl[d_slot];
+		else                                        rgb <= vc;
 	end
 end
 
@@ -744,6 +749,8 @@ always @(posedge clk) begin
 
 		S_END: if (drained && !cop_w) begin
 			bdl[L[1:0]] <= backdrop;
+			cdl[L[1:0]] <= ctrl[3:0];
+			kdl[L[1:0]] <= key;
 			L <= (L + 9'd1 == nl) ? 9'd0 : L + 9'd1;
 			st <= S_WAIT;
 		end
