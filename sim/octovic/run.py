@@ -60,8 +60,8 @@ for j in range(NS):
     nbytes = (w if a & 0x40 else w // 2) * h
     for b in range(nbytes): vram[SGFX + gi*32 + b] = rng.randrange(256) if rng.random() < 0.7 else 0
 # the copper: layer 0's scroll changed at line 120, a palette entry at line 150, back at line 0
-cop = [(0, 0x28, 40), (0, 0x29, 0), (0, 0x1A, 0x15), (0, 0x19, 0), (0, 0x1B, pal[0x15][0]), (0, 0x1C, pal[0x15][1]), (0, 0x1D, pal[0x15][2]),
-       (120, 0x28, 100), (150, 0x1A, 0x15), (150, 0x1B, 255), (150, 0x1C, 255), (150, 0x1D, 0), (200, 0x2A, 7), (0xFFFF, 0, 0)]
+cop = [(0, 0x19, 2), (0, 0x1B, 0x20), (0, 0x1C, 0x00), (0, 0x1D, 0x30), (0, 0x28, 40), (0, 0x29, 0), (0, 0x1A, 0x15), (0, 0x19, 0), (0, 0x1B, pal[0x15][0]), (0, 0x1C, pal[0x15][1]), (0, 0x1D, pal[0x15][2]),
+       (120, 0x28, 100), (130, 0x19, 2), (130, 0x1B, 200), (130, 0x1C, 30), (130, 0x1D, 90), (140, 0x1B, 20), (140, 0x1D, 255), (145, 0x19, 0), (150, 0x1A, 0x15), (150, 0x1B, 255), (150, 0x1C, 255), (150, 0x1D, 0), (200, 0x2A, 7), (0xFFFF, 0, 0)]
 cl = []
 for ln, rg, v in cop: cl += [ln & 255, ln >> 8, rg, v]
 vram[COP:COP+len(cl)] = bytes(cl)

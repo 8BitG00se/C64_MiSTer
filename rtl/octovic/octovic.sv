@@ -281,41 +281,42 @@ always @(posedge clk) begin
 end
 
 // ---------------------------------------------------------------------------------
-//  THE LINE BUFFER: four lines of 512 pixels {opaque, rgb}, in four banks by raster X mod 4,
-//  so four neighbouring pixels go in at once
+//  THE LINE BUFFER: four lines of 512 pixels {opaque, rgb}, in four banks by raster X mod 4, so
+//  four neighbouring pixels go in at once. A line's slot is cleared (99 clocks, the four banks
+//  together) before it is drawn; the one write port does both.
 // ---------------------------------------------------------------------------------
 reg         bw_we[4];          // the consumer's writes, a bank each
 reg   [8:0] bw_a[4];
 reg  [23:0] bw_d[4];
+reg         clr_we;            // the renderer clearing a slot
+reg   [8:0] clr_a;
 reg   [1:0] d_bank;            // the display's pixel: its bank
-reg         lb_clr;
-reg   [8:0] lb_ra;
-wire  [8:0] lb_ba = lb_clr ? lb_ra : {vic_y[1:0], vic_x[8:2]};
 reg  [24:0] lb_q[4];
 
 genvar gb;
 generate
 	for (gb = 0; gb < 4; gb = gb + 1) begin : bank
 		reg [24:0] m[512];
-		always @(posedge clk) if (bw_we[gb]) m[bw_a[gb]] <= {1'b1, bw_d[gb]};
-		always @(posedge clk) begin
-			if (lb_clr && d_bank == gb) m[lb_ba] <= 25'd0;
-			lb_q[gb] <= m[lb_ba];     // (the clear clock reads the same pixel again: the old value)
-		end
+		always @(posedge clk)
+			if (clr_we) m[clr_a] <= 25'd0;
+			else if (bw_we[gb]) m[bw_a[gb]] <= {1'b1, bw_d[gb]};
+		always @(posedge clk) lb_q[gb] <= m[{vic_y[1:0], vic_x[8:2]}];
 	end
 endgenerate
+
+// the backdrop as it was when each line was drawn (the copper changes it a line at a time)
+reg [23:0] bdl[4];
 
 // the display: the VIC's pixel and ours
 reg        d1;                 // the clock after the strobe
 reg        d1_in;              // that pixel is in what we draw
+reg  [1:0] d_slot;
 always @(posedge clk) begin
-	d1     <= pix_en;
-	lb_clr <= 0;
+	d1 <= pix_en;
 	if (pix_en) begin
-		lb_ra  <= {vic_y[1:0], vic_x[8:2]};
 		d_bank <= vic_x[1:0];
+		d_slot <= vic_y[1:0];
 		d1_in  <= (vic_x < RW) && (vic_y >= FIRST) && (vic_y <= LAST);
-		lb_clr <= 1;           // cleared the clock after it is read: ready for four lines on
 	end
 	if (d1) begin
 		reg [23:0] vc;
@@ -326,7 +327,7 @@ always @(posedge clk) begin
 		op = d1_in & q[24];
 		if (!ENABLE)                          rgb <= vc;
 		else if (VICBACK)                     rgb <= op ? q[23:0] : vc;
-		else if (KEYEN && vic_index == key)   rgb <= op ? q[23:0] : backdrop;
+		else if (KEYEN && vic_index == key)   rgb <= op ? q[23:0] : bdl[d_slot];
 		else                                  rgb <= vc;
 	end
 end
@@ -487,7 +488,7 @@ end
 // ---------------------------------------------------------------------------------
 localparam S_WAIT = 0, S_COP = 1, S_COPW = 2, S_COPA = 3, S_SAT = 4, S_PASS = 5,
            S_LAY0 = 6, S_LSW = 7, S_LAY1 = 8, S_MAP = 9, S_MAPW = 10, S_TILE = 11,
-           S_SCAN = 12, S_SCAN2 = 13, S_DRAW = 14, S_DRAW1 = 15, S_DRAW2 = 16, S_DRAW3 = 18, S_END = 17;
+           S_SCAN = 12, S_SCAN2 = 13, S_DRAW = 14, S_DRAW1 = 15, S_DRAW2 = 16, S_DRAW3 = 18, S_END = 17, S_CLR = 19;
 
 reg  [4:0] st;
 reg  [8:0] L;                  // the raster line being drawn
@@ -536,7 +537,7 @@ always @(posedge clk) begin
 	cop_clr <= 0;
 	if (cop_take) cop_w <= 0;
 	if (reset) begin
-		st <= S_WAIT; L <= 0; nl <= 9'd312; prev_y <= 0; cop_w <= 0; frame <= 0; rqf_wp <= 0; map_issued <= 0;
+		st <= S_WAIT; L <= 0; nl <= 9'd312; prev_y <= 0; cop_w <= 0; frame <= 0; rqf_wp <= 0; map_issued <= 0; clr_we <= 0;
 	end
 	else begin
 		prev_y <= vic_y;
@@ -549,9 +550,16 @@ always @(posedge clk) begin
 				slot_base <= {L[1:0], 7'd0};
 				if (L == 0) cop_ptr <= copbase;
 				scanned <= 0;
-				st <= copen ? S_COP : S_SAT;
+				clr_a <= {L[1:0], 7'd0}; clr_we <= 1;
+				st <= S_CLR;
 				sat_i <= 0;
 			end
+		end
+
+		// the line's slot cleared, 4 pixels a clock
+		S_CLR: begin
+			if (clr_a[6:0] == 7'd98) begin clr_we <= 0; st <= copen ? S_COP : S_SAT; end
+			else clr_a <= clr_a + 9'd1;
 		end
 
 		// the copper: the entries for this line (and any earlier ones) done in order
@@ -720,6 +728,7 @@ always @(posedge clk) begin
 		end
 
 		S_END: if (drained && !cop_w) begin
+			bdl[L[1:0]] <= backdrop;
 			L <= (L + 9'd1 == nl) ? 9'd0 : L + 9'd1;
 			st <= S_WAIT;
 		end
