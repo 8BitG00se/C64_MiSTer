@@ -91,7 +91,8 @@ Up to 64 sprites on one raster line - with both layers on, about 3000 sprite pix
 
 A list in VRAM of 4-byte entries: raster line (16 bits), register (n, as above), value. Before
 each raster line is drawn, the entries for it (and any earlier ones not yet done) are done in
-order; the list ends with line $FFFF. It starts again from COPBASE at raster line 0. Registers
+order; the list ends with line $FFFF. It starts again from COPBASE at raster line 0 - and after COPCTL
+or COPBASE is written, it waits for the next line 0 before it does anything. Registers
 00-04 are not written by the copper.
 
 ## How it is drawn

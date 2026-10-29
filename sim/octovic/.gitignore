@@ -4,3 +4,4 @@ vram.bin
 script.txt
 *.png
 __pycache__/
+objd/

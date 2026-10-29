@@ -464,6 +464,9 @@ always @(posedge clk) begin
 							ent_we[ei[1:0]] <= 1; ent_wa[ei[1:0]] <= ei[5:2]; ent_wd[ei[1:0]] <= df_d[df_r][k*16 +: 16];
 						end
 					map_done <= map_done + 8'd1;
+`ifdef OCTO_DEBUG
+					if (L == 9'd200 && df_t[df_r][8:3] < 6'd8) $display("  MAP i0 %0d lane %0d data %h", df_t[df_r][8:3], df_t[df_r][10:9], df_d[df_r]);
+`endif
 				end
 				K_TILE: begin c_busy <= 1; c_g <= 0; c_ng <= 2'd1; end
 				K_SPR: begin
@@ -496,6 +499,8 @@ reg  [8:0] nl;                 // lines a frame (measured)
 reg  [8:0] prev_y;
 reg  [2:0] pass;               // 0 sprites 2, 1 layer 0, 2 sprites 1, 3 layer 1, 4 sprites 0
 reg        ls_clr, cop_clr, ls_use;
+reg        cop_armed;          // the copper has been started from COPBASE at a raster line 0
+wire       cop_disarm = rw_en && (rw_a == 8'h0E || rw_a == 8'h10 || rw_a == 8'h11 || rw_a == 8'h12);
 reg [23:0] cop_ptr;
 reg  [7:0] sat_i;
 reg  [5:0] mi;                 // map entries asked for
@@ -537,7 +542,7 @@ always @(posedge clk) begin
 	cop_clr <= 0;
 	if (cop_take) cop_w <= 0;
 	if (reset) begin
-		st <= S_WAIT; L <= 0; nl <= 9'd312; prev_y <= 0; cop_w <= 0; frame <= 0; rqf_wp <= 0; map_issued <= 0; clr_we <= 0;
+		st <= S_WAIT; L <= 0; nl <= 9'd312; prev_y <= 0; cop_w <= 0; frame <= 0; rqf_wp <= 0; map_issued <= 0; clr_we <= 0; cop_armed <= 0;
 	end
 	else begin
 		prev_y <= vic_y;
@@ -548,7 +553,7 @@ always @(posedge clk) begin
 			if (ahead == 0 || ahead > 9'd4) L <= (vic_y + 9'd1 == nl) ? 9'd0 : vic_y + 9'd1;   // behind: catch up
 			else if (may_draw) begin
 				slot_base <= {L[1:0], 7'd0};
-				if (L == 0) cop_ptr <= copbase;
+				if (L == 0) begin cop_ptr <= copbase; cop_armed <= 1; end
 				scanned <= 0;
 				clr_a <= {L[1:0], 7'd0}; clr_we <= 1;
 				st <= S_CLR;
@@ -558,7 +563,7 @@ always @(posedge clk) begin
 
 		// the line's slot cleared, 4 pixels a clock
 		S_CLR: begin
-			if (clr_a[6:0] == 7'd98) begin clr_we <= 0; st <= copen ? S_COP : S_SAT; end
+			if (clr_a[6:0] == 7'd98) begin clr_we <= 0; st <= (copen && cop_armed) ? S_COP : S_SAT; end
 			else clr_a <= clr_a + 9'd1;
 		end
 
@@ -574,6 +579,9 @@ always @(posedge clk) begin
 			if (e[15:0] == 16'hFFFF || e[15:0] > {7'd0, L}) st <= S_SAT;
 			else begin
 				if (e[23:16] > 8'h04) begin cop_w <= 1; cop_wa <= e[23:16]; cop_wd <= e[31:24]; end
+`ifdef OCTO_DEBUG
+				if (e[23:16] >= 8'h20) $display("COPPER L %0d ptr %h e %h word %h", L, cop_ptr, e, cop_word);
+`endif
 				cop_ptr <= cop_ptr + 24'd4;
 				st <= cop_ptr[2] ? S_COP : S_COPA;        // the next entry: in the next word, or this one
 			end
@@ -637,12 +645,19 @@ always @(posedge clk) begin
 				mw = lctrl[lay][5:4];
 				mc = (mc0 + {3'd0, mi}) & ((9'd32 << mw) - 9'd1);
 				ea = mapbase[lay] + (((({16'd0, mr}) << (5 + mw)) + {15'd0, mc}) << 1);
+`ifdef OCTO_DEBUG
+				if (L == 9'd200 && mi < 6'd8) $display("  ask mi %0d ea %h word %h", mi, ea, ea[23:3]);
+`endif
 				push(ea[23:3], {{(TW-11){1'b0}}, ea[2:1], mi, K_MAP});
 				map_issued <= map_issued + 8'd1;
 				mi <= mi + 6'd4 - {4'd0, ea[2:1]};
 			end
 		end
-		S_MAPW: if (map_done == map_issued) begin ti <= 0; st <= S_TILE; end
+		S_MAPW: if (map_done == map_issued) begin ti <= 0; st <= S_TILE;
+`ifdef OCTO_DEBUG
+			if (L == 9'd200) $display("L200 layer %0d lctrl %h nt %0d mc0 %0d mr %0d ty %0d fine %0d ent0 %h ent1 %h ent2 %h ent5 %h", lay, lctrl[lay], nt, mc0, mr, ty, fine, ent_q[0], ent_q[1], ent_q[2], ent_q[1]);
+`endif
+		end
 		S_TILE: if (!rqf_full) begin
 			if (ti >= nt) begin pass <= pass + 3'd1; st <= S_PASS; end
 			else begin
@@ -734,6 +749,8 @@ always @(posedge clk) begin
 		end
 		default: st <= S_WAIT;
 		endcase
+		// the copper switched on, or moved: it waits for the next raster line 0
+		if (cop_disarm) cop_armed <= 0;
 	end
 end
 

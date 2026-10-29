@@ -53,6 +53,7 @@ jobs:
           sudo chown -R "$(id -u):$(id -g)" output_files 2>/dev/null || true
           mkdir -p /tmp/reports
           cp output_files/*.summary /tmp/reports/ 2>/dev/null || true
+          cp out/*.rbf /tmp/reports/ 2>/dev/null || true          # the core itself, so it can be fetched with git
           grep -h -iE "^error|critical warning" output_files/*.rpt 2>/dev/null | head -200 > /tmp/reports/errors.txt || true
           # where the memories went (block RAM or logic), and what each part of the design costs
           grep -h -E "uninferred|Inferred .*RAM|ram_block|altsyncram" output_files/C64.map.rpt 2>/dev/null | head -100 > /tmp/reports/rams.txt || true
