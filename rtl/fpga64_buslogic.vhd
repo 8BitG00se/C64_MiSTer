@@ -200,8 +200,8 @@ begin
 	begin
 		if rising_edge(clk) then
 			if reset = '1' then 
-				c64gs_ena  <= bios(1);
-				c64std_ena <= bios(0);
+				c64gs_ena  <= bios(1) and not bios(0);   -- Octophonic: 00 Standard, 01 Weaver/loadable, 10 C64GS, 11 Japanese
+				c64std_ena <= not bios(1) and not bios(0);
 				c64jap_ena <= bios(1) and bios(0);
 			end if;
 		end if;

@@ -158,7 +158,7 @@ localparam CONF_STR = {
 	"P2FC9,ROM,System ROM C1581     ;",
 	"P2FC5,CRT,Boot Cartridge       ;",
 	"P2-;",
-	"P2O[15:14],System ROM,Weaver/Loadable,Standard C64,C64GS,Japanese;",
+	"P2O[15:14],System ROM,Standard C64,Weaver KERNAL 2,C64GS,Japanese;",
 
 	"P3,Drives;",
 	"P3O[58:57],Enable Drive #8,If Mounted,Always,Never;",
