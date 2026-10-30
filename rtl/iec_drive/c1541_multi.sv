@@ -312,14 +312,18 @@ always @(posedge clk_sys) begin
 	end else begin
 		if (!arb_is_locked) begin
 			// POLLING: Check if the current drive wants the bus
-			if (!DDRAM_BUSY) begin
-				if (drv_ddram_rd[arb_rr_state]) begin
+			// OCTOPHONIC: a drive with nothing to ask is passed over even while the port is
+			// busy - OctoVIC shares the DDR3 (rtl/octovic/ddram_arb2.sv), so the port is busy
+			// most of the time, and waiting for it to be free parked the poll on an idle drive
+			// for good: the drive that wanted its track never got asked, and never loaded it.
+			if (drv_ddram_rd[arb_rr_state]) begin
+				if (!DDRAM_BUSY) begin
 					arb_is_locked   <= 1'b1; // Lock bus for the duration of the burst
 					burst_remaining <= drv_ddram_burstcnt[arb_rr_state];
-				end else if (!drv_ddram_we[arb_rr_state]) begin
-					// No request, move to next drive
-					arb_rr_state <= (arb_rr_state == N) ? 2'd0 : arb_rr_state + 2'd1;
 				end
+			end else if (!drv_ddram_we[arb_rr_state]) begin
+				// No request, move to next drive
+				arb_rr_state <= (arb_rr_state == N) ? 2'd0 : arb_rr_state + 2'd1;
 			end
 		end else begin
 			// LOCKED: Wait for the burst to complete
