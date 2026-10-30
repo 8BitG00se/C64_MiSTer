@@ -121,6 +121,7 @@ localparam CONF_STR = {
 	"D5D9P1O[75:73],Right Fc Offset,0,1,2,3,4,5;",
 	"P1O[22:20],Right SID Port,Same,DE00,D420,D500,DF00;",
 	"P1O[98:97],Octophonic,8 SIDs,4 SIDs,Off;",
+	"P1O[100:99],OctoSID FX,Off,Chorus,Echo,Chorus+Echo;",
 	"P1O[37],8580 Digifix,On,Off;",
 	"P1FC7,FLT,Load Custom Filters;",
 	"P1-;",
@@ -1024,6 +1025,7 @@ fpga64_sid_iec fpga64
 	.sid_digifix(~status[37]),
 	.sid_quad(~status[98]),               // OCTOPHONIC (8 SIDs, 4 SIDs, Off): SIDs at $D400, $D420, $D500, $D520
 	.sid_oct(status[98:97] == 2'b00),
+	.sid_fx_osd(status[100:99]),
 
 	.ogx_ddr_addr(ogx_ddram_addr),
 	.ogx_ddr_burstcnt(ogx_ddram_burstcnt),

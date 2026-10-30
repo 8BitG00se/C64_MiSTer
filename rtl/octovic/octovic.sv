@@ -60,6 +60,16 @@ reg   [7:0] xadj, yadj;
 reg         copen;
 reg   [7:0] sprcount;
 reg  [23:0] copbase, satbase, sprgfx;
+// the animation: every DIV frames the copper list and the sprite table move on by STEP, for
+// STEPS steps, then start again - a day going by, a ship flying past, with no 6510 at all
+reg  [23:0] copstep, satstep;
+reg  [15:0] copsteps, satsteps;
+reg   [7:0] copdiv, satdiv;
+reg         anim_rst;               // (any of them, or COPBASE / SATBASE, written: from the start)
+reg  [23:0] cop_off, sat_off;
+reg  [15:0] cop_k, sat_k;
+reg   [7:0] cop_d, sat_d;
+reg  [23:0] sat_fr;                 // the sprite table this frame copies
 reg   [1:0] palsel;
 reg   [7:0] palidx, palr, palg;
 reg   [7:0] lctrl[2];
@@ -113,7 +123,9 @@ wire        rw_cpu = cpu_w;
 
 always @(posedge clk) begin
 	pal_we <= 0;
+	anim_rst <= 0;
 	if (reset) begin
+		copstep <= 0; satstep <= 0; copsteps <= 0; satsteps <= 0; copdiv <= 0; satdiv <= 0; anim_rst <= 1;
 		vaddr <= 0; vinc <= 1; ctrl <= 0; key <= 0; xadj <= 0; yadj <= 0; copen <= 0; sprcount <= 0;
 		copbase <= 0; satbase <= 0; sprgfx <= 0; palsel <= 0; palidx <= 0; palr <= 0; palg <= 0;
 		lctrl[0] <= 0; lctrl[1] <= 0; scrollx[0] <= 0; scrollx[1] <= 0; scrolly[0] <= 0; scrolly[1] <= 0;
@@ -131,6 +143,7 @@ always @(posedge clk) begin
 			if (rd_delay == 5'd1) begin vaddr <= vaddr + {16'd0, vinc}; pf_req <= 1; end
 		end
 		if (rw_en) begin
+			if ((rw_a >= 8'h10 && rw_a <= 8'h15) || (rw_a >= 8'h40 && rw_a <= 8'h4B)) anim_rst <= 1;
 			case (rw_a)
 				8'h00: if (rw_cpu) begin vaddr[7:0]   <= rw_d; pf_req <= 1; end
 				8'h01: if (rw_cpu) begin vaddr[15:8]  <= rw_d; pf_req <= 1; end
@@ -148,6 +161,10 @@ always @(posedge clk) begin
 				8'h0F: sprcount <= (rw_d > 8'd128) ? 8'd128 : rw_d;
 				8'h10: copbase[7:0] <= rw_d;  8'h11: copbase[15:8] <= rw_d;  8'h12: copbase[23:16] <= rw_d;
 				8'h13: satbase[7:0] <= rw_d;  8'h14: satbase[15:8] <= rw_d;  8'h15: satbase[23:16] <= rw_d;
+				8'h40: copstep[7:0]   <= rw_d;  8'h41: copstep[15:8]  <= rw_d;  8'h42: copstep[23:16]  <= rw_d;
+				8'h43: copsteps[7:0]  <= rw_d;  8'h44: copsteps[15:8] <= rw_d;  8'h45: copdiv <= rw_d;
+				8'h46: satstep[7:0]   <= rw_d;  8'h47: satstep[15:8]  <= rw_d;  8'h48: satstep[23:16]  <= rw_d;
+				8'h49: satsteps[7:0]  <= rw_d;  8'h4A: satsteps[15:8] <= rw_d;  8'h4B: satdiv <= rw_d;
 				8'h16: sprgfx[7:0]  <= rw_d;  8'h17: sprgfx[15:8]  <= rw_d;  8'h18: sprgfx[23:16]  <= rw_d;
 				8'h19: palsel <= rw_d[1:0];
 				8'h1A: palidx <= rw_d;
@@ -548,8 +565,10 @@ always @(posedge clk) begin
 	if (cop_take) cop_w <= 0;
 	if (reset) begin
 		st <= S_WAIT; L <= 0; nl <= 9'd312; prev_y <= 0; cop_w <= 0; frame <= 0; rqf_wp <= 0; map_issued <= 0; clr_we <= 0; cop_armed <= 0;
+		cop_off <= 0; sat_off <= 0; cop_k <= 0; sat_k <= 0; cop_d <= 0; sat_d <= 0;
 	end
 	else begin
+		if (anim_rst) begin cop_off <= 0; sat_off <= 0; cop_k <= 0; sat_k <= 0; cop_d <= 0; sat_d <= 0; end
 		prev_y <= vic_y;
 		if (vic_y != prev_y && vic_y < prev_y) begin nl <= prev_y + 9'd1; frame <= frame + 8'd1; end
 
@@ -558,7 +577,26 @@ always @(posedge clk) begin
 			if (ahead == 0 || ahead > 9'd4) L <= (vic_y + 9'd1 == nl) ? 9'd0 : vic_y + 9'd1;   // behind: catch up
 			else if (may_draw) begin
 				slot_base <= {L[1:0], 7'd0};
-				if (L == 0) begin cop_ptr <= copbase; cop_armed <= 1; end
+				if (L == 0) begin
+					cop_ptr <= copbase + cop_off; cop_armed <= 1; sat_fr <= satbase + sat_off;
+					// the animation moves on (this frame shows where it was)
+					if (copdiv != 0) begin
+						if (cop_d + 8'd1 >= copdiv) begin
+							cop_d <= 0;
+							if (cop_k + 16'd1 >= copsteps) begin cop_k <= 0; cop_off <= 0; end
+							else begin cop_k <= cop_k + 16'd1; cop_off <= cop_off + copstep; end
+						end
+						else cop_d <= cop_d + 8'd1;
+					end
+					if (satdiv != 0) begin
+						if (sat_d + 8'd1 >= satdiv) begin
+							sat_d <= 0;
+							if (sat_k + 16'd1 >= satsteps) begin sat_k <= 0; sat_off <= 0; end
+							else begin sat_k <= sat_k + 16'd1; sat_off <= sat_off + satstep; end
+						end
+						else sat_d <= sat_d + 8'd1;
+					end
+				end
 				scanned <= 0;
 				clr_a <= {L[1:0], 7'd0}; clr_we <= 1;
 				st <= S_CLR;
@@ -598,7 +636,7 @@ always @(posedge clk) begin
 			else if (!rqf_full) begin
 				if (sat_i == 8'd128) begin st <= S_PASS; pass <= 0; end
 				else begin
-					push(satbase[23:3] + {14'd0, sat_i[6:0]}, {{(TW-10){1'b0}}, sat_i[6:0], K_SAT});
+					push(sat_fr[23:3] + {14'd0, sat_i[6:0]}, {{(TW-10){1'b0}}, sat_i[6:0], K_SAT});
 					sat_i <= sat_i + 8'd1;
 				end
 			end

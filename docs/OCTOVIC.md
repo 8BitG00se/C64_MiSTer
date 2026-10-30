@@ -52,6 +52,13 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | 1F | VERSION (r) | 1 |
 | 20-2F | LAYER 0 | see below |
 | 30-3F | LAYER 1 | |
+| 40-42 | COPSTEP | the animation: added to the copper list's address each step |
+| 43-44 | COPSTEPS | how many steps before it starts again |
+| 45 | COPDIV | frames a step (0: no copper animation) |
+| 46-48 | SATSTEP | the same for the sprite table |
+| 49-4A | SATSTEPS | |
+| 4B | SATDIV | |
+| C0 | SIDFX | OctoSID FX: b0 chorus, b1 echo (see below); also in the core's menu |
 
 ### A layer (20 + 16*k)
 
@@ -86,6 +93,24 @@ The sprite table: 8 bytes a sprite, sprite 0 drawn on top.
 
 Graphics are rows of (width/2) bytes (16 colours) or width bytes (256 colours), top row first.
 Up to 64 sprites on one raster line - with both layers on, about 3000 sprite pixels a line (48 sprites 64 wide in 256 colours) whatever the DDR3 is doing.
+
+## Animation
+
+OctoVIC can step through a sequence of copper lists and sprite tables on its own, a frame at a
+time, with no work for the 6510: every COPDIV frames the copper list in use moves on by COPSTEP
+bytes, and after COPSTEPS steps it is back at COPBASE; the sprite table the same with SATDIV,
+SATSTEP and SATSTEPS. A sunset fading to night is a few hundred copper lists, each loading the
+palette for its moment; a ship flying past is a sprite table a frame. Writing COPBASE, SATBASE
+or any of these registers starts both from the beginning.
+
+## OctoSID FX
+
+With 4 or 8 SIDs, what SID 1 plays can be spread over SIDs 2-4, for any program, untouched:
+chorus (b0) - every write to SID 1 also goes to SID 2, its pitches 0.6% sharp: SID 1 left,
+SID 2 right, a wide stereo sound; echo (b1) - every write to SID 1 again on SID 3, 140 ms later,
+and SID 4, 200 ms later, at half the volume: a stereo echo. The extra writes go on clocks the
+6510 is not using the SIDs. The core's menu (OctoSID FX) turns it on for anything; register
+$C0 lets a program do it.
 
 ## The copper
 

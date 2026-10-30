@@ -38,6 +38,7 @@ class Octo:
             else: s.vram[s.vaddr & 0xFFFFFF] = v; s.vaddr = (s.vaddr + s.vinc) & 0xFFFFFF
             return
         if a == 0x0F: v = min(v, 128)
+        if 0x10 <= a <= 0x15 or 0x40 <= a <= 0x4B: s.anim = [0, 0, 0, 0, 0, 0]   # cop off, k, d; sat off, k, d
         if a == 0x19: s.palsel = v & 3
         if a == 0x1A: s.palidx = v
         if a == 0x1B: s.palr = v
@@ -115,7 +116,19 @@ class Octo:
     def frame(s):
         pic = np.zeros((NL, 504, 3), np.uint8)
         lines = {}; bd = {}; ck = {}
-        cop = s.g24(0x10)
+        if not hasattr(s, 'anim'): s.anim = [0, 0, 0, 0, 0, 0]
+        an = s.anim
+        cop = (s.g24(0x10) + an[0]) & 0xFFFFFF
+        satb = (s.g24(0x13) + an[3]) & 0xFFFFFF
+        # the animation moves on (this frame shows where it was)
+        for o, stp, n, dv in ((0, 0x40, 0x43, 0x45), (3, 0x46, 0x49, 0x4B)):
+            div = s.g(dv)
+            if div:
+                if an[o+2] + 1 >= div:
+                    an[o+2] = 0
+                    if an[o+1] + 1 >= (s.g(n) | s.g(n+1) << 8): an[o+1] = 0; an[o] = 0
+                    else: an[o+1] += 1; an[o] = (an[o] + s.g24(stp)) & 0xFFFFFF
+                else: an[o+2] += 1
         for L in range(NL):
             if s.g(0x0E) & 1:
                 while True:
@@ -124,7 +137,7 @@ class Octo:
                     if ln == 0xFFFF or ln > L: break
                     if e[2] > 4: s.write(e[2], e[3], cpu=False)
                     cop += 4
-            if L == 0: s.sat = bytes(s.vram[s.g24(0x13) & ~7: (s.g24(0x13) & ~7) + 1024])
+            if L == 0: s.sat = bytes(s.vram[satb & ~7: (satb & ~7) + 1024])
             if FIRST <= L <= LAST and s.g(0x05) & 1: lines[L] = s.line(L)
             bd[L] = s.backdrop                          # the backdrop as it was when the line was drawn
             ck[L] = (s.g(0x05), s.g(0x06) & 15)        # and CTRL and KEY

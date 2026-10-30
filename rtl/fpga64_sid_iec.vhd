@@ -137,6 +137,8 @@ port(
 	-- OCTOPHONIC: '1' (with sid_quad) eight SIDs - A7 picks two more pairs:
 	-- $D480, $D4A0, $D580, $D5A0 (the layout 8-SID music such as The Tuneful Eight uses)
 	sid_oct     : in  std_logic := '0';
+	-- OCTOPHONIC: OctoSID FX from the menu (b0 chorus, b1 echo) - see rtl/octovic/sid_fx.sv
+	sid_fx_osd  : in  std_logic_vector(1 downto 0) := "00";
 
 	-- OCTOPHONIC: OctoVIC's VRAM, in the DDR3 (docs/OCTOVIC.md)
 	ogx_ddr_addr       : out std_logic_vector(28 downto 0);
@@ -280,6 +282,16 @@ signal octo_unlock  : std_logic := '0';
 signal octo_stage   : std_logic := '0';
 signal cs_octo      : std_logic;
 signal cs_sid_s     : std_logic;
+-- OctoSID FX: SID 1 spread over SIDs 2-4 (the menu, or OctoVIC's register $C0)
+signal sidfx_reg    : std_logic_vector(1 downto 0);
+signal sidfx_mode   : std_logic_vector(1 downto 0);
+signal fx_we        : std_logic;
+signal fx_tgt       : std_logic_vector(1 downto 0);
+signal fx_addr      : std_logic_vector(4 downto 0);
+signal fx_data      : std_logic_vector(7 downto 0);
+signal fx1, fx2, fx3 : std_logic;
+signal p1_addr, p2_addr : unsigned(4 downto 0);
+signal p1_data, p2_data : unsigned(7 downto 0);
 signal octo_do      : std_logic_vector(7 downto 0);
 signal pulseRd_io   : std_logic;
 signal octo_rgb     : std_logic_vector(23 downto 0);
@@ -364,6 +376,25 @@ component sid_top
 		ld_data       : in  std_logic_vector(15 downto 0);
 		ld_wr         : in  std_logic
   );
+end component;
+
+component sid_fx
+	port (
+		clk      : in  std_logic;
+		reset    : in  std_logic;
+		ce_1m    : in  std_logic;
+		mode     : in  std_logic_vector(1 downto 0);
+		cpu_wr   : in  std_logic;
+		sid1_wr  : in  std_logic;
+		addr     : in  std_logic_vector(4 downto 0);
+		data     : in  std_logic_vector(7 downto 0);
+		busy1    : in  std_logic;
+		busy2    : in  std_logic;
+		inj_we   : out std_logic;
+		inj_tgt  : out std_logic_vector(1 downto 0);
+		inj_addr : out std_logic_vector(4 downto 0);
+		inj_data : out std_logic_vector(7 downto 0)
+	);
 end component;
 
 component octovic
@@ -701,6 +732,45 @@ end process;
 cs_octo  <= cs_sid and octo_unlock and cpuAddr(9) and not cpuAddr(8);
 cs_sid_s <= cs_sid and not cs_octo;
 
+-- OCTOSID FX (rtl/octovic/sid_fx.sv): its register, OctoVIC's $C0 (b0 chorus, b1 echo); on
+-- with the menu's setting or the register's; only with 4 or 8 SIDs (it plays on SIDs 2-4)
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if reset = '1' then
+			sidfx_reg <= "00";
+		elsif pulseWr_io = '1' and cs_octo = '1' and cpuAddr(7 downto 0) = x"C0" then
+			sidfx_reg <= std_logic_vector(cpuDo(1 downto 0));
+		end if;
+	end if;
+end process;
+sidfx_mode <= (sid_fx_osd or sidfx_reg) when sid_quad = '1' else "00";
+
+fx : sid_fx
+port map (
+	clk      => clk32,
+	reset    => reset,
+	ce_1m    => enableSid,
+	mode     => sidfx_mode,
+	cpu_wr   => pulseWr_io,
+	sid1_wr  => pulseWr_io and sid_sel_l,
+	addr     => std_logic_vector(cpuAddr(4 downto 0)),
+	data     => std_logic_vector(cpuDo),
+	busy1    => sid_sel_l or sid_sel_r,
+	busy2    => sid2_sel_l or sid2_sel_r,
+	inj_we   => fx_we,
+	inj_tgt  => fx_tgt,
+	inj_addr => fx_addr,
+	inj_data => fx_data
+);
+fx1 <= fx_we when fx_tgt = "01" else '0';     -- SID 2
+fx2 <= fx_we when fx_tgt = "10" else '0';     -- SID 3
+fx3 <= fx_we when fx_tgt = "11" else '0';     -- SID 4
+p1_addr <= unsigned(fx_addr) when fx1 = '1' else cpuAddr(4 downto 0);
+p1_data <= unsigned(fx_data) when fx1 = '1' else cpuDo;
+p2_addr <= unsigned(fx_addr) when (fx2 or fx3) = '1' else cpuAddr(4 downto 0);
+p2_data <= unsigned(fx_data) when (fx2 or fx3) = '1' else cpuDo;
+
 -- a read of OctoVIC: its side effects (VDATA moving on) want a pulse - the clock the 6510
 -- really takes the byte (not while the VIC holds it with RDY, when it would read again)
 pulseRd_io <= enableCpu and not dma_active and baLoc and not cpuWe;
@@ -862,6 +932,8 @@ begin
 		      signed(sid3_aud_l), signed(sid3_aud_r), signed(sid4_aud_l), signed(sid4_aud_r));
 		sl := (others => '0'); sr := (others => '0'); nl := 0; nr := 0;
 		pl := sid_played; pl(0) := '1';         -- SID 1 always: a digi with no gate is still sound
+		if sidfx_mode(0) = '1' then pl(1) := '1'; end if;                  -- OctoSID FX: its SIDs play
+		if sidfx_mode(1) = '1' then pl(2) := '1'; pl(3) := '1'; end if;
 		for c in 0 to 7 loop
 			-- which side(s): its own, or both when its partner (c xor 1) has not played
 			if c mod 2 = 0 then
@@ -902,10 +974,10 @@ port map (
 	reset => reset,
 	clk => clk32,
 	ce_1m => enableSid,
-	we => pulseWr_io,
-	cs => sid_sel_r & sid_sel_l,
-	addr => cpuAddr(4 downto 0),
-	data_in => cpuDo,
+	we => pulseWr_io or fx1,
+	cs => (sid_sel_r or fx1) & sid_sel_l,
+	addr => p1_addr,
+	data_in => p1_data,
 	data_out => sid_do,
 	pot_x_l => pot_x1 and pot_x2,
 	pot_y_l => pot_y1 and pot_y2,
@@ -939,10 +1011,10 @@ port map (
 	reset => reset or not sid_quad,
 	clk => clk32,
 	ce_1m => enableSid,
-	we => pulseWr_io,
-	cs => sid2_sel_r & sid2_sel_l,
-	addr => cpuAddr(4 downto 0),
-	data_in => cpuDo,
+	we => pulseWr_io or fx2 or fx3,
+	cs => (sid2_sel_r or fx3) & (sid2_sel_l or fx2),
+	addr => p2_addr,
+	data_in => p2_data,
 	data_out => sid2_do,
 	pot_x_l => pot_x1 and pot_x2,
 	pot_y_l => pot_y1 and pot_y2,

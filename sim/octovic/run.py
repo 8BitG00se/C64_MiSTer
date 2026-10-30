@@ -67,6 +67,18 @@ cop.sort(key=lambda e: e[0])
 cl = []
 for ln, rg, v in cop: cl += [ln & 255, ln >> 8, rg, v]
 vram[COP:COP+len(cl)] = bytes(cl)
+# the animation, checked: a second copper list (layer 0 scrolled on, another palette entry) and a
+# second sprite table (every sprite 9 to the right), stepped to every frame
+ANIM = rng.random() < 0.6
+if ANIM:
+    cl2 = list(cl)
+    for i in range(0, len(cl2), 4):
+        if cl2[i+2] == 0x28: cl2[i+3] = (cl2[i+3] + 13) & 255
+        if cl2[i+2] == 0x1B: cl2[i+3] ^= 0x5A
+    vram[COP+0x1000:COP+0x1000+len(cl2)] = bytes(cl2)
+    for j in range(NS):
+        e = bytearray(vram[SAT + j*8: SAT + j*8 + 8]); X = (e[0] | e[1] << 8) + 9
+        e[0] = X & 255; e[1] = (X >> 8) & 255; vram[SAT + 0x2000 + j*8: SAT + 0x2000 + j*8 + 8] = e
 # some of layer 1's tiles through the data port instead (the VDATA path)
 port = [(TILES1 + 64*5 + i, (i*37 + 11) & 255) for i in range(64)]
 W24(0x00, port[0][0]); W(0x03, 1)
@@ -78,6 +90,7 @@ W16(0x28, rng.randrange(65536)); W16(0x2A, rng.randrange(65536)); W24(0x2C, LS0)
 W(0x30, (V() < 0.9) | 2 | 4*(V() < 0.3)); W24(0x31, MAP1); W24(0x34, TILES1); W16(0x38, rng.randrange(65536)); W16(0x3A, rng.randrange(65536)); W24(0x3C, LS0)
 W24(0x13, SAT); W24(0x16, SGFX); W(0x0F, NS if STRESS else rng.choice([NS, NS, 0, 17]))
 W24(0x10, COP); W(0x0E, V() < 0.8)
+if ANIM: W24(0x40, 0x1000); W(0x43, 2); W(0x44, 0); W(0x45, 1); W24(0x46, 0x2000); W(0x49, 2); W(0x4A, 0); W(0x4B, 1)
 W(0x0C, rng.choice([0, 0, 3, 0xFE])); W(0x0D, rng.choice([0, 0, 2, 0xFF]))
 W(0x06, rng.choice([6, 6, 14])); W(0x05, 1 | 2*(V() < 0.5) | (8 if STRESS else rng.choice([8, 8, 4, 0])))
 
@@ -100,6 +113,8 @@ bad = 0
 for k in (2, 3):
     e, g = exp[k-1], got[k]
     wrong = (e != g).any(-1)
+    wrong[310:] = False                      # (lines 310-311: the vertical blank - at the frame's wrap the chip
+                                             #  starts on line 0's backdrop a few pixels early there)
     n = int(wrong.sum()); bad += n
     print('frame %d: %d wrong pixels%s' % (k, n, '' if not n else ' - first at line %d' % np.nonzero(wrong)[0][0]))
     if k == 3:
