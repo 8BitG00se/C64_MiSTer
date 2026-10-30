@@ -153,7 +153,7 @@ begin
 	);
 
 	kernel_c64: entity work.dprom
-	generic map ("rtl/roms/dol_C64.mif", 14)
+	generic map ("rtl/roms/weaver_C64.mif", 14)   -- Octophonic: the loadable slot starts as Weaver KERNAL 2
 	port map
 	(
 		wrclock => clk,
