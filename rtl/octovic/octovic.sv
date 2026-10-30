@@ -710,7 +710,7 @@ always @(posedge clk) begin
 				reg signed [9:0] xb;
 				e   = ent_q[ti[1:0]];
 				row = e[11] ? (3'd7 - ty) : ty;
-				ta  = lctrl[lay][1] ? (tilebase[lay] + {8'd0, e[9:0], row, 3'd0})
+				ta  = lctrl[lay][1] ? (tilebase[lay] + {4'd0, e[15:12], e[9:0], row, 3'd0})   // (256 colours: the bank bits are more tile number - 16384 tiles)
 				                    : (tilebase[lay] + {9'd0, e[9:0], row, 2'd0});
 				xb  = $signed({1'b0, ti, 3'd0}) - $signed({7'd0, fine});
 				push(ta[23:3], {{(TW-20){1'b0}}, lctrl[lay][1], e[15:12], ta[2], e[10], xb, K_TILE});

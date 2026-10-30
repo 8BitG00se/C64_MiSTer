@@ -41,6 +41,7 @@ for t in range(32):
     for b in range(64): vram[TILES1 + t*64 + b] = rng.randrange(256) if (t and rng.random() < 0.6) else 0
 for m in range(32*32):
     e = (rng.randrange(1, 32) if rng.random() < 0.3 else 0) | rng.randrange(4) << 10
+    if e & 1023: e |= rng.randrange(2) << 12             # (256 colours: tiles past 1024 too)
     vram[MAP1 + m*2] = e & 255; vram[MAP1 + m*2 + 1] = e >> 8
 # sprites: 48, every size, both colour depths, flips, priorities, some off the edges
 import os

@@ -74,7 +74,7 @@ class Octo:
                 tile, hf, vf, bank = e & 0x3FF, (e >> 10) & 1, (e >> 11) & 1, e >> 12
                 row = 7-ty if vf else ty
                 c = vx & 7; c = 7-c if hf else c
-                if bpp8: pix = s.vram[(tileb + tile*64 + row*8 + c) & 0xFFFFFF]; idx = pix
+                if bpp8: pix = s.vram[(tileb + (tile | bank << 10)*64 + row*8 + c) & 0xFFFFFF]; idx = pix
                 else:
                     bb = s.vram[(tileb + tile*32 + row*4 + c//2) & 0xFFFFFF]
                     pix = bb >> 4 if c % 2 == 0 else bb & 15; idx = bank*16 + pix

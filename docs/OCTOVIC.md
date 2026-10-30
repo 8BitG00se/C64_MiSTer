@@ -72,7 +72,8 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | C-E | LSBASE | the line scroll table: a signed 16-bit X offset per raster line (line n at LSBASE + 2n) |
 
 A map entry is 16 bits: bits 0-9 the tile, 10 flip across, 11 flip up-down, 12-15 the palette
-bank (16 colours: palette entry = bank*16 + pixel). A tile is 32 bytes (16 colours: 4 bytes a
+bank (16 colours: palette entry = bank*16 + pixel; 256 colours: bits 12-15 are the tile number's
+top bits instead - tile = bits 12-15 * 1024 + bits 0-9, up to 16384 tiles). A tile is 32 bytes (16 colours: 4 bytes a
 row, high nibble the left pixel) or 64 bytes (256 colours: a byte a pixel). Pixel 0 is
 see-through.
 
