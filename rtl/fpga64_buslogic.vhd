@@ -142,7 +142,7 @@ begin
 	);
 
 	kernel_c64gs: entity work.dprom
-	generic map ("rtl/roms/std_C64GS.mif", 14)
+	generic map ("rtl/roms/weaver_C64.mif", 14)   -- Octophonic V1.1: the C64GS slot holds Weaver KERNAL 2 (for SIDWeaver)
 	port map
 	(
 		wrclock => clk,
@@ -153,7 +153,7 @@ begin
 	);
 
 	kernel_c64: entity work.dprom
-	generic map ("rtl/roms/weaver_C64.mif", 14)   -- Octophonic: the loadable slot starts as Weaver KERNAL 2
+	generic map ("rtl/roms/octo_C64.mif", 14)     -- Octophonic V1.1: the loadable slot starts as Octophonic 64 V1.1
 	port map
 	(
 		wrclock => clk,
@@ -200,7 +200,7 @@ begin
 	begin
 		if rising_edge(clk) then
 			if reset = '1' then 
-				c64gs_ena  <= bios(1) and not bios(0);   -- Octophonic: 00 Weaver/loadable, 01 Standard, 10 C64GS, 11 Japanese
+				c64gs_ena  <= bios(1) and not bios(0);   -- Octophonic: 00 Octophonic 64 V1.1/loadable, 01 Standard, 10 Weaver KERNAL 2, 11 Japanese
 				c64std_ena <= bios(0) and not bios(1);
 				c64jap_ena <= bios(1) and bios(0);
 			end if;
