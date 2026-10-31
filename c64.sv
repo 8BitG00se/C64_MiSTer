@@ -86,10 +86,9 @@ assign HDMI_BOB_DEINT = 0;
 localparam CONF_STR = {
 	"C64;UART9600:2400;",
 	"H7S0,D64G64T64D81,Mount #8;",
-	"H0S1,D64G64T64D81,Mount #9;",
-	"O[77:76],Mount Write Protected,Off,#8,#9,#8 & #9;",
+	"O[76],Mount Write Protected,Off,On;",
 	"-;",
-	"F1,PRGCRTREUTAP;",
+	"F1,PRGCRTREU;",
 	"hAdBR[61],Save cartridge;",
 	"hAO[62],Autosave,Off,On;",
 	"h3-;",
@@ -150,8 +149,6 @@ localparam CONF_STR = {
 	"P2O[24],Clear RAM on Reset,Yes,No;",
 	"P2O[50],Reset & Run PRG,Yes,No;",
 	"P2O[42],Pause When OSD is Open,No,Yes;",
-	"P2O[39],Tape Auto Play,Yes,No;",
-	"P2O[96],Tape Auto Unload,Yes,No;",
 	"P2O[38],Boot EasyFlash,Yes,No;",
 	"P2-;",
 	"P2FC8,ROM,System ROM C64+C1541 ;",
@@ -162,7 +159,6 @@ localparam CONF_STR = {
 
 	"P3,Drives;",
 	"P3O[58:57],Enable Drive #8,If Mounted,Always,Never;",
-	"P3O[56:55],Enable Drive #9,If Mounted,Always,Never;",
 	"P3O[44],Parallel port,Enabled,Disabled;",
 	"P3O[86:85],Drives OSD,Activity Only,If Mounted,Debug,Off;",
 	"P3-;",
@@ -1119,11 +1115,24 @@ wire mounted_0 = ~old_img_mounted[0] & img_mounted[0];
 wire mounted_1 = ~old_img_mounted[1] & img_mounted[1];
 wire img_readonly_wp = img_readonly | (mounted_0 & status[76]) | (mounted_1 & status[77]);
 
-iec_drive iec_drive
+// OCTOPHONIC: one drive (#8) - drive 9's 1541 and 1581 taken out to make room for OctoVIC 2
+wire [7:0] drv_track[1];
+wire [31:0] drv_lba[1];
+wire  [5:0] drv_blk_cnt[1];
+wire  [7:0] drv_buff_din[1];
+assign drive_track[0] = drv_track[0];  assign drive_track[1] = 8'd0;
+assign sd_lba[0] = drv_lba[0];         assign sd_lba[1] = 32'd0;
+assign sd_blk_cnt[0] = drv_blk_cnt[0]; assign sd_blk_cnt[1] = 6'd0;
+assign sd_buff_din[0] = drv_buff_din[0]; assign sd_buff_din[1] = 8'd0;
+assign drive_led[1] = 1'b0;
+assign drive_we[1] = 1'b0;
+assign sd_rd[1] = 1'b0;
+assign sd_wr[1] = 1'b0;
+
+iec_drive #(.DRIVES(1)) iec_drive
 (
 	.clk(clk_sys),
-	.reset({drive_reset | ((!status[56:55]) ? ~drive_mounted[1] : status[56]),
-		     drive_reset | ((!status[58:57]) ? ~drive_mounted[0] : status[58])}),
+	.reset(drive_reset | ((!status[58:57]) ? ~drive_mounted[0] : status[58])),
 
 	.ce(drive_ce),
 
@@ -1135,16 +1144,16 @@ iec_drive iec_drive
 
 	.pause(c64_pause),
 
-	.img_mounted(img_mounted),
+	.img_mounted(img_mounted[0]),
 	.img_size(img_size),
 	.img_readonly(img_readonly_wp),
 	.img_type(&ioctl_index[7:6] ? 2'b11 : 2'b01),
 	.drive_rpm(status[80:78]),
 	.drive_wobble(status[81]),
 
-	.led(drive_led),
-	.out_track(drive_track),
-	.out_we(drive_we),
+	.led(drive_led[0]),
+	.out_track(drv_track),
+	.out_we(drive_we[0]),
 	.disk_ready(disk_ready),
 
 	.par_data_i(drive_par_i),
@@ -1154,14 +1163,14 @@ iec_drive iec_drive
 
 	.clk_sys(clk_sys),
 
-	.sd_lba(sd_lba),
-	.sd_blk_cnt(sd_blk_cnt),
-	.sd_rd(sd_rd),
-	.sd_wr(sd_wr),
-	.sd_ack(sd_ack),
+	.sd_lba(drv_lba),
+	.sd_blk_cnt(drv_blk_cnt),
+	.sd_rd(sd_rd[0]),
+	.sd_wr(sd_wr[0]),
+	.sd_ack(sd_ack[0]),
 	.sd_buff_addr(sd_buff_addr),
 	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_din(sd_buff_din),
+	.sd_buff_din(drv_buff_din),
 	.sd_buff_wr(sd_buff_wr),
 
 	.rom_addr(load_rom ? (ioctl_addr[15:0] - 16'h4000) : {1'b1,ioctl_addr[14:0]}),
@@ -1641,48 +1650,16 @@ wire [24:0] tap_last_addr;
 
 wire [2:0] tape_ovl_color;
 
-tape_subsystem tape
-(
-	.clk(clk_sys),
-	.ce(ce_sys),
-	.reset_n(reset_n),
-	.hblank(hblank),
-	.vblank(vblank),
-	.ntsc(ntsc),
-
-	.ioctl_download(ioctl_download),
-	.ioctl_wr(ioctl_wr),
-	.ioctl_addr(ioctl_addr),
-	.ioctl_data(ioctl_data),
-	.load_tap(load_tap),
-	.ioctl_wait(tape_ioctl_wait),
-
-	.io_cycle(io_cycle),
-	.sdram_data(sdram_data),
-
-	.cmd_play(status[7] | tape_play),
-	.cmd_stop(status[95] | tape_key_stop),
-	.cmd_rew(status[93] | tape_key_rew),
-	.cmd_ff(status[94] | tape_key_ff),
-	.cmd_unload(status[23]),
-	.cmd_counter_reset(status[91] | tape_key_counter_reset),
-	.counter_enable(status[92]),
-	.tape_autoplay_off(status[39]),
-	.tape_autounload_off(status[96]),
-
-	.cass_write(cass_write),
-	.cass_motor(cass_motor),
-	.cass_sense(cass_sense),
-	.cass_read(cass_read),
-	.cass_run(cass_run),
-	.cass_finish(cass_finish),
-
-	.tap_loaded(tap_loaded),
-	.tap_play_addr(tap_play_addr),
-	.tap_last_addr(tap_last_addr),
-
-	.pixel_color(tape_ovl_color)
-);
+// OCTOPHONIC: the tape (C1530) taken out to make room for OctoVIC 2: no tape, no button pressed
+assign tape_ioctl_wait = 1'b0;
+assign cass_sense = 1'b1;
+assign cass_read = 1'b1;
+assign cass_run = 1'b0;
+assign cass_finish = 1'b0;
+assign tap_loaded = 1'b0;
+assign tap_play_addr = 25'd0;
+assign tap_last_addr = 25'd0;
+assign tape_ovl_color = 3'd0;
 
 reg use_tape;
 always @(posedge clk_sys) begin
