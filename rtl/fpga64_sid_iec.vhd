@@ -131,6 +131,13 @@ port(
 	sid_ld_addr : in  std_logic_vector(11 downto 0);
 	sid_ld_data : in  std_logic_vector(15 downto 0);
 	sid_ld_wr   : in  std_logic;
+	-- OCTOPHONIC: chip personalities - a loaded chip's combined waveforms (Load Chip in the menu)
+	chip_we     : in  std_logic := '0';
+	chip_wside  : in  std_logic := '0';
+	chip_wtbl   : in  std_logic_vector(1 downto 0) := "00";
+	chip_widx   : in  std_logic_vector(11 downto 0) := (others => '0');
+	chip_wdata  : in  std_logic_vector(7 downto 0) := (others => '0');
+	chip_on     : in  std_logic_vector(1 downto 0) := "00";
 	sid_digifix : in  std_logic;
 	-- OCTOPHONIC: '1' four SIDs - $D400, $D420, $D500, $D520 (the Ultimate 64's layout)
 	sid_quad    : in  std_logic := '0';
@@ -354,6 +361,9 @@ signal pot_x2       : std_logic_vector(7 downto 0);
 signal pot_y2       : std_logic_vector(7 downto 0);
 
 component sid_top
+	generic (
+		PHASE         : integer := 0
+	);
 	port (
 		reset         : in  std_logic;
 		clk           : in  std_logic;
@@ -386,9 +396,33 @@ component sid_top
 		ld_clk        : in  std_logic;
 		ld_addr       : in  std_logic_vector(11 downto 0);
 		ld_data       : in  std_logic_vector(15 downto 0);
-		ld_wr         : in  std_logic
+		ld_wr         : in  std_logic;
+
+		tbl_acc       : out std_logic_vector(11 downto 0);
+		chip_ql       : in  std_logic_vector(31 downto 0);
+		chip_qr       : in  std_logic_vector(31 downto 0);
+		chip_on       : in  std_logic_vector(1 downto 0)
   );
 end component;
+
+-- OCTOPHONIC: chip personalities - Neal's own SID chips (rtl/sid/chip_bank.sv)
+component chip_bank
+	port (
+		clk   : in  std_logic;
+		ce_1m : in  std_logic;
+		we    : in  std_logic;
+		wside : in  std_logic;
+		wtbl  : in  std_logic_vector(1 downto 0);
+		widx  : in  std_logic_vector(11 downto 0);
+		wdata : in  std_logic_vector(7 downto 0);
+		acc0, acc1, acc2, acc3 : in  std_logic_vector(11 downto 0);
+		ql0, ql1, ql2, ql3     : out std_logic_vector(31 downto 0);
+		qr0, qr1, qr2, qr3     : out std_logic_vector(31 downto 0)
+	);
+end component;
+signal tacc1, tacc2, tacc3, tacc4 : std_logic_vector(11 downto 0);
+signal cql1, cql2, cql3, cql4     : std_logic_vector(31 downto 0);
+signal cqr1, cqr2, cqr3, cqr4     : std_logic_vector(31 downto 0);
 
 component sid_fx
 	port (
@@ -1043,7 +1077,12 @@ port map (
 	ld_clk  => sid_ld_clk,
 	ld_addr => sid_ld_addr,
 	ld_data => sid_ld_data,
-	ld_wr   => sid_ld_wr
+	ld_wr   => sid_ld_wr,
+
+	tbl_acc => tacc1,
+	chip_ql => cql1,
+	chip_qr => cqr1,
+	chip_on => chip_on
 );
 
 -- OCTOPHONIC: SIDs 3 and 4 - a second pair, the same as the first (its own
@@ -1080,11 +1119,17 @@ port map (
 	ld_clk  => sid_ld_clk,
 	ld_addr => sid_ld_addr,
 	ld_data => sid_ld_data,
-	ld_wr   => sid_ld_wr
+	ld_wr   => sid_ld_wr,
+
+	tbl_acc => tacc2,
+	chip_ql => cql2,
+	chip_qr => cqr2,
+	chip_on => chip_on
 );
 
 -- OCTOPHONIC: SIDs 5 and 6 ($D480, $D4A0)
 sid3 : sid_top
+generic map (PHASE => 1)
 port map (
 	reset => reset or not sid_oct,
 	clk => clk32,
@@ -1116,11 +1161,17 @@ port map (
 	ld_clk  => sid_ld_clk,
 	ld_addr => sid_ld_addr,
 	ld_data => sid_ld_data,
-	ld_wr   => sid_ld_wr
+	ld_wr   => sid_ld_wr,
+
+	tbl_acc => tacc3,
+	chip_ql => cql3,
+	chip_qr => cqr3,
+	chip_on => chip_on
 );
 
 -- OCTOPHONIC: SIDs 7 and 8 ($D580, $D5A0)
 sid4 : sid_top
+generic map (PHASE => 1)
 port map (
 	reset => reset or not sid_oct,
 	clk => clk32,
@@ -1152,7 +1203,27 @@ port map (
 	ld_clk  => sid_ld_clk,
 	ld_addr => sid_ld_addr,
 	ld_data => sid_ld_data,
-	ld_wr   => sid_ld_wr
+	ld_wr   => sid_ld_wr,
+
+	tbl_acc => tacc4,
+	chip_ql => cql4,
+	chip_qr => cqr4,
+	chip_on => chip_on
+);
+
+-- OCTOPHONIC: the chip personalities, shared by all four pairs (pairs 3 and 4 a clock behind)
+chips : chip_bank
+port map (
+	clk   => clk32,
+	ce_1m => enableSid,
+	we    => chip_we,
+	wside => chip_wside,
+	wtbl  => chip_wtbl,
+	widx  => chip_widx,
+	wdata => chip_wdata,
+	acc0 => tacc1, acc1 => tacc2, acc2 => tacc3, acc3 => tacc4,
+	ql0 => cql1, ql1 => cql2, ql2 => cql3, ql3 => cql4,
+	qr0 => cqr1, qr1 => cqr2, qr2 => cqr3, qr3 => cqr4
 );
 
 -- -----------------------------------------------------------------------

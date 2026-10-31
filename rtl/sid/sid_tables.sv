@@ -22,7 +22,8 @@ module sid_tables
 	input             ld_clk,
 	input      [11:0] ld_addr,
 	input      [15:0] ld_data,
-	input             ld_wr
+	input             ld_wr,
+	input             chipf       // OCTOPHONIC: a chip personality on this side - its own filter curve
 );
 
 // P + T
@@ -784,7 +785,7 @@ wire [10:0] fc_x = tanh_x_clamp(13'(fc_6581) - Fc_offset);
 reg [15:0] f0_adj;
 always @(posedge clock) f0_adj <= {fc_x[10], f6581_adj[tanh_x_mirror(fc_x)]};
 
-assign F0 = mode ? ({ 3'b000, Fc, 2'b00 } + Fc) : Fc_offset ? (f6581_adj_y0 + tanh_y_mirror(f0_adj[15], f0_adj[14:0])) : {1'b0, f0[15:1]};
+assign F0 = (mode & ~chipf) ? ({ 3'b000, Fc, 2'b00 } + Fc) : Fc_offset ? (f6581_adj_y0 + tanh_y_mirror(f0_adj[15], f0_adj[14:0])) : {1'b0, f0[15:1]};
 
 // value = pi * 1.048576 * f0[fc]
 reg  [15:0] f6581_curve[4*1024] =

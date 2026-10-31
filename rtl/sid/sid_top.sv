@@ -2,7 +2,8 @@
 module sid_top 
 #(
 	parameter MULTI_FILTERS = 1, 
-	parameter DUAL = 1
+	parameter DUAL = 1,
+	parameter PHASE = 0            // OCTOPHONIC: 1 = its lookups one clock later (chip_bank's second user)
 )
 (
 	input         reset,
@@ -35,7 +36,15 @@ module sid_top
 	input         ld_clk,
 	input  [11:0] ld_addr,
 	input  [15:0] ld_data,
-	input         ld_wr
+	input         ld_wr,
+
+	// OCTOPHONIC: chip personalities (chip_bank.sv) - this pair's lookups out, the measured
+	// combined waveforms back ({P+S+T, P+S, P+T, S+T}) for the left and right chip, and which
+	// side has one loaded
+	output [11:0] tbl_acc,
+	input  [31:0] chip_ql,
+	input  [31:0] chip_qr,
+	input   [1:0] chip_on
 );
 
 localparam N = DUAL ? 2 : 1;
@@ -243,7 +252,8 @@ sid_tables #(MULTI_FILTERS) sid_tables
 	.ld_clk(ld_clk),
 	.ld_addr(ld_addr),
 	.ld_data(ld_data),
-	.ld_wr(ld_wr)
+	.ld_wr(ld_wr),
+	.chipf(chip_on[n])
 );
 
 wire  [7:0] f__st_out;
@@ -252,11 +262,24 @@ wire  [7:0] f_ps__out;
 wire  [7:0] f_pst_out;
 reg  [11:0] f_acc_t;
 reg   [3:0] state;
+assign tbl_acc = f_acc_t;
+
+// a chip's measured waveforms, for the side being captured (voices 0-2 left, 3-5 right)
+reg        ce_d;
+always @(posedge clk) ce_d <= ce_1m;
+wire       ce_st = PHASE ? ce_d : ce_1m;
 
 always @(posedge clk) begin
 	reg [2:0] v;
+	reg        cside;
+	reg [31:0] cq;
+	reg        con;
 	if(~&state) state <= state + 1'd1;
-	if(ce_1m) state <= 0;
+	if(ce_st) state <= 0;
+
+	cside = (v >= 3'd3);
+	cq    = cside ? chip_qr : chip_ql;
+	con   = chip_on[cside];
 
 	case(state)
 		1,3,5,7,9,11: begin
@@ -267,16 +290,16 @@ always @(posedge clk) begin
 
 	case(state)
 		3,5,7: begin
-			_st_out[v] <= f__st_out;
-			p_t_out[v] <= f_p_t_out;
-			ps__out[v] <= f_ps__out;
-			pst_out[v] <= f_pst_out;
+			_st_out[v] <= con ? cq[7:0]   : f__st_out;
+			p_t_out[v] <= con ? cq[15:8]  : f_p_t_out;
+			ps__out[v] <= con ? cq[23:16] : f_ps__out;
+			pst_out[v] <= con ? cq[31:24] : f_pst_out;
 		end
 		9,11,13: if(DUAL) begin
-			_st_out[v] <= f__st_out;
-			p_t_out[v] <= f_p_t_out;
-			ps__out[v] <= f_ps__out;
-			pst_out[v] <= f_pst_out;
+			_st_out[v] <= con ? cq[7:0]   : f__st_out;
+			p_t_out[v] <= con ? cq[15:8]  : f_p_t_out;
+			ps__out[v] <= con ? cq[23:16] : f_ps__out;
+			pst_out[v] <= con ? cq[31:24] : f_pst_out;
 		end
 	endcase
 end
