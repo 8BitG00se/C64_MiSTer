@@ -1,0 +1,100 @@
+ 86. Source assignments for ascal:ascal|altsyncram:i_mem[0].r[7]__1|altsyncram_89q1:auto_generated
+ 87. Source assignments for ascal:ascal|altsyncram:o_line0[0].r[7]__2|altsyncram_ccn1:auto_generated
+ 88. Source assignments for ascal:ascal|altsyncram:o_line1[0].r[7]__3|altsyncram_ccn1:auto_generated
+ 89. Source assignments for ascal:ascal|altsyncram:o_line2[0].r[7]__4|altsyncram_ccn1:auto_generated
+ 90. Source assignments for ascal:ascal|altsyncram:o_line3[0].r[7]__5|altsyncram_ccn1:auto_generated
+ 91. Source assignments for ascal:ascal|altsyncram:o_linf0[0].r[7]__6|altsyncram_m6n1:auto_generated
+ 92. Source assignments for ascal:ascal|altsyncram:o_linf1[0].r[7]__7|altsyncram_m6n1:auto_generated
+ 93. Source assignments for ascal:ascal|altsyncram:o_linf2[0].r[7]__8|altsyncram_m6n1:auto_generated
+ 94. Source assignments for ascal:ascal|altsyncram:o_linf3[0].r[7]__9|altsyncram_m6n1:auto_generated
+124. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|altsyncram:entb[0].m[0][15]__10|altsyncram_bio1:auto_generated
+125. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|altsyncram:entb[1].m[0][15]__11|altsyncram_bio1:auto_generated
+126. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|altsyncram:entb[2].m[0][15]__12|altsyncram_bio1:auto_generated
+127. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|altsyncram:entb[3].m[0][15]__13|altsyncram_bio1:auto_generated
+133. Source assignments for emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_fifo:in_queue|dcfifo:dcfifo_component|dcfifo_pbp1:auto_generated|altsyncram_31b1:fifo_ram
+140. Source assignments for emu:emu|opl3:opl_inst|opl3sw:opl3|opl3seq:opl3seq|sampler:sampler_inst|altsyncram:exp_tab_rtl_0|altsyncram_8nc1:auto_generated
+141. Source assignments for emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|iecdrv_mem:ram|altsyncram:ram_rtl_0|altsyncram_0an1:auto_generated
+142. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_logic:c1541_logic|iecdrv_mem:ram|altsyncram:ram_rtl_0|altsyncram_g9n1:auto_generated
+143. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_logic:c1541_logic|iecdrv_mem:extram|altsyncram:ram_rtl_0|altsyncram_0an1:auto_generated
+144. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|altsyncram:rqf_w_rtl_0|altsyncram_ivm1:auto_generated
+145. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|altsyncram:rqf_t_rtl_0|altsyncram_qvm1:auto_generated
+146. Source assignments for emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:kernel_c64jap|altsyncram:ram_rtl_0|altsyncram_dib1:auto_generated
+147. Source assignments for emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:kernel_c64std|altsyncram:ram_rtl_0|altsyncram_tib1:auto_generated
+148. Source assignments for emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:kernel_c64gs|altsyncram:ram_rtl_0|altsyncram_ssb1:auto_generated
+149. Source assignments for emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:chargen_j|altsyncram:ram_rtl_0|altsyncram_jnb1:auto_generated
+150. Source assignments for emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:chargen|altsyncram:ram_rtl_0|altsyncram_9kb1:auto_generated
+151. Source assignments for emu:emu|fpga64_sid_iec:fpga64|spram:colorram|altsyncram:ram_rtl_0|altsyncram_uma1:auto_generated
+152. Source assignments for osd:vga_osd|altsyncram:osd_buffer_rtl_0|altsyncram_i6k1:auto_generated
+153. Source assignments for osd:hdmi_osd|altsyncram:osd_buffer_rtl_0|altsyncram_i6k1:auto_generated
+154. Source assignments for shadowmask:HDMI_shadowmask|altsyncram:mask_lut_rtl_0|altsyncram_k9j1:auto_generated
+155. Source assignments for emu:emu|fpga64_sid_iec:fpga64|video_vicii_656x:vic|altshift_taps:charStore_rtl_0|shift_taps_vhv:auto_generated|altsyncram_5v91:altsyncram5
+156. Source assignments for vga_out:vga_scaler_out|altshift_taps:din1_rtl_0|shift_taps_quu:auto_generated|altsyncram_dr91:altsyncram4
+158. Source assignments for ascal:ascal|altsyncram:o_h_poly_mem_rtl_0|altsyncram_o9j1:auto_generated
+159. Source assignments for ascal:ascal|altsyncram:o_v_poly_mem_rtl_0|altsyncram_o9j1:auto_generated
+160. Source assignments for ascal:ascal|altsyncram:o_a_poly_mem_rtl_0|altsyncram_o9j1:auto_generated
+161. Source assignments for shadowmask:HDMI_shadowmask|altshift_taps:vid_rtl_0|shift_taps_0vu:auto_generated|altsyncram_pr91:altsyncram4
+162. Source assignments for emu:emu|fpga64_sid_iec:fpga64|sid_top:sid4|sid_tables:sid_tables|altsyncram:Mux16_rtl_0|altsyncram_ie51:auto_generated
+163. Source assignments for emu:emu|fpga64_sid_iec:fpga64|sid_top:sid3|sid_tables:sid_tables|altsyncram:Mux16_rtl_0|altsyncram_je51:auto_generated
+164. Source assignments for emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|fdc1772:fdc|fdc1772_dpram:fifo|altsyncram:ram_rtl_0|altsyncram_if12:auto_generated
+165. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|altsyncram:bdl_rtl_0|altsyncram_veo1:auto_generated
+166. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|ovram:palc[3].palm|altsyncram:m_rtl_0|altsyncram_g3r1:auto_generated
+167. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|ovram:palc[2].palm|altsyncram:m_rtl_0|altsyncram_g3r1:auto_generated
+168. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|ovram:palc[1].palm|altsyncram:m_rtl_0|altsyncram_g3r1:auto_generated
+169. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|ovram:palc[0].palm|altsyncram:m_rtl_0|altsyncram_g3r1:auto_generated
+170. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|ovram:ownb[3].om|altsyncram:m_rtl_0|altsyncram_g6n1:auto_generated
+171. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|ovram:ownb[2].om|altsyncram:m_rtl_0|altsyncram_g6n1:auto_generated
+172. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|ovram:ownb[1].om|altsyncram:m_rtl_0|altsyncram_g6n1:auto_generated
+173. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|ovram:ownb[0].om|altsyncram:m_rtl_0|altsyncram_g6n1:auto_generated
+174. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|ovram:bank[3].lbm|altsyncram:m_rtl_0|altsyncram_h6n1:auto_generated
+175. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|ovram:bank[2].lbm|altsyncram:m_rtl_0|altsyncram_h6n1:auto_generated
+176. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|ovram:bank[1].lbm|altsyncram:m_rtl_0|altsyncram_h6n1:auto_generated
+177. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|ovram:bank[0].lbm|altsyncram:m_rtl_0|altsyncram_h6n1:auto_generated
+178. Source assignments for yc_out:yc_out|altshift_taps:luma_d0_rtl_0|shift_taps_gtu:auto_generated|altsyncram_ro91:altsyncram5
+179. Source assignments for ascal:ascal|altsyncram:i_dpram_rtl_0|altsyncram_g9j1:auto_generated
+180. Source assignments for ascal:ascal|altsyncram:pal1_mem_rtl_0|altsyncram_2aj1:auto_generated
+181. Source assignments for ascal:ascal|altsyncram:o_dpram_rtl_0|altsyncram_32k1:auto_generated
+182. Source assignments for emu:emu|iec_drive:iec_drive|c1581_multi:c1581|iecdrv_mem:romstd|altsyncram:ram_rtl_0|altsyncram_j5c1:auto_generated
+183. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|iecdrv_mem:romstd|altsyncram:ram_rtl_0|altsyncram_a5c1:auto_generated
+184. Source assignments for emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_buf:hq2x_out|altsyncram:ram_rtl_0|altsyncram_0dn1:auto_generated
+185. Source assignments for emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_in:hq2x_in|hq2x_buf:buf1|altsyncram:ram_rtl_0|altsyncram_o9n1:auto_generated
+186. Source assignments for emu:emu|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|hq2x_in:hq2x_in|hq2x_buf:buf0|altsyncram:ram_rtl_0|altsyncram_o9n1:auto_generated
+187. Source assignments for emu:emu|video_mixer:video_mixer|gamma_corr:gamma|altsyncram:gamma_curve_rtl_0|altsyncram_3aj1:auto_generated
+188. Source assignments for altshift_taps:dv_d1_rtl_0|shift_taps_4vu:auto_generated|altsyncram_1s91:altsyncram4
+189. Source assignments for emu:emu|fpga64_sid_iec:fpga64|sid_fx:fx|ovram:ring|altsyncram:m_rtl_0|altsyncram_dcn1:auto_generated
+190. Source assignments for emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_tables:sid_tables|altsyncram:Mux16_rtl_0|altsyncram_le51:auto_generated
+191. Source assignments for ascal:ascal|altshift_taps:o_vpix_inner[2].r_rtl_0|shift_taps_agv:auto_generated|altsyncram_jr91:altsyncram4
+192. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_track:c1541_track|iecdrv_bitmem64SP:bg_buffer|iecdrv_bitmemSP:rams[7].bitmem|altsyncram:ram_rtl_0|altsyncram_2na1:auto_generated
+193. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_track:c1541_track|iecdrv_bitmem64SP:bg_buffer|iecdrv_bitmemSP:rams[6].bitmem|altsyncram:ram_rtl_0|altsyncram_2na1:auto_generated
+194. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_track:c1541_track|iecdrv_bitmem64SP:bg_buffer|iecdrv_bitmemSP:rams[5].bitmem|altsyncram:ram_rtl_0|altsyncram_2na1:auto_generated
+195. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_track:c1541_track|iecdrv_bitmem64SP:bg_buffer|iecdrv_bitmemSP:rams[4].bitmem|altsyncram:ram_rtl_0|altsyncram_2na1:auto_generated
+196. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_track:c1541_track|iecdrv_bitmem64SP:bg_buffer|iecdrv_bitmemSP:rams[3].bitmem|altsyncram:ram_rtl_0|altsyncram_2na1:auto_generated
+197. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_track:c1541_track|iecdrv_bitmem64SP:bg_buffer|iecdrv_bitmemSP:rams[2].bitmem|altsyncram:ram_rtl_0|altsyncram_2na1:auto_generated
+198. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_track:c1541_track|iecdrv_bitmem64SP:bg_buffer|iecdrv_bitmemSP:rams[1].bitmem|altsyncram:ram_rtl_0|altsyncram_2na1:auto_generated
+199. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_track:c1541_track|iecdrv_bitmem64SP:bg_buffer|iecdrv_bitmemSP:rams[0].bitmem|altsyncram:ram_rtl_0|altsyncram_2na1:auto_generated
+200. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_direct_gcr:c1541_direct_gcr|iecdrv_bitmem64:buffer|iecdrv_bitmem:rams[7].bitmem|altsyncram:ram_rtl_0|altsyncram_rf12:auto_generated
+201. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_direct_gcr:c1541_direct_gcr|iecdrv_bitmem64:buffer|iecdrv_bitmem:rams[6].bitmem|altsyncram:ram_rtl_0|altsyncram_rf12:auto_generated
+202. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_direct_gcr:c1541_direct_gcr|iecdrv_bitmem64:buffer|iecdrv_bitmem:rams[5].bitmem|altsyncram:ram_rtl_0|altsyncram_rf12:auto_generated
+203. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_direct_gcr:c1541_direct_gcr|iecdrv_bitmem64:buffer|iecdrv_bitmem:rams[4].bitmem|altsyncram:ram_rtl_0|altsyncram_rf12:auto_generated
+204. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_direct_gcr:c1541_direct_gcr|iecdrv_bitmem64:buffer|iecdrv_bitmem:rams[3].bitmem|altsyncram:ram_rtl_0|altsyncram_rf12:auto_generated
+205. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_direct_gcr:c1541_direct_gcr|iecdrv_bitmem64:buffer|iecdrv_bitmem:rams[2].bitmem|altsyncram:ram_rtl_0|altsyncram_rf12:auto_generated
+206. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_direct_gcr:c1541_direct_gcr|iecdrv_bitmem64:buffer|iecdrv_bitmem:rams[1].bitmem|altsyncram:ram_rtl_0|altsyncram_rf12:auto_generated
+207. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_direct_gcr:c1541_direct_gcr|iecdrv_bitmem64:buffer|iecdrv_bitmem:rams[0].bitmem|altsyncram:ram_rtl_0|altsyncram_rf12:auto_generated
+208. Source assignments for emu:emu|fpga64_sid_iec:fpga64|octovic:octo|ovram:satm|altsyncram:m_rtl_0|altsyncram_o6n1:auto_generated
+209. Source assignments for emu:emu|opl3:opl_inst|opl3sw:opl3|opl3seq:opl3seq|sampler:sampler_inst|altsyncram:sin_tab_rtl_0|altsyncram_4nc1:auto_generated
+210. Source assignments for emu:emu|opl3:opl_inst|opl3sw:opl3|opl3_mem:ram|altsyncram:ram_rtl_0|altsyncram_ll32:auto_generated
+211. Source assignments for emu:emu|opl3:opl_inst|opl3sw:opl3|opl3seq:opl3seq|altsyncram:Mux4_rtl_0|altsyncram_aa51:auto_generated
+212. Source assignments for emu:emu|iec_drive:iec_drive|c1581_multi:c1581|iecdrv_mem:rom|altsyncram:ram_rtl_0|altsyncram_7tq1:auto_generated
+213. Source assignments for emu:emu|iec_drive:iec_drive|c1541_multi:c1541|iecdrv_mem:rom|altsyncram:ram_rtl_0|altsyncram_3ar1:auto_generated
+214. Source assignments for emu:emu|fpga64_sid_iec:fpga64|sid_top:sid4|sid_tables:sid_tables|altsyncram:f6581_curve_rtl_0|altsyncram_vor1:auto_generated
+215. Source assignments for emu:emu|fpga64_sid_iec:fpga64|sid_top:sid3|sid_tables:sid_tables|altsyncram:f6581_curve_rtl_0|altsyncram_vor1:auto_generated
+216. Source assignments for emu:emu|fpga64_sid_iec:fpga64|sid_top:sid2|sid_tables:sid_tables|altsyncram:f6581_curve_rtl_0|altsyncram_vor1:auto_generated
+217. Source assignments for emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_tables:sid_tables|altsyncram:f6581_curve_rtl_0|altsyncram_vor1:auto_generated
+218. Source assignments for emu:emu|fpga64_sid_iec:fpga64|fpga64_buslogic:buslogic|dprom:kernel_c64|altsyncram:ram_rtl_0|altsyncram_utl1:auto_generated
+219. Source assignments for emu:emu|fpga64_sid_iec:fpga64|sid_top:sid2|sid_tables:sid_tables|altsyncram:Mux16_rtl_0|altsyncram_ke51:auto_generated
+220. Source assignments for emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_tables:sid_tables|altsyncram:Mux31_rtl_0|altsyncram_9e51:auto_generated
+221. Source assignments for emu:emu|fpga64_sid_iec:fpga64|sid_top:sid2|sid_tables:sid_tables|altsyncram:Mux31_rtl_0|altsyncram_ae51:auto_generated
+222. Source assignments for emu:emu|fpga64_sid_iec:fpga64|sid_top:sid3|sid_tables:sid_tables|altsyncram:Mux31_rtl_0|altsyncram_be51:auto_generated
+223. Source assignments for emu:emu|fpga64_sid_iec:fpga64|sid_top:sid4|sid_tables:sid_tables|altsyncram:Mux31_rtl_0|altsyncram_ce51:auto_generated
+229. Parameter Settings for User Entity Instance: ascal:ascal|altsyncram:i_mem[0].r[7]__1
+230. Parameter Settings for User Entity Instance: ascal:ascal|altsyncram:o_line0[0].r[7]__2
+231. Parameter Settings for User Entity Instance: ascal:ascal|altsyncram:o_line1[0].r[7]__3

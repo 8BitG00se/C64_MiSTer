@@ -1,0 +1,1 @@
+; mode         ; Input  ; Critical Warning ; Can't connect array with 4 elements in array dimension 1 to port with 5 elements in the same dimension                                                                              ;
