@@ -5,3 +5,5 @@ script.txt
 *.png
 __pycache__/
 objd/
+obj2/
+vram_out.bin
