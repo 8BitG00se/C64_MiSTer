@@ -155,7 +155,7 @@ localparam CONF_STR = {
 	"P2FC9,ROM,System ROM C1581     ;",
 	"P2FC5,CRT,Boot Cartridge       ;",
 	"P2-;",
-	"P2O[15:14],System ROM,Weaver KERNAL 2,Standard C64,C64GS,Japanese;",
+	"P2O[15:14],System ROM,Octophonic 64 V1.1,Standard C64,C64GS,Japanese;",
 
 	"P3,Drives;",
 	"P3O[58:57],Enable Drive #8,If Mounted,Always,Never;",
@@ -171,7 +171,7 @@ localparam CONF_STR = {
 	"O[3],Swap Joysticks,No,Yes;",
 	"O[88:87],SNAC Joystick,Disabled,Joy 1,Joy 2;",
 	"-;",
-	"O[47:46],Turbo mode,Off,C128,Smart;",
+	"O[47:46],Turbo mode,C128,Off,Smart;",
 	"d6O[49:48],Turbo speed,2x,3x,4x;",
 	"-;",
 	"R[0],Reset;",
@@ -387,7 +387,7 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(2), .BLKSZ(1)) hps_io
 	.paddle_3(pd4),
 
 	.status(status),
-	.status_menumask({~status[54], ezfl_mod || ezfl_save_en, cart_ezfl, ~status[69], ~status[66], status[58], |status[47:46], status[16], status[13], tap_loaded, 1'b0, |vcrop, status[56]}), .buttons(buttons),
+	.status_menumask({~status[54], ezfl_mod || ezfl_save_en, cart_ezfl, ~status[69], ~status[66], status[58], (status[47:46] != 2'd1), status[16], status[13], tap_loaded, 1'b0, |vcrop, status[56]}), .buttons(buttons),
 	.forced_scandoubler(forced_scandoubler),
 	.gamma_bus(gamma_bus),
 
@@ -943,7 +943,7 @@ fpga64_sid_iec fpga64
 	.pause_out(c64_pause),
 	.bios(status[15:14]),
 	
-	.turbo_mode({status[47] & ~disk_access, status[46]}),
+	.turbo_mode({(status[47:46] == 2'd2) & ~disk_access, status[47:46] == 2'd0}),   // OCTOPHONIC V1.1: C128 (a program turns turbo on at $D030) the default
 	.turbo_speed(status[49:48]),
 
 	.ps2_key(key),

@@ -326,6 +326,17 @@ signal sid2_aud_r   : std_logic_vector(17 downto 0);
 -- OCTOPHONIC: the third and fourth pairs, SIDs 5 to 8
 signal sid_a7       : std_logic;
 signal sid_played   : std_logic_vector(7 downto 0);
+-- AUTO SIDs (Octophonic 64 V1.1): a SID wakes when the program writes both its volume ($x18) and a
+-- voice control register ($x04/$x0B/$x12) at its own address; until then it is a mirror of SID 1
+signal sid_awake    : std_logic_vector(7 downto 0);
+signal sid_volw     : std_logic_vector(7 downto 0);
+signal sid_ctlw     : std_logic_vector(7 downto 0);
+signal sid_raw      : std_logic_vector(7 downto 0);   -- the Octophonic decode, before the waking
+signal sid_tgt      : integer range 0 to 7;
+signal sid_isvol    : std_logic;
+signal sid_isctl    : std_logic;
+signal sid_wakes    : std_logic;                      -- this write wakes its SID
+signal sid_asleep   : std_logic;                      -- the SID picked is still asleep (SID 1 gets it)
 signal mix_l, mix_r : signed(17 downto 0);
 signal sid3_do      : unsigned(7 downto 0);
 signal sid3_sel_l   : std_logic;
@@ -870,14 +881,42 @@ sid_sel_rn <= sid_sel_ln when sid_mode = 0 else ioe_i when sid_mode = 1 else iof
 -- Eight SIDs: A7 as well - $D480 SID 5, $D4A0 SID 6, $D580 SID 7, $D5A0 SID 8 (four,
 -- A7 is ignored: those addresses mirror SIDs 1 to 4, as before).
 sid_a7     <= cpuAddr(7) and sid_oct;
-sid_sel_l  <= sid_sel_ln when sid_quad = '0' else (cs_sid_s and not cpuAddr(5) and not cpuAddr(8) and not sid_a7);
-sid_sel_r  <= sid_sel_rn when sid_quad = '0' else (cs_sid_s and     cpuAddr(5) and not cpuAddr(8) and not sid_a7);
-sid2_sel_l <= '0'        when sid_quad = '0' else (cs_sid_s and not cpuAddr(5) and     cpuAddr(8) and not sid_a7);
-sid2_sel_r <= '0'        when sid_quad = '0' else (cs_sid_s and     cpuAddr(5) and     cpuAddr(8) and not sid_a7);
-sid3_sel_l <= '0'        when sid_quad = '0' else (cs_sid_s and not cpuAddr(5) and not cpuAddr(8) and     sid_a7);
-sid3_sel_r <= '0'        when sid_quad = '0' else (cs_sid_s and     cpuAddr(5) and not cpuAddr(8) and     sid_a7);
-sid4_sel_l <= '0'        when sid_quad = '0' else (cs_sid_s and not cpuAddr(5) and     cpuAddr(8) and     sid_a7);
-sid4_sel_r <= '0'        when sid_quad = '0' else (cs_sid_s and     cpuAddr(5) and     cpuAddr(8) and     sid_a7);
+sid_raw(0) <= cs_sid_s and not cpuAddr(5) and not cpuAddr(8) and not sid_a7;
+sid_raw(1) <= cs_sid_s and     cpuAddr(5) and not cpuAddr(8) and not sid_a7;
+sid_raw(2) <= cs_sid_s and not cpuAddr(5) and     cpuAddr(8) and not sid_a7;
+sid_raw(3) <= cs_sid_s and     cpuAddr(5) and     cpuAddr(8) and not sid_a7;
+sid_raw(4) <= cs_sid_s and not cpuAddr(5) and not cpuAddr(8) and     sid_a7;
+sid_raw(5) <= cs_sid_s and     cpuAddr(5) and not cpuAddr(8) and     sid_a7;
+sid_raw(6) <= cs_sid_s and not cpuAddr(5) and     cpuAddr(8) and     sid_a7;
+sid_raw(7) <= cs_sid_s and     cpuAddr(5) and     cpuAddr(8) and     sid_a7;
+sid_tgt    <= to_integer(unsigned'(sid_a7 & cpuAddr(8) & cpuAddr(5)));
+sid_isvol  <= '1' when cpuAddr(4 downto 0) = "11000" else '0';
+sid_isctl  <= '1' when cpuAddr(4 downto 0) = "00100" or cpuAddr(4 downto 0) = "01011" or cpuAddr(4 downto 0) = "10010" else '0';
+sid_wakes  <= cpuWe and ((sid_volw(sid_tgt) and sid_isctl) or (sid_ctlw(sid_tgt) and sid_isvol));
+-- a SID still asleep: SID 1 takes the access (a write goes to both: the sleeper keeps its
+-- registers for when it wakes - silent till then, as it has no volume or no voice yet), except the
+-- very write that wakes it
+sid_asleep <= '1' when cs_sid_s = '1' and sid_tgt /= 0 and sid_awake(sid_tgt) = '0' and sid_wakes = '0' else '0';
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if reset = '1' then
+			sid_awake <= "00000001"; sid_volw <= (others => '0'); sid_ctlw <= (others => '0');
+		elsif pulseWr_io = '1' and cs_sid_s = '1' and sid_quad = '1' then
+			if sid_isvol = '1' then sid_volw(sid_tgt) <= '1'; end if;
+			if sid_isctl = '1' then sid_ctlw(sid_tgt) <= '1'; end if;
+			if sid_wakes = '1' then sid_awake(sid_tgt) <= '1'; end if;
+		end if;
+	end if;
+end process;
+sid_sel_l  <= sid_sel_ln when sid_quad = '0' else (sid_raw(0) or sid_asleep);
+sid_sel_r  <= sid_sel_rn when sid_quad = '0' else (sid_raw(1) and (sid_awake(1) or cpuWe));
+sid2_sel_l <= '0'        when sid_quad = '0' else (sid_raw(2) and (sid_awake(2) or cpuWe));
+sid2_sel_r <= '0'        when sid_quad = '0' else (sid_raw(3) and (sid_awake(3) or cpuWe));
+sid3_sel_l <= '0'        when sid_quad = '0' else (sid_raw(4) and (sid_awake(4) or cpuWe));
+sid3_sel_r <= '0'        when sid_quad = '0' else (sid_raw(5) and (sid_awake(5) or cpuWe));
+sid4_sel_l <= '0'        when sid_quad = '0' else (sid_raw(6) and (sid_awake(6) or cpuWe));
+sid4_sel_r <= '0'        when sid_quad = '0' else (sid_raw(7) and (sid_awake(7) or cpuWe));
 
 io_data_i <= io_data when io_ext = '1' else
              sid4_do when (sid4_sel_l or sid4_sel_r) = '1' else
@@ -934,7 +973,7 @@ begin
 		o := (signed(sid1_aud_l), signed(sid1_aud_r), signed(sid2_aud_l), signed(sid2_aud_r),
 		      signed(sid3_aud_l), signed(sid3_aud_r), signed(sid4_aud_l), signed(sid4_aud_r));
 		sl := (others => '0'); sr := (others => '0'); nl := 0; nr := 0;
-		pl := sid_played; pl(0) := '1';         -- SID 1 always: a digi with no gate is still sound
+		pl := sid_played and sid_awake; pl(0) := '1';   -- SID 1 always: a digi with no gate is still sound; a SID asleep adds nothing
 		if sidfx_mode(0) = '1' then pl(1) := '1'; end if;                  -- OctoSID FX: its SIDs play
 		if sidfx_mode(1) = '1' then pl(2) := '1'; pl(3) := '1'; end if;
 		for c in 0 to 7 loop
