@@ -222,6 +222,7 @@ signal enableSid    : std_logic;
 signal irq_cia1     : std_logic;
 signal irq_cia2     : std_logic;
 signal irq_vic      : std_logic;
+signal octo_irq     : std_logic;   -- OCTOPHONIC: OctoVIC 2's interrupt
 
 signal systemWe     : std_logic;
 signal pulseWr_io   : std_logic;
@@ -421,7 +422,8 @@ port (
 	ddr_be         : out std_logic_vector(7 downto 0);
 	ddr_busy       : in  std_logic;
 	ddr_dout       : in  std_logic_vector(63 downto 0);
-	ddr_dout_ready : in  std_logic
+	ddr_dout_ready : in  std_logic;
+	irq            : out std_logic
 );
 end component;
 
@@ -799,7 +801,8 @@ port map (
 	ddr_be         => ogx_ddr_be,
 	ddr_busy       => ogx_ddr_busy,
 	ddr_dout       => ogx_ddr_dout,
-	ddr_dout_ready => ogx_ddr_dout_ready
+	ddr_dout_ready => ogx_ddr_dout_ready,
+	irq            => octo_irq
 );
 
 r <= unsigned(octo_rgb(23 downto 16));
@@ -1231,7 +1234,7 @@ port map (
 	enable => enableCpu and not dma_active,
 	nmi_n => irq_cia2 and nmi_n,
 	nmi_ack => nmi_ack,
-	irq_n => irq_cia1 and irq_vic and irq_n and irq_ext_n,
+	irq_n => irq_cia1 and irq_vic and irq_n and irq_ext_n and not octo_irq,   -- OCTOPHONIC: OctoVIC 2's interrupt too
 	rdy => baLoc,
 
 	di => cpuDi,

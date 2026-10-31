@@ -26,6 +26,9 @@ class Octo:
         s.vpal = list(C64); s.backdrop = 0
         s.vaddr = 0; s.vinc = 1; s.palidx = 0; s.palr = 0; s.palg = 0; s.palsel = 0
         s.sat = bytes(1024)
+        # version 2
+        s.divq = 0; s.divr = 0
+        s.acc_ss = 0; s.acc_sl = 0; s.coll_ss = 0; s.coll_sl = 0
     def g(s, n, d=0): return s.r.get(n, d)
     def g24(s, n): return s.g(n) | s.g(n+1) << 8 | s.g(n+2) << 16
     def g16(s, n): return s.g(n) | s.g(n+1) << 8
@@ -38,6 +41,12 @@ class Octo:
             else: s.vram[s.vaddr & 0xFFFFFF] = v; s.vaddr = (s.vaddr + s.vinc) & 0xFFFFFF
             return
         if a == 0x0F: v = min(v, 128)
+        s.r[a] = v
+        if a == 0x5E:                                   # the divider (the chip: 32 clocks - done before the CPU looks)
+            n = s.g(0x59) | s.g(0x5A) << 8 | s.g(0x5B) << 16 | s.g(0x5C) << 24; d = s.g16(0x5D)
+            s.divq, s.divr = (0xFFFFFFFF, n & 0xFFFF) if d == 0 else (n // d, n % d)
+        if a == 0x7F and v & 1: s.blit((v >> 1) & 3)
+        if a == 0x83: s.r[0x83] = 0                     # (flags: the chip's - not modelled here)
         if 0x10 <= a <= 0x15 or 0x40 <= a <= 0x4B: s.anim = [0, 0, 0, 0, 0, 0]   # cop off, k, d; sat off, k, d
         if a == 0x19: s.palsel = v & 3
         if a == 0x1A: s.palidx = v
@@ -52,9 +61,45 @@ class Octo:
         s.r[a] = v
     def v16(s, a): return s.vram[a & 0xFFFFFF] | s.vram[(a+1) & 0xFFFFFF] << 8
 
+    # --- version 2: what reads give back (the maths unit, the collisions)
+    def read(s, a):
+        ma, mb = s.g16(0x50), s.g16(0x52)
+        if a in (0x54, 0x55, 0x56, 0x57):
+            m = (s16(ma) * s16(mb)) & 0xFFFFFFFF if s.g(0x58) & 1 else ma * mb
+            return (m >> 8*(a - 0x54)) & 255
+        if 0x60 <= a <= 0x63: return (s.divq >> 8*(a - 0x60)) & 255
+        if a in (0x64, 0x65): return (s.divr >> 8*(a - 0x64)) & 255
+        if a == 0x1F: return 2
+        if a in (0x85, 0x86):
+            c = s.coll_ss if a == 0x85 else s.coll_sl
+            return (c >> 8*(s.g(0x84) & 15)) & 255
+        return s.g(a)
+    # --- the blitter (the chip takes its time; here it is done at once)
+    def blit(s, op):
+        g24, g16 = s.g24, s.g16
+        src, dst, w, h, ss, ds, fill = g24(0x70), g24(0x73), g16(0x76), g16(0x78), s16(g16(0x7A)), s16(g16(0x7C)), s.g(0x7E)
+        V = s.vram
+        if op == 3:
+            x, y, x1, y1 = s16(g16(0x66)), s16(g16(0x68)), s16(g16(0x6A)), s16(g16(0x6C))
+            dx, dy = abs(x1 - x), -abs(y1 - y); sx = 1 if x1 >= x else -1; sy = 1 if y1 >= y else -1; err = dx + dy
+            while True:
+                if 0 <= x < w and 0 <= y < h: V[(dst + y * g16(0x7C) + x) & 0xFFFFFF] = fill
+                if x == x1 and y == y1: break
+                e2 = 2 * err
+                if e2 >= dy: err += dy; x += sx
+                if e2 <= dx: err += dx; y += sy
+            return
+        for r in range(h):
+            for c in range(w):
+                a_s, a_d = (src + r*ss + c) & 0xFFFFFF, (dst + r*ds + c) & 0xFFFFFF
+                v = fill if op == 1 else V[a_s]
+                if op == 2 and v == 0: continue
+                V[a_d] = v
+
     # --- one raster line into a buffer of RW (None = see-through)
     def line(s, L):
         buf = [None]*RW
+        own = [0]*RW                                    # version 2: b8 a layer pixel, b7 a sprite's, b0-6 which
         xadj, yadj = s8(s.g(0x0C)), s8(s.g(0x0D))
         y = L - 51 - yadj
         sx0 = -32 - xadj
@@ -67,6 +112,16 @@ class Octo:
             vy = (y + s.g16(b+10)) & 0xFFFF
             vx0 = (sx0 + s.g16(b+8) + ls) & 0xFFFF
             ty = vy & 7; mr = (vy >> 3) & (mh-1)
+            if lc & 8:                                  # version 2: a bitmap layer, a byte a pixel
+                rowa = tileb + ((vy & (mh*8 - 1)) * mw * 8)
+                for R in range(RW):
+                    vx = (vx0 + R) & 0xFFFF
+                    pix = s.vram[(rowa + (vx & (mw*8 - 1))) & 0xFFFFFF]
+                    if pix:
+                        buf[R] = s.pal[pix]
+                        if own[R] & 0x80: s.acc_sl |= 1 << (own[R] & 0x7F)
+                        own[R] |= 0x100
+                return
             for R in range(RW):
                 vx = (vx0 + R) & 0xFFFF
                 mc = (vx >> 3) & (mw-1)
@@ -78,7 +133,10 @@ class Octo:
                 else:
                     bb = s.vram[(tileb + tile*32 + row*4 + c//2) & 0xFFFFFF]
                     pix = bb >> 4 if c % 2 == 0 else bb & 15; idx = bank*16 + pix
-                if pix: buf[R] = s.pal[idx]
+                if pix:
+                    buf[R] = s.pal[idx]
+                    if own[R] & 0x80: s.acc_sl |= 1 << (own[R] & 0x7F)
+                    own[R] |= 0x100
         def sprites(p):
             n = s.g(0x0F); gfx0 = s.g24(0x16); hits = []
             for j in range(n):
@@ -104,7 +162,11 @@ class Octo:
                     else:
                         bb = s.vram[(ra + sc//2) & 0xFFFFFF]
                         pix = bb >> 4 if sc % 2 == 0 else bb & 15; idx = bank*16 + pix
-                    if pix and 0 <= R < RW: buf[R] = s.pal[idx]
+                    if pix and 0 <= R < RW:
+                        buf[R] = s.pal[idx]
+                        if own[R] & 0x80: s.acc_ss |= 1 << j | 1 << (own[R] & 0x7F)
+                        if own[R] & 0x100: s.acc_sl |= 1 << j
+                        own[R] = (own[R] & 0x100) | 0x80 | j
         if s.g(0x0F): sprites(2)
         layer(0)
         if s.g(0x0F): sprites(1)
@@ -137,7 +199,9 @@ class Octo:
                     if ln == 0xFFFF or ln > L: break
                     if e[2] > 4: s.write(e[2], e[3], cpu=False)
                     cop += 4
-            if L == 0: s.sat = bytes(s.vram[satb & ~7: (satb & ~7) + 1024])
+            if L == 0:
+                s.sat = bytes(s.vram[satb & ~7: (satb & ~7) + 1024])
+                s.coll_ss, s.coll_sl, s.acc_ss, s.acc_sl = s.acc_ss, s.acc_sl, 0, 0     # version 2: last frame's collisions
             if FIRST <= L <= LAST and s.g(0x05) & 1: lines[L] = s.line(L)
             bd[L] = s.backdrop                          # the backdrop as it was when the line was drawn
             ck[L] = (s.g(0x05), s.g(0x06) & 15)        # and CTRL and KEY

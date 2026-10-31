@@ -9,6 +9,10 @@
 //  order with a tag saying what each one is for, and the consumer turns them into map
 //  entries, sprite table entries or pixels (one a clock, through the palette, into the line
 //  buffer). The display side reads the buffer as the VIC puts out each pixel, and clears it.
+//
+//  Version 2 adds: a maths unit (multiply, divide), a blitter (copy, fill, skip-0 copy, line) that
+//  works in the VRAM on its own, sprite collisions (sprite-sprite, sprite-layer), and an
+//  interrupt (a raster line, the collisions, the blitter finished).
 // =====================================================================================
 module octovic
 (
@@ -40,7 +44,9 @@ module octovic
 	output reg  [7:0] ddr_be,
 	input             ddr_busy,
 	input      [63:0] ddr_dout,
-	input             ddr_dout_ready
+	input             ddr_dout_ready,
+
+	output            irq          // version 2: the interrupt, high while any enabled flag is set
 );
 
 localparam [28:0] VBASE = 29'h06400000;        // byte $32000000
@@ -79,6 +85,35 @@ reg  [23:0] vpal[16];
 reg  [23:0] backdrop;
 reg   [7:0] frame;
 reg   [7:0] vrd_data;
+// version 2 -------------------------------------------------------------------------
+// the maths unit
+reg  [15:0] mula, mulb;
+reg   [7:0] mathctl;
+reg  [31:0] divn, divq;
+reg  [15:0] divd, divr;
+reg         div_busy;
+reg   [5:0] div_cnt;
+reg  [16:0] div_rem;                // (17 bits: the compare)
+wire signed [31:0] mul_s = $signed(mula) * $signed(mulb);
+wire        [31:0] mul_u = {16'd0, mula} * {16'd0, mulb};
+wire        [31:0] mulr  = mathctl[0] ? mul_s : mul_u;
+// the blitter's registers
+reg  [23:0] bsrc, bdst;
+reg  [15:0] bw, bh, bss, bds;
+reg   [7:0] bfill;
+reg   [1:0] bop;
+reg  [15:0] lx0, ly0, lx1, ly1;
+reg         blt_go;                 // a pulse: start
+wire        blt_busy;
+wire        blt_done;               // a pulse from the blitter
+// the interrupt
+reg   [8:0] irqline;
+reg   [3:0] irqen, irqst;           // b0 raster line, b1 sprite-sprite, b2 sprite-layer, b3 blitter done
+reg   [8:0] irq_prev_y;
+reg   [3:0] collidx;
+reg         coll_new;               // a pulse from the consumer: last frame's collisions latched
+reg [127:0] coll_ss, coll_sl;       // last frame's collisions: sprite-sprite, sprite-layer
+assign irq = |(irqst & irqen);
 
 wire ENABLE  = ctrl[0];
 wire VICPAL  = ctrl[1];
@@ -133,9 +168,32 @@ always @(posedge clk) begin
 		for (ii = 0; ii < 16; ii = ii + 1) vpal[ii] <= c64col(ii[3:0]);
 		backdrop <= 0;
 		wf_w <= 0; pf_req <= 0; rd_delay <= 0;
+		mula <= 0; mulb <= 0; mathctl <= 0; divn <= 0; divd <= 0; divq <= 0; divr <= 0; div_busy <= 0;
+		bsrc <= 0; bdst <= 0; bw <= 0; bh <= 0; bss <= 0; bds <= 0; bfill <= 0; bop <= 0; blt_go <= 0;
+		lx0 <= 0; ly0 <= 0; lx1 <= 0; ly1 <= 0;
+		irqline <= 0; irqen <= 0; irqst <= 0; irq_prev_y <= 0; collidx <= 0;
 	end
 	else begin
+		blt_go <= 0;
 		if (pf_clr) pf_req <= 0;
+		// the divider: a bit a clock, 32 clocks (done before the CPU can look: a microsecond is 32 clocks)
+		if (div_busy) begin
+			reg [16:0] r2;
+			r2 = {div_rem[15:0], divq[31]};
+			if (r2 >= {1'b0, divd}) begin div_rem <= r2 - {1'b0, divd}; divq <= {divq[30:0], 1'b1}; end
+			else begin div_rem <= r2; divq <= {divq[30:0], 1'b0}; end
+			div_cnt <= div_cnt - 6'd1;
+			if (div_cnt == 6'd1) begin
+				div_busy <= 0;
+				divr <= (r2 >= {1'b0, divd}) ? (r2[15:0] - divd) : r2[15:0];
+			end
+		end
+		// the interrupt's flags
+		irq_prev_y <= vic_y;
+		if (vic_y != irq_prev_y && vic_y == irqline) irqst[0] <= 1;
+		if (coll_new && coll_ss != 0) irqst[1] <= 1;
+		if (coll_new && coll_sl != 0) irqst[2] <= 1;
+		if (blt_done) irqst[3] <= 1;
 		// a CPU read of VDATA: on, half a microsecond later (the CPU has the byte by then)
 		if (cs & rd & addr == 8'h04) rd_delay <= 5'd16;
 		else if (rd_delay != 0) begin
@@ -192,6 +250,31 @@ always @(posedge clk) begin
 				8'h2C, 8'h3C: lsbase[rw_a[4]][7:0]   <= rw_d;
 				8'h2D, 8'h3D: lsbase[rw_a[4]][15:8]  <= rw_d;
 				8'h2E, 8'h3E: lsbase[rw_a[4]][23:16] <= rw_d;
+				// version 2
+				8'h50: mula[7:0] <= rw_d;  8'h51: mula[15:8] <= rw_d;
+				8'h52: mulb[7:0] <= rw_d;  8'h53: mulb[15:8] <= rw_d;
+				8'h58: mathctl <= rw_d;
+				8'h59: divn[7:0] <= rw_d;  8'h5A: divn[15:8] <= rw_d;  8'h5B: divn[23:16] <= rw_d;  8'h5C: divn[31:24] <= rw_d;
+				8'h5D: divd[7:0] <= rw_d;
+				8'h5E: begin
+						divd[15:8] <= rw_d;
+						if ({rw_d, divd[7:0]} == 16'd0) begin divq <= 32'hFFFFFFFF; divr <= divn[15:0]; div_busy <= 0; end
+						else begin divq <= divn; div_rem <= 0; div_cnt <= 6'd32; div_busy <= 1; end
+					end
+				8'h66: lx0[7:0] <= rw_d;  8'h67: lx0[15:8] <= rw_d;  8'h68: ly0[7:0] <= rw_d;  8'h69: ly0[15:8] <= rw_d;
+				8'h6A: lx1[7:0] <= rw_d;  8'h6B: lx1[15:8] <= rw_d;  8'h6C: ly1[7:0] <= rw_d;  8'h6D: ly1[15:8] <= rw_d;
+				8'h70: bsrc[7:0] <= rw_d;  8'h71: bsrc[15:8] <= rw_d;  8'h72: bsrc[23:16] <= rw_d;
+				8'h73: bdst[7:0] <= rw_d;  8'h74: bdst[15:8] <= rw_d;  8'h75: bdst[23:16] <= rw_d;
+				8'h76: bw[7:0] <= rw_d;    8'h77: bw[15:8] <= rw_d;
+				8'h78: bh[7:0] <= rw_d;    8'h79: bh[15:8] <= rw_d;
+				8'h7A: bss[7:0] <= rw_d;   8'h7B: bss[15:8] <= rw_d;
+				8'h7C: bds[7:0] <= rw_d;   8'h7D: bds[15:8] <= rw_d;
+				8'h7E: bfill <= rw_d;
+				8'h7F: begin bop <= rw_d[2:1]; if (rw_d[0] && !blt_busy) blt_go <= 1; end
+				8'h80: irqline[7:0] <= rw_d;  8'h81: irqline[8] <= rw_d[0];
+				8'h82: irqen <= rw_d[3:0];
+				8'h83: irqst <= irqst & ~rw_d[3:0];
+				8'h84: collidx <= rw_d[3:0];
 				default: ;
 			endcase
 		end
@@ -203,11 +286,22 @@ always @(*) begin
 	case (addr)
 		8'h00: dout = vaddr[7:0];   8'h01: dout = vaddr[15:8];  8'h02: dout = vaddr[23:16];
 		8'h03: dout = vinc;         8'h04: dout = vrd_data;     8'h05: dout = ctrl;
-		8'h06: dout = {4'd0, key};  8'h08: dout = {7'd0, ~wf_empty};
+		8'h06: dout = {4'd0, key};  8'h08: dout = {5'd0, blt_busy, div_busy, ~wf_empty};
 		8'h09: dout = vic_y[7:0];   8'h0A: dout = {7'd0, vic_y[8]};  8'h0B: dout = frame;
 		8'h0C: dout = xadj;         8'h0D: dout = yadj;          8'h0E: dout = {7'd0, copen};
 		8'h0F: dout = sprcount;     8'h19: dout = {6'd0, palsel}; 8'h1A: dout = palidx;
-		8'h1E: dout = 8'h8C;        8'h1F: dout = 8'h01;
+		8'h1E: dout = 8'h8C;        8'h1F: dout = 8'h02;
+		8'h50: dout = mula[7:0];    8'h51: dout = mula[15:8];    8'h52: dout = mulb[7:0];    8'h53: dout = mulb[15:8];
+		8'h54: dout = mulr[7:0];    8'h55: dout = mulr[15:8];    8'h56: dout = mulr[23:16];  8'h57: dout = mulr[31:24];
+		8'h58: dout = mathctl;
+		8'h60: dout = divq[7:0];    8'h61: dout = divq[15:8];    8'h62: dout = divq[23:16];  8'h63: dout = divq[31:24];
+		8'h64: dout = divr[7:0];    8'h65: dout = divr[15:8];
+		8'h7F: dout = {blt_busy, 4'd0, bop, 1'b0};
+		8'h80: dout = irqline[7:0]; 8'h81: dout = {7'd0, irqline[8]};
+		8'h82: dout = {4'd0, irqen}; 8'h83: dout = {4'd0, irqst};
+		8'h84: dout = {4'd0, collidx};
+		8'h85: dout = coll_ss[collidx*8 +: 8];
+		8'h86: dout = coll_sl[collidx*8 +: 8];
 		8'h20, 8'h30: dout = lctrl[addr[4]];
 		8'h28, 8'h38: dout = scrollx[addr[4]][7:0];  8'h29, 8'h39: dout = scrollx[addr[4]][15:8];
 		8'h2A, 8'h3A: dout = scrolly[addr[4]][7:0];  8'h2B, 8'h3B: dout = scrolly[addr[4]][15:8];
@@ -218,15 +312,15 @@ end
 // ---------------------------------------------------------------------------------
 //  THE DDR3 PORT: VRAM writes first, then the CPU's VDATA fetch, then the renderer's reads
 // ---------------------------------------------------------------------------------
-localparam K_MAP = 3'd0, K_TILE = 3'd1, K_SPR = 3'd2, K_SAT = 3'd3, K_LS = 3'd4, K_COP = 3'd5, K_VRD = 3'd6;
+localparam K_MAP = 3'd0, K_TILE = 3'd1, K_SPR = 3'd2, K_SAT = 3'd3, K_LS = 3'd4, K_COP = 3'd5, K_VRD = 3'd6, K_BLT = 3'd7;
 
 // a tag: kind[2:0], then per kind -
 //   MAP:  [8:3] first entry, [10:9] its lane
 //   TILE: [12:3] raster X of pixel 0 (signed), [13] flip, [14] high half, [18:15] bank, [19] 256 colours
 //   SPR:  [18:3] raster X of the sprite's pixel 0 (signed), [20:19] width, [21] flip, [22] high half,
-//         [26:23] bank, [27] 256 colours, [33:28] the word's first sprite pixel
-//   SAT:  [9:3] the sprite    LS: [4:3] lane    VRD: [5:3] byte
-localparam TW = 34;
+//         [26:23] bank, [27] 256 colours, [33:28] the word's first sprite pixel, [40:34] the sprite
+//   SAT:  [9:3] the sprite    LS: [4:3] lane    VRD: [5:3] byte    BLT: (the blitter's word)
+localparam TW = 41;
 
 // the renderer's requests: a little FIFO, so it can ask once a clock
 reg    [20:0] rqf_w[4];
@@ -235,6 +329,14 @@ reg     [2:0] rqf_wp, rqf_rp;
 wire          rqf_empty = rqf_wp == rqf_rp;
 wire          rqf_full  = (rqf_wp - rqf_rp) == 3'd4;
 reg           pf_clr;
+// version 2: the blitter's requests - held until taken (ack), dropped by the blitter when it sees the ack
+reg           blt_rreq, blt_rack, blt_wreq, blt_wack;
+reg    [20:0] blt_raddr;
+reg    [23:0] blt_waddr;
+reg     [7:0] blt_wdata;
+reg    [63:0] blt_rdata;
+reg           blt_got;
+reg           blt_got_clr;     // from the blitter: it has the word
 
 reg  [TW-1:0] cmd_tag;
 (* ramstyle = "MLAB, no_rw_check" *) reg  [TW-1:0] tf[32];          // the tags of the reads on their way, in order
@@ -249,7 +351,7 @@ wire port_free   = ~(ddr_rd | ddr_we) | ~ddr_busy;
 always @(posedge clk) begin
 	pf_clr <= 0;
 	if (reset) begin
-		ddr_rd <= 0; ddr_we <= 0; wf_r <= 0; tf_w <= 0; rqf_rp <= 0;
+		ddr_rd <= 0; ddr_we <= 0; wf_r <= 0; tf_w <= 0; rqf_rp <= 0; blt_wack <= 0; blt_rack <= 0;
 	end
 	else begin
 		if (accepted_rd) begin tf[tf_w] <= cmd_tag; tf_w <= tf_w + 5'd1; end
@@ -274,7 +376,22 @@ always @(posedge clk) begin
 				ddr_rd   <= 1;
 				rqf_rp   <= rqf_rp + 3'd1;
 			end
+			else if (blt_wreq && !blt_wack) begin           // version 2: the blitter, when nothing else wants the port
+				ddr_addr <= VBASE + {8'd0, blt_waddr[23:3]};
+				ddr_din  <= {8{blt_wdata}};
+				ddr_be   <= 8'd1 << blt_waddr[2:0];
+				ddr_we   <= 1;
+				blt_wack <= 1;
+			end
+			else if (blt_rreq && !blt_rack && room) begin
+				ddr_addr <= VBASE + {8'd0, blt_raddr};
+				cmd_tag  <= {{(TW-3){1'b0}}, K_BLT};
+				ddr_rd   <= 1;
+				blt_rack <= 1;
+			end
 		end
+		if (!blt_wreq) blt_wack <= 0;
+		if (!blt_rreq) blt_rack <= 0;
 	end
 end
 
@@ -401,6 +518,40 @@ reg    [8:0] p_a[4];
 reg    [1:0] p_b[4];
 reg    [8:0] slot_base;        // the line being drawn: its slot, as the top of a bank address
 reg    [7:0] map_done;
+reg          p_spr[4];         // version 2: a sprite's pixel (else a layer's), and which sprite
+reg    [6:0] p_id[4];
+// version 2: THE OWNER BUFFER - beside the line buffer, for each pixel of the line being drawn:
+// {a layer pixel is there, a sprite pixel is there, which sprite}. Each pixel written looks at
+// what was there first: a sprite over a sprite, a sprite over a layer or a layer over a sprite
+// is a collision, kept for the frame.
+reg          o_v[4], o_spr[4]; // stage 3, by bank: the pixel written, its writer
+reg    [6:0] o_id[4];
+reg    [8:0] o_a[4];
+reg          ow_we[4];
+reg    [8:0] ow_a[4];
+reg    [8:0] ow_d[4];
+reg    [8:0] own_ra[4];
+wire   [8:0] own_q[4];
+reg  [127:0] acc_ss, acc_sl;   // this frame's collisions so far
+reg          coll_latch;       // from the renderer: a frame begins
+generate
+	for (gb = 0; gb < 4; gb = gb + 1) begin : ownb
+		ovram #(.AW(9), .DW(9)) om
+		(
+			.clk(clk),
+			.we(clr_we | ow_we[gb]),
+			.wa(clr_we ? clr_a : ow_a[gb]),
+			.wd(clr_we ? 9'd0 : ow_d[gb]),
+			.ra(own_ra[gb]),
+			.q(own_q[gb])
+		);
+	end
+endgenerate
+always @(*) begin
+	integer k, b;
+	for (b = 0; b < 4; b = b + 1) own_ra[b] = 9'd0;
+	for (k = 0; k < 4; k = k + 1) own_ra[p_b[k]] = p_a[k];
+end
 
 assign df_pop = (df_count != 0) && !c_busy;
 
@@ -458,9 +609,35 @@ always @(posedge clk) begin
 	for (k = 0; k < 4; k = k + 1) ent_we[k] <= 0;
 	if (reset) begin
 		c_busy <= 0; df_r <= 0; ls_got <= 0; cop_got <= 0; map_done <= 0;
-		for (k = 0; k < 4; k = k + 1) begin p_v[k] <= 0; bw_we[k] <= 0; end
+		for (k = 0; k < 4; k = k + 1) begin p_v[k] <= 0; bw_we[k] <= 0; o_v[k] <= 0; ow_we[k] <= 0; end
+		acc_ss <= 0; acc_sl <= 0; coll_ss <= 0; coll_sl <= 0; coll_new <= 0; blt_got <= 0;
 	end
 	else begin
+		// version 2, stage 3: the owner buffer - what was under each pixel just written
+		coll_new <= 0;
+		begin
+			reg [127:0] nss, nsl;
+			nss = acc_ss; nsl = acc_sl;
+			for (b = 0; b < 4; b = b + 1) begin
+				ow_we[b] <= o_v[b];
+				ow_a[b]  <= o_a[b];
+				if (o_spr[b]) begin
+					ow_d[b] <= {own_q[b][8], 1'b1, o_id[b]};
+					if (o_v[b] && own_q[b][7]) begin nss[o_id[b]] = 1'b1; nss[own_q[b][6:0]] = 1'b1; end
+					if (o_v[b] && own_q[b][8]) nsl[o_id[b]] = 1'b1;
+				end
+				else begin
+					ow_d[b] <= {1'b1, own_q[b][7:0]};
+					if (o_v[b] && own_q[b][7]) nsl[own_q[b][6:0]] = 1'b1;
+				end
+			end
+			if (coll_latch) begin coll_ss <= nss; coll_sl <= nsl; acc_ss <= 0; acc_sl <= 0; coll_new <= 1; end
+			else begin acc_ss <= nss; acc_sl <= nsl; end
+		end
+		for (b = 0; b < 4; b = b + 1) o_v[b] <= 0;
+		for (k = 0; k < 4; k = k + 1)
+			if (p_v[k]) begin o_v[p_b[k]] <= 1; o_a[p_b[k]] <= p_a[k]; o_spr[p_b[k]] <= p_spr[k]; o_id[p_b[k]] <= p_id[k]; end
+		if (blt_got_clr) blt_got <= 0;
 		// stage 2: the pixels through the palette into their banks
 		for (b = 0; b < 4; b = b + 1) bw_we[b] <= 0;
 		for (k = 0; k < 4; k = k + 1)
@@ -471,6 +648,8 @@ always @(posedge clk) begin
 				p_v[k] <= (c_pix[k] != 0) && (c_x[k] >= 0) && (c_x[k] < RW);
 				p_a[k] <= slot_base + {2'd0, c_x[k][8:2]};
 				p_b[k] <= c_x[k][1:0];
+				p_spr[k] <= (c_kind == K_SPR);
+				p_id[k]  <= c_t[40:34];
 			end
 			c_g <= c_g + 2'd1;
 			if (c_g == c_ng) c_busy <= 0;
@@ -500,6 +679,7 @@ always @(posedge clk) begin
 				K_LS:  begin ls_val <= df_d[df_r][df_t[df_r][4:3]*16 +: 16]; ls_got <= 1; end
 				K_COP: begin cop_word <= df_d[df_r]; cop_got <= 1; end
 				K_VRD: vrd_data <= df_d[df_r][df_t[df_r][5:3]*8 +: 8];
+				K_BLT: begin blt_rdata <= df_d[df_r]; blt_got <= 1; end
 				default: ;
 			endcase
 		end
@@ -542,6 +722,7 @@ reg  [3:0] wk, nw;             // its words
 reg [20:0] srow;               // the word of its row
 reg        shalf;
 reg [63:0] se;                 // its entry
+reg  [6:0] sidx;               // version 2: which sprite it is
 
 wire       lay = pass[1];      // pass 1 -> layer 0, pass 3 -> layer 1
 wire [1:0] sprio = (pass == 0) ? 2'd2 : (pass == 2) ? 2'd1 : 2'd0;
@@ -561,6 +742,7 @@ endtask
 
 always @(posedge clk) begin
 	ls_clr  <= 0;
+	coll_latch <= 0;
 	cop_clr <= 0;
 	if (cop_take) cop_w <= 0;
 	if (reset) begin
@@ -599,6 +781,7 @@ always @(posedge clk) begin
 				end
 				scanned <= 0;
 				clr_a <= {L[1:0], 7'd0}; clr_we <= 1;
+				if (L == 0) coll_latch <= 1;
 				st <= S_CLR;
 				sat_i <= 0;
 			end
@@ -677,7 +860,8 @@ always @(posedge clk) begin
 			fine <= vx[2:0];
 			nt   <= (RW + vx[2:0] + 7) >> 3;
 			mi   <= 0;
-			st   <= S_MAP;
+			ti   <= 0;
+			st   <= lctrl[lay][3] ? S_TILE : S_MAP;          // version 2: a bitmap layer has no map
 		end
 		S_MAP: if (!rqf_full) begin
 			if (mi >= nt) st <= S_MAPW;
@@ -708,11 +892,21 @@ always @(posedge clk) begin
 				reg  [2:0] row;
 				reg [23:0] ta;
 				reg signed [9:0] xb;
+				reg  [1:0] mw;
+				reg  [8:0] mc;
 				e   = ent_q[ti[1:0]];
 				row = e[11] ? (3'd7 - ty) : ty;
 				ta  = lctrl[lay][1] ? (tilebase[lay] + {4'd0, e[15:12], e[9:0], row, 3'd0})   // (256 colours: the bank bits are more tile number - 16384 tiles)
 				                    : (tilebase[lay] + {9'd0, e[9:0], row, 2'd0});
 				xb  = $signed({1'b0, ti, 3'd0}) - $signed({7'd0, fine});
+				// version 2: a bitmap layer - a byte a pixel, (256 << map width) bytes a row, no map
+				mw  = lctrl[lay][5:4];
+				mc  = (mc0 + {3'd0, ti}) & ((9'd32 << mw) - 9'd1);
+				if (lctrl[lay][3]) begin
+					ta = tilebase[lay] + ({13'd0, mr, ty} << (8 + mw)) + {12'd0, mc, 3'd0};
+					push(ta[23:3], {{(TW-20){1'b0}}, 1'b1, 4'd0, 1'b0, 1'b0, xb, K_TILE});
+				end
+				else
 				push(ta[23:3], {{(TW-20){1'b0}}, lctrl[lay][1], e[15:12], ta[2], e[10], xb, K_TILE});
 				ti <= ti + 6'd1;
 			end
@@ -750,7 +944,7 @@ always @(posedge clk) begin
 			else begin hk <= nh - 7'd1; st <= S_DRAW; end
 		end
 		S_DRAW: begin
-			if (hits[hk[5:0]][8:7] == sprio) begin sat_ra <= hits[hk[5:0]][6:0]; st <= S_DRAW1; end
+			if (hits[hk[5:0]][8:7] == sprio) begin sat_ra <= hits[hk[5:0]][6:0]; sidx <= hits[hk[5:0]][6:0]; st <= S_DRAW1; end
 			else if (hk == 0) begin pass <= pass + 3'd1; st <= S_PASS; end
 			else hk <= hk - 7'd1;
 		end
@@ -777,7 +971,7 @@ always @(posedge clk) begin
 			reg [5:0] px0;
 			xb  = $signed(se[15:0]) + 16'sd32 + $signed({{8{xadj[7]}}, xadj});
 			px0 = se[54] ? {wk[2:0], 3'd0} : {wk[1:0], 4'd0};
-			push(srow + {17'd0, wk}, {px0, se[54], se[59:56], shalf, se[52], se[49:48], xb, K_SPR});
+			push(srow + {17'd0, wk}, {sidx, px0, se[54], se[59:56], shalf, se[52], se[49:48], xb, K_SPR});
 			if (wk + 4'd1 == nw) begin
 				if (hk == 0) begin pass <= pass + 3'd1; st <= S_PASS; end
 				else begin hk <= hk - 7'd1; st <= S_DRAW; end
@@ -797,6 +991,100 @@ always @(posedge clk) begin
 		// the copper switched on, or moved: it waits for the next raster line 0
 		if (cop_disarm) cop_armed <= 0;
 	end
+end
+
+// ---------------------------------------------------------------------------------
+//  THE BLITTER (version 2): works in the VRAM on its own, a byte at a time, with the port
+//  when nothing else wants it. COPY (and COPY0: source bytes of 0 left out - see-through)
+//  BW x BH bytes from BSRC to BDST, rows BSSTR / BDSTR apart; FILL the same with BFILL; LINE
+//  from (LX0,LY0) to (LX1,LY1) in BFILL, in a bitmap at BDST, BDSTR bytes a row, clipped to
+//  BW x BH. The source is read a 64-bit word at a time and kept, so a row costs a read per 8.
+// ---------------------------------------------------------------------------------
+localparam B_IDLE = 0, B_RD = 1, B_RW = 2, B_WR = 3, B_WW = 4, B_NEXT = 5, B_LN = 6, B_LP = 7, B_LW = 8, B_LS = 9;
+reg   [3:0] bst;
+reg  [23:0] b_sa, b_da, b_rsa, b_rda;
+reg  [15:0] b_col, b_row;
+reg  [20:0] b_ca;              // the word kept
+reg  [63:0] b_cd;
+reg         b_cv;
+reg   [7:0] b_byte;
+reg  signed [16:0] b_x, b_y, b_dx, b_dy, b_err;
+reg  signed [1:0]  b_sx, b_sy;
+assign blt_busy = bst != B_IDLE;
+reg         blt_done_r;
+assign blt_done = blt_done_r;
+always @(posedge clk) begin
+	blt_done_r  <= 0;
+	blt_got_clr <= 0;
+	if (reset) begin bst <= B_IDLE; blt_rreq <= 0; blt_wreq <= 0; b_cv <= 0; end
+	else case (bst)
+	B_IDLE: if (blt_go) begin
+		b_sa <= bsrc; b_da <= bdst; b_rsa <= bsrc; b_rda <= bdst; b_col <= 0; b_row <= 0; b_cv <= 0;
+		if (bop == 2'd3) begin
+			b_x <= {lx0[15], lx0}; b_y <= {ly0[15], ly0};
+			b_dx <= ($signed(lx1) >= $signed(lx0)) ? ($signed({lx1[15], lx1}) - $signed({lx0[15], lx0})) : ($signed({lx0[15], lx0}) - $signed({lx1[15], lx1}));
+			b_dy <= ($signed(ly1) >= $signed(ly0)) ? ($signed({ly0[15], ly0}) - $signed({ly1[15], ly1})) : ($signed({ly1[15], ly1}) - $signed({ly0[15], ly0}));
+			b_sx <= ($signed(lx1) >= $signed(lx0)) ? 2'sd1 : -2'sd1;
+			b_sy <= ($signed(ly1) >= $signed(ly0)) ? 2'sd1 : -2'sd1;
+			bst <= B_LN;
+		end
+		else if (bw == 0 || bh == 0) blt_done_r <= 1;
+		else bst <= (bop == 2'd1) ? B_WR : B_RD;
+	end
+	// the source byte: from the kept word, or a read
+	B_RD: if (b_cv && b_ca == b_sa[23:3]) begin b_byte <= b_cd[b_sa[2:0]*8 +: 8]; bst <= B_WR; end
+	      else if (!blt_rreq) begin blt_rreq <= 1; blt_raddr <= b_sa[23:3]; end
+	      else if (blt_rack) begin blt_rreq <= 0; bst <= B_RW; end
+	B_RW: if (blt_got) begin blt_got_clr <= 1; b_cd <= blt_rdata; b_ca <= b_sa[23:3]; b_cv <= 1; bst <= B_RD; end
+	// the destination byte
+	B_WR: begin
+		reg [7:0] v;
+		v = (bop == 2'd1) ? bfill : b_byte;
+		if (bop == 2'd2 && v == 8'd0) bst <= B_NEXT;
+		else begin
+			blt_wreq <= 1; blt_waddr <= b_da; blt_wdata <= v;
+			if (b_cv && b_ca == b_da[23:3]) b_cd[b_da[2:0]*8 +: 8] <= v;     // (the kept word stays true)
+			bst <= B_WW;
+		end
+	end
+	B_WW: if (blt_wack) begin blt_wreq <= 0; bst <= B_NEXT; end
+	B_NEXT: begin
+		if (b_col + 16'd1 == bw) begin
+			b_col <= 0;
+			if (b_row + 16'd1 == bh) begin bst <= B_IDLE; blt_done_r <= 1; end
+			else begin
+				b_row <= b_row + 16'd1;
+				b_rsa <= b_rsa + {{8{bss[15]}}, bss}; b_rda <= b_rda + {{8{bds[15]}}, bds};
+				b_sa  <= b_rsa + {{8{bss[15]}}, bss}; b_da  <= b_rda + {{8{bds[15]}}, bds};
+				bst <= (bop == 2'd1) ? B_WR : B_RD;
+			end
+		end
+		else begin b_col <= b_col + 16'd1; b_sa <= b_sa + 24'd1; b_da <= b_da + 24'd1; bst <= (bop == 2'd1) ? B_WR : B_RD; end
+	end
+	// a line (Bresenham): plot, then step
+	B_LN: begin b_err <= b_dx + b_dy; bst <= B_LP; end
+	B_LP: begin
+		if (b_x >= 0 && b_x < $signed({1'b0, bw}) && b_y >= 0 && b_y < $signed({1'b0, bh})) begin
+			blt_wreq <= 1; blt_wdata <= bfill;
+			blt_waddr <= bdst + b_y[15:0] * bds + {8'd0, b_x[15:0]};
+			bst <= B_LW;
+		end
+		else bst <= B_LS;
+	end
+	B_LW: if (blt_wack) begin blt_wreq <= 0; bst <= B_LS; end
+	B_LS: begin
+		reg signed [17:0] e2;
+		if (b_x == $signed({lx1[15], lx1}) && b_y == $signed({ly1[15], ly1})) begin bst <= B_IDLE; blt_done_r <= 1; end
+		else begin
+			e2 = {b_err, 1'b0};
+			if (e2 >= b_dy) begin b_x <= b_x + b_sx; end
+			if (e2 <= b_dx) begin b_y <= b_y + b_sy; end
+			b_err <= b_err + ((e2 >= b_dy) ? b_dy : 17'sd0) + ((e2 <= b_dx) ? b_dx : 17'sd0);
+			bst <= B_LP;
+		end
+	end
+	default: bst <= B_IDLE;
+	endcase
 end
 
 endmodule

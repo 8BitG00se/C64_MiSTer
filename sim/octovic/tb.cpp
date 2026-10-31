@@ -2,7 +2,8 @@
 // pixels a line, 312 lines), a pattern for the VIC's own picture, the 6510's register writes
 // out of a script (one a microsecond), and a DDR3 that is busy at random and answers late.
 // Writes every frame's picture (504 x 312, rgb) for the reference to check.
-//   tb vram.bin script.txt frames out.rgb [seed busy% latmin latmax]
+//   tb vram.bin script.txt frames out.rgb [seed busy% latmin latmax [vram_out.bin]]
+// Script: "w reg value" (hex), "wait frame line", "r reg" (hex: prints R reg value), "irq" (prints IRQ level)
 #include "Voctovic.h"
 #include "verilated.h"
 #include <cstdio>
@@ -33,9 +34,9 @@ int main (int argc, char** argv)
     if (argc < 5) { std::printf ("tb vram.bin script.txt frames out.rgb [seed busy%% latmin latmax]\n"); return 2; }
     std::vector<uint8_t> vram (16 << 20, 0);
     { std::ifstream f (argv[1], std::ios::binary); f.read ((char*) vram.data(), vram.size()); }
-    struct Op { int kind; int a, b; };            // 0 write a=b; 1 wait for frame a line b
+    struct Op { int kind; int a, b; };            // 0 write a=b; 1 wait for frame a line b; 2 read a; 3 the IRQ line
     std::vector<Op> ops;
-    { std::ifstream f (argv[2]); std::string w; while (f >> w) { Op o; if (w == "w") { o.kind = 0; f >> std::hex >> o.a >> o.b >> std::dec; } else { o.kind = 1; f >> o.a >> o.b; } ops.push_back (o); } }
+    { std::ifstream f (argv[2]); std::string w; while (f >> w) { Op o; if (w == "w") { o.kind = 0; f >> std::hex >> o.a >> o.b >> std::dec; } else if (w == "r") { o.kind = 2; o.b = 0; f >> std::hex >> o.a >> std::dec; } else if (w == "irq") { o.kind = 3; o.a = o.b = 0; } else { o.kind = 1; f >> o.a >> o.b; } ops.push_back (o); } }
     const int frames = std::atoi (argv[3]);
     std::ofstream out (argv[4], std::ios::binary);
     const unsigned seed = argc > 5 ? std::atoi (argv[5]) : 1;
@@ -62,10 +63,12 @@ int main (int argc, char** argv)
         t->pix_en = pe;
         t->vic_x = R; t->vic_y = y; t->vic_index = vi;
         t->vic_rgb = (PAL[vi][0] << 16) | (PAL[vi][1] << 8) | PAL[vi][2];
-        t->wr = 0; t->cs = 0;
+        t->wr = 0; t->cs = 0; t->rd = 0;
         if (phase == 28 && op < ops.size() && frame >= 0)
         {
             if (ops[op].kind == 0) { t->cs = 1; t->wr = 1; t->addr = ops[op].a; t->din = ops[op].b; ++op; }
+            else if (ops[op].kind == 2) { t->cs = 1; t->rd = 1; t->addr = ops[op].a; t->eval(); std::printf ("R %02x %02x\n", ops[op].a, (unsigned) t->dout); ++op; }
+            else if (ops[op].kind == 3) { std::printf ("IRQ %d\n", (int) t->irq); ++op; }
             else if (frame > ops[op].a || (frame == ops[op].a && y >= ops[op].b)) ++op;
         }
         const bool busy = (int) (rng() % 100) < busyp;
@@ -97,6 +100,7 @@ int main (int argc, char** argv)
         t->clk = 0; t->eval();
         phase = (phase + 1) & 31; ++now;
     }
+    if (argc > 9) { std::ofstream vo (argv[9], std::ios::binary); vo.write ((const char*) vram.data(), vram.size()); }
     std::printf ("ok: %d frames, %llu clocks, script %zu/%zu\n", frames, (unsigned long long) now, op, ops.size());
     delete t;
     return 0;
