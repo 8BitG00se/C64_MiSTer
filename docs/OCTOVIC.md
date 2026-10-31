@@ -1,6 +1,6 @@
 # OctoVIC - the Octophonic 64's graphics chip
 
-By Mong00se. Version 2 (31 Oct 2026): the maths unit, the blitter, the bitmap layer, collisions and the interrupt.
+By Mong00se. Version 2 (31 Oct 2026): the maths unit, the blitter, the bitmap layer, collisions, the interrupt, see-through colours and turning and sizing.
 
 The VIC-II is untouched: every C64 program looks and runs as before. OctoVIC is a second video
 chip, in the style of an 80s arcade board, that draws behind or in front of the VIC's picture:
@@ -14,7 +14,9 @@ chip, in the style of an 80s arcade board, that draws behind or in front of the 
   changes, scroll changes with no work for the 6510
 - drawn over the whole visible picture, borders too (x -32..363, raster lines 16-299)
 - version 2: a maths unit (16x16 multiply, 32/16 divide), a blitter (copy, fill, see-through
-  copy, lines - in the VRAM, on its own), sprite collisions, and an interrupt
+  copy, lines - in the VRAM, on its own), sprite collisions, an interrupt, and see-through
+  colours (half and half, added, taken away) for layers and sprites, and a bitmap layer turned
+  and sized (rotation and zoom, perspective with the copper)
 
 ## Switching it on
 
@@ -84,6 +86,12 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | 84 | COLLIDX | which 8 sprites COLLSS / COLLSL show (0-15: sprites 8n..8n+7) |
 | 85 | COLLSS (r) | last frame: these sprites touched another sprite (a bit a sprite) |
 | 86 | COLLSL (r) | last frame: these sprites touched a layer pixel |
+| 88-8B | U0 | version 2, TURNED AND SIZED: where in the picture raster line 0's pixel 0 is, across (16.16, signed) |
+| 8C-8F | V0 | the same, down |
+| 90-93 | DUX | the step across the picture for each pixel along a line (16.16, signed; 1.0 at reset) |
+| 94-97 | DVX | the step down the picture for each pixel along a line (0 at reset) |
+| 98-9B | DUY | the step across the picture for each line down (0 at reset) |
+| 9C-9F | DVY | the step down the picture for each line down (1.0 at reset) |
 | C0 | SIDFX | OctoSID FX: b0 chorus, b1 echo (see below); also in the core's menu |
 
 ### A layer (20 + 16*k)
@@ -96,6 +104,7 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | 8-9 | SCROLLX | |
 | A-B | SCROLLY | |
 | C-E | LSBASE | the line scroll table: a signed 16-bit X offset per raster line (line n at LSBASE + 2n) |
+| F | LMODE | version 2: b0-1 how the layer's pixels mix with what is under them (see SEE-THROUGH COLOURS), b2 TURNED AND SIZED (a bitmap layer), b3 with b2: nothing drawn outside the picture (else it repeats) |
 
 A map entry is 16 bits: bits 0-9 the tile, 10 flip across, 11 flip up-down, 12-15 the palette
 bank (16 colours: palette entry = bank*16 + pixel; 256 colours: bits 12-15 are the tile number's
@@ -111,6 +120,22 @@ one byte a pixel (256 colours, 0 see-through) at TILEBASE, (map width x 8) pixel
 (map height x 8) tall, a row (map width x 8) bytes - 256 to 2048 pixels each way. It scrolls and
 wraps like a tile layer. The blitter draws straight onto it: a paint program's canvas.
 
+**TURNED AND SIZED (version 2).** A bitmap layer with LMODE b2 set is drawn at any angle and any
+size (the SNES's mode 7, and more: each line can be its own). For pixel x (0 = OctoVIC's left
+edge, x = -32 on the C64's screen; 395 the right) of raster line L the picture's pixel is
+
+    u = U0 + DUX * x + DUY * L        v = V0 + DVX * x + DVY * L        (16.16: the top 16 bits the pixel)
+
+So for a turn by angle a and a zoom z (z picture pixels to a screen pixel): DUX = DVY = z cos a,
+DVX = z sin a, DUY = -z sin a, and U0, V0 put the picture's middle where you want it:
+U0 = cu - (xc DUX + Lc DUY), V0 = cv - (xc DVX + Lc DVY) puts picture pixel (cu, cv) at (xc, Lc).
+The maths unit does the multiplies. The picture repeats in both directions (a floor that goes on
+forever) unless LMODE b3 is set. SCROLLX/Y are not used. The copper can change any of the six
+numbers on any line: a different DUX and U0 a line is a road or a floor going off into the
+distance (perspective). It costs a VRAM read for each 1 to 4 pixels (4 when neighbours share
+8 bytes - zoomed in), so it is the heaviest thing OctoVIC draws: with both layers and many big
+sprites on the same lines, keep the other layer simple.
+
 ## Sprites
 
 The sprite table: 8 bytes a sprite, sprite 0 drawn on top.
@@ -121,7 +146,22 @@ The sprite table: 8 bytes a sprite, sprite 0 drawn on top.
 | 2-3 | Y (signed) |
 | 4-5 | GFX: the graphics at SPRGFX + 32*GFX |
 | 6 | b0-1 width (8, 16, 32, 64), b2-3 height (the same), b4 flip across, b5 flip up-down, b6 256 colours, b7 on |
-| 7 | b0-3 palette bank, b4-5 priority: 0 in front of both layers, 1 between them, 2 behind both |
+| 7 | b0-3 palette bank, b4-5 priority: 0 in front of both layers, 1 between them, 2 behind both, b6-7 how its pixels mix (version 2: see below) |
+
+**SEE-THROUGH COLOURS (version 2).** A layer (LMODE b0-1) or a sprite (byte 7 b6-7) can mix each
+of its pixels with whatever is already drawn under it, red, green and blue each on its own:
+
+| mode | the pixel's colour |
+|---|---|
+| 0 | its own (as version 1) |
+| 1 | half and half: (under + own) / 2 - glass, ghosts, shadows in a colour |
+| 2 | added: under + own, 255 at most - light, fire, beams, glows |
+| 3 | taken away: under - own, 0 at least - shadows, darkness |
+
+Pixel 0 stays see-through, and where nothing is under the pixel (the backdrop or the VIC shows
+there) it is drawn as it is. A sprite mixes with what is drawn before it - the sprites behind it,
+and the layers below its priority - so the order in HOW IT IS DRAWN decides what it sees.
+Free: no extra time, any number of pixels.
 
 Graphics are rows of (width/2) bytes (16 colours) or width bytes (256 colours), top row first.
 Up to 64 sprites on one raster line - with both layers on, about 3000 sprite pixels a line (48 sprites 64 wide in 256 colours) whatever the DDR3 is doing.
@@ -188,7 +228,7 @@ or COPBASE is written, it waits for the next line 0 before it does anything. Reg
 
 Each raster line is drawn into a line buffer up to three lines ahead of the beam, in this order:
 sprites of priority 2, layer 0, sprites of priority 1, layer 1, sprites of priority 0 - each
-opaque pixel over what is there. The palette, the backdrop, CTRL and KEY are taken as the line is drawn,
+opaque pixel over what is there (or mixed with it: SEE-THROUGH COLOURS). The palette, the backdrop, CTRL and KEY are taken as the line is drawn,
 so a change to any of them by the copper takes effect on its own line (a gradient sky: a backdrop
 colour a line; a split: the VIC in front of one band and behind the next). Written by the 6510
 instead, CTRL and KEY show up to three lines later. The VIC palette acts as the beam gets there.

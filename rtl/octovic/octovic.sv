@@ -12,7 +12,9 @@
 //
 //  Version 2 adds: a maths unit (multiply, divide), a blitter (copy, fill, skip-0 copy, line) that
 //  works in the VRAM on its own, sprite collisions (sprite-sprite, sprite-layer), and an
-//  interrupt (a raster line, the collisions, the blitter finished).
+//  interrupt (a raster line, the collisions, the blitter finished); a bitmap layer turned and
+//  sized (each line's pixels walked across the picture at any angle and scale); see-through colours (a layer's
+//  or a sprite's pixels mixed with what is under them: half and half, added, taken away).
 // =====================================================================================
 module octovic
 (
@@ -79,6 +81,9 @@ reg  [23:0] sat_fr;                 // the sprite table this frame copies
 reg   [1:0] palsel;
 reg   [7:0] palidx, palr, palg;
 reg   [7:0] lctrl[2];
+reg   [7:0] lmode[2];               // version 2: b0-1 how the layer's pixels mix with what is under them,
+                                    //   b2 turned and sized (a bitmap layer), b3 nothing outside the picture
+reg  [31:0] af_u0, af_v0, af_dux, af_dvx, af_duy, af_dvy;   // version 2: turning and sizing, 16.16
 reg  [23:0] mapbase[2], tilebase[2], lsbase[2];
 reg  [15:0] scrollx[2], scrolly[2];
 reg  [23:0] vpal[16];
@@ -163,7 +168,8 @@ always @(posedge clk) begin
 		copstep <= 0; satstep <= 0; copsteps <= 0; satsteps <= 0; copdiv <= 0; satdiv <= 0; anim_rst <= 1;
 		vaddr <= 0; vinc <= 1; ctrl <= 0; key <= 0; xadj <= 0; yadj <= 0; copen <= 0; sprcount <= 0;
 		copbase <= 0; satbase <= 0; sprgfx <= 0; palsel <= 0; palidx <= 0; palr <= 0; palg <= 0;
-		lctrl[0] <= 0; lctrl[1] <= 0; scrollx[0] <= 0; scrollx[1] <= 0; scrolly[0] <= 0; scrolly[1] <= 0;
+		lctrl[0] <= 0; lctrl[1] <= 0; lmode[0] <= 0; lmode[1] <= 0;
+		af_u0 <= 0; af_v0 <= 0; af_dux <= 32'h10000; af_dvx <= 0; af_duy <= 0; af_dvy <= 32'h10000; scrollx[0] <= 0; scrollx[1] <= 0; scrolly[0] <= 0; scrolly[1] <= 0;
 		mapbase[0] <= 0; mapbase[1] <= 0; tilebase[0] <= 0; tilebase[1] <= 0; lsbase[0] <= 0; lsbase[1] <= 0;
 		for (ii = 0; ii < 16; ii = ii + 1) vpal[ii] <= c64col(ii[3:0]);
 		backdrop <= 0;
@@ -237,6 +243,7 @@ always @(posedge clk) begin
 						palidx <= palidx + 8'd1;
 					end
 				8'h20, 8'h30: lctrl[rw_a[4]] <= rw_d;
+				8'h2F, 8'h3F: lmode[rw_a[4]] <= rw_d;
 				8'h21, 8'h31: mapbase[rw_a[4]][7:0]   <= rw_d;
 				8'h22, 8'h32: mapbase[rw_a[4]][15:8]  <= rw_d;
 				8'h23, 8'h33: mapbase[rw_a[4]][23:16] <= rw_d;
@@ -275,6 +282,12 @@ always @(posedge clk) begin
 				8'h82: irqen <= rw_d[3:0];
 				8'h83: irqst <= irqst & ~rw_d[3:0];
 				8'h84: collidx <= rw_d[3:0];
+				8'h88: af_u0[7:0]   <= rw_d;  8'h89: af_u0[15:8]   <= rw_d;  8'h8A: af_u0[23:16]   <= rw_d;  8'h8B: af_u0[31:24]   <= rw_d;
+				8'h8C: af_v0[7:0]   <= rw_d;  8'h8D: af_v0[15:8]   <= rw_d;  8'h8E: af_v0[23:16]   <= rw_d;  8'h8F: af_v0[31:24]   <= rw_d;
+				8'h90: af_dux[7:0]  <= rw_d;  8'h91: af_dux[15:8]  <= rw_d;  8'h92: af_dux[23:16]  <= rw_d;  8'h93: af_dux[31:24]  <= rw_d;
+				8'h94: af_dvx[7:0]  <= rw_d;  8'h95: af_dvx[15:8]  <= rw_d;  8'h96: af_dvx[23:16]  <= rw_d;  8'h97: af_dvx[31:24]  <= rw_d;
+				8'h98: af_duy[7:0]  <= rw_d;  8'h99: af_duy[15:8]  <= rw_d;  8'h9A: af_duy[23:16]  <= rw_d;  8'h9B: af_duy[31:24]  <= rw_d;
+				8'h9C: af_dvy[7:0]  <= rw_d;  8'h9D: af_dvy[15:8]  <= rw_d;  8'h9E: af_dvy[23:16]  <= rw_d;  8'h9F: af_dvy[31:24]  <= rw_d;
 				default: ;
 			endcase
 		end
@@ -303,6 +316,7 @@ always @(*) begin
 		8'h85: dout = coll_ss[collidx*8 +: 8];
 		8'h86: dout = coll_sl[collidx*8 +: 8];
 		8'h20, 8'h30: dout = lctrl[addr[4]];
+		8'h2F, 8'h3F: dout = lmode[addr[4]];
 		8'h28, 8'h38: dout = scrollx[addr[4]][7:0];  8'h29, 8'h39: dout = scrollx[addr[4]][15:8];
 		8'h2A, 8'h3A: dout = scrolly[addr[4]][7:0];  8'h2B, 8'h3B: dout = scrolly[addr[4]][15:8];
 		default: dout = 8'hFF;
@@ -319,8 +333,11 @@ localparam K_MAP = 3'd0, K_TILE = 3'd1, K_SPR = 3'd2, K_SAT = 3'd3, K_LS = 3'd4,
 //   TILE: [12:3] raster X of pixel 0 (signed), [13] flip, [14] high half, [18:15] bank, [19] 256 colours
 //   SPR:  [18:3] raster X of the sprite's pixel 0 (signed), [20:19] width, [21] flip, [22] high half,
 //         [26:23] bank, [27] 256 colours, [33:28] the word's first sprite pixel, [40:34] the sprite
+//   TILE and SPR: [42:41] how the pixels mix (0 over, 1 half and half, 2 added, 3 taken away)
+//   TILE, turned and sized (version 2): [20] set, [22:21] pixels in the word less 1, [34:23] each
+//         one's byte in the word (3 bits each), [12:3] the first one's place on the line
 //   SAT:  [9:3] the sprite    LS: [4:3] lane    VRD: [5:3] byte    BLT: (the blitter's word)
-localparam TW = 41;
+localparam TW = 43;
 
 // the renderer's requests: a little FIFO, so it can ask once a clock
 reg    [20:0] rqf_w[4];
@@ -519,29 +536,37 @@ reg    [1:0] p_b[4];
 reg    [8:0] slot_base;        // the line being drawn: its slot, as the top of a bank address
 reg    [7:0] map_done;
 reg          p_spr[4];         // version 2: a sprite's pixel (else a layer's), and which sprite
+reg    [1:0] p_m[4];           // version 2: how it mixes
 reg    [6:0] p_id[4];
 // version 2: THE OWNER BUFFER - beside the line buffer, for each pixel of the line being drawn:
-// {a layer pixel is there, a sprite pixel is there, which sprite}. Each pixel written looks at
+// {drawn, its colour, a layer pixel is there, a sprite pixel is there, which sprite} - a copy
+// of the line buffer the drawing side can read, so a see-through pixel can be mixed with what is
+// under it. Each pixel written looks at
 // what was there first: a sprite over a sprite, a sprite over a layer or a layer over a sprite
 // is a collision, kept for the frame.
 reg          o_v[4], o_spr[4]; // stage 3, by bank: the pixel written, its writer
 reg    [6:0] o_id[4];
+reg    [1:0] o_m[4];            // how it mixes
+reg   [23:0] o_rgb[4];          // its colour
 reg    [8:0] o_a[4];
 reg          ow_we[4];
 reg    [8:0] ow_a[4];
-reg    [8:0] ow_d[4];
+reg   [33:0] ow_d[4];
+reg          ow2_we[4];        // the write before (the RAM gives the old value for two clocks: those
+reg    [8:0] ow2_a[4];         // two writes are passed straight on to a pixel at the same place)
+reg   [33:0] ow2_d[4];
 reg    [8:0] own_ra[4];
-wire   [8:0] own_q[4];
+wire  [33:0] own_q[4];
 reg  [127:0] acc_ss, acc_sl;   // this frame's collisions so far
 reg          coll_latch;       // from the renderer: a frame begins
 generate
 	for (gb = 0; gb < 4; gb = gb + 1) begin : ownb
-		ovram #(.AW(9), .DW(9)) om
+		ovram #(.AW(9), .DW(34)) om
 		(
 			.clk(clk),
 			.we(clr_we | ow_we[gb]),
 			.wa(clr_we ? clr_a : ow_a[gb]),
-			.wd(clr_we ? 9'd0 : ow_d[gb]),
+			.wd(clr_we ? 34'd0 : ow_d[gb]),
 			.ra(own_ra[gb]),
 			.q(own_q[gb])
 		);
@@ -569,7 +594,12 @@ always @(*) begin
 	for (k = 0; k < 4; k = k + 1) begin
 		c = {2'b00, c_g, k[1:0]};
 		sc = 0; byt = 0; spx = 0; w7 = 0;
-		if (c_kind == K_TILE) begin
+		if (c_kind == K_TILE && c_t[20]) begin           // version 2: turned and sized
+			c_pix[k] = (k[1:0] <= c_t[22:21]) ? c_d[c_t[23 + k*3 +: 3]*8 +: 8] : 8'd0;
+			c_idx[k] = c_pix[k];
+			c_x[k]   = $signed({{7{c_t[12]}}, c_t[12:3]}) + $signed({11'd0, c});
+		end
+		else if (c_kind == K_TILE) begin
 			sc = c_t[13] ? (6'd7 - c) : c;
 			if (c_t[19]) c_pix[k] = c_d[sc[2:0]*8 +: 8];
 			else begin
@@ -619,16 +649,35 @@ always @(posedge clk) begin
 			reg [127:0] nss, nsl;
 			nss = acc_ss; nsl = acc_sl;
 			for (b = 0; b < 4; b = b + 1) begin
+				reg [23:0] c, u;
+				reg [33:0] oq;
+				reg  [8:0] t;
+				integer ch;
+				// the colour: the pixel's own, or mixed with what is under it (when something is)
+				oq = (ow_we[b] && ow_a[b] == o_a[b]) ? ow_d[b] : (ow2_we[b] && ow2_a[b] == o_a[b]) ? ow2_d[b] : own_q[b];
+				ow2_we[b] <= ow_we[b] && !clr_we; ow2_a[b] <= ow_a[b]; ow2_d[b] <= ow_d[b];
+				u = oq[32:9];
+				c = o_rgb[b];
+				if (o_m[b] != 2'd0 && oq[33])
+					for (ch = 0; ch < 3; ch = ch + 1) begin
+						case (o_m[b])
+							2'd1: t = ({1'b0, u[ch*8 +: 8]} + {1'b0, o_rgb[b][ch*8 +: 8]}) >> 1;
+							2'd2: begin t = {1'b0, u[ch*8 +: 8]} + {1'b0, o_rgb[b][ch*8 +: 8]}; if (t[8]) t = 9'd255; end
+							default: t = (u[ch*8 +: 8] > o_rgb[b][ch*8 +: 8]) ? ({1'b0, u[ch*8 +: 8]} - {1'b0, o_rgb[b][ch*8 +: 8]}) : 9'd0;
+						endcase
+						c[ch*8 +: 8] = t[7:0];
+					end
+				bw_we[b] <= o_v[b]; bw_a[b] <= o_a[b]; bw_d[b] <= c;
 				ow_we[b] <= o_v[b];
 				ow_a[b]  <= o_a[b];
 				if (o_spr[b]) begin
-					ow_d[b] <= {own_q[b][8], 1'b1, o_id[b]};
-					if (o_v[b] && own_q[b][7]) begin nss[o_id[b]] = 1'b1; nss[own_q[b][6:0]] = 1'b1; end
-					if (o_v[b] && own_q[b][8]) nsl[o_id[b]] = 1'b1;
+					ow_d[b] <= {1'b1, c, oq[8], 1'b1, o_id[b]};
+					if (o_v[b] && oq[7]) begin nss[o_id[b]] = 1'b1; nss[oq[6:0]] = 1'b1; end
+					if (o_v[b] && oq[8]) nsl[o_id[b]] = 1'b1;
 				end
 				else begin
-					ow_d[b] <= {1'b1, own_q[b][7:0]};
-					if (o_v[b] && own_q[b][7]) nsl[own_q[b][6:0]] = 1'b1;
+					ow_d[b] <= {1'b1, c, 1'b1, oq[7:0]};
+					if (o_v[b] && oq[7]) nsl[oq[6:0]] = 1'b1;
 				end
 			end
 			if (coll_latch) begin coll_ss <= nss; coll_sl <= nsl; acc_ss <= 0; acc_sl <= 0; coll_new <= 1; end
@@ -636,12 +685,9 @@ always @(posedge clk) begin
 		end
 		for (b = 0; b < 4; b = b + 1) o_v[b] <= 0;
 		for (k = 0; k < 4; k = k + 1)
-			if (p_v[k]) begin o_v[p_b[k]] <= 1; o_a[p_b[k]] <= p_a[k]; o_spr[p_b[k]] <= p_spr[k]; o_id[p_b[k]] <= p_id[k]; end
+			if (p_v[k]) begin o_v[p_b[k]] <= 1; o_a[p_b[k]] <= p_a[k]; o_spr[p_b[k]] <= p_spr[k]; o_id[p_b[k]] <= p_id[k]; o_m[p_b[k]] <= p_m[k]; o_rgb[p_b[k]] <= palq[k]; end
 		if (blt_got_clr) blt_got <= 0;
-		// stage 2: the pixels through the palette into their banks
-		for (b = 0; b < 4; b = b + 1) bw_we[b] <= 0;
-		for (k = 0; k < 4; k = k + 1)
-			if (p_v[k]) begin bw_we[p_b[k]] <= 1; bw_a[p_b[k]] <= p_a[k]; bw_d[p_b[k]] <= palq[k]; end
+		// (stage 2, the pixels through the palette: into stage 3 above, which writes the banks)
 		for (k = 0; k < 4; k = k + 1) p_v[k] <= 0;
 		if (c_busy) begin
 			for (k = 0; k < 4; k = k + 1) begin
@@ -650,6 +696,7 @@ always @(posedge clk) begin
 				p_b[k] <= c_x[k][1:0];
 				p_spr[k] <= (c_kind == K_SPR);
 				p_id[k]  <= c_t[40:34];
+				p_m[k]   <= c_t[42:41];
 			end
 			c_g <= c_g + 2'd1;
 			if (c_g == c_ng) c_busy <= 0;
@@ -669,7 +716,7 @@ always @(posedge clk) begin
 					if (L == 9'd200 && df_t[df_r][8:3] < 6'd8) $display("  MAP i0 %0d lane %0d data %h", df_t[df_r][8:3], df_t[df_r][10:9], df_d[df_r]);
 `endif
 				end
-				K_TILE: begin c_busy <= 1; c_g <= 0; c_ng <= 2'd1; end
+				K_TILE: begin c_busy <= 1; c_g <= 0; c_ng <= df_t[df_r][20] ? 2'd0 : 2'd1; end
 				K_SPR: begin
 					c_busy <= 1; c_g <= 0;
 					// a word holds 8 pixels of 256 colours, 16 of 16 colours, or 8 (a half) of an 8-wide 16-colour sprite
@@ -693,7 +740,18 @@ end
 // ---------------------------------------------------------------------------------
 localparam S_WAIT = 0, S_COP = 1, S_COPW = 2, S_COPA = 3, S_SAT = 4, S_PASS = 5,
            S_LAY0 = 6, S_LSW = 7, S_LAY1 = 8, S_MAP = 9, S_MAPW = 10, S_TILE = 11,
-           S_SCAN = 12, S_SCAN2 = 13, S_DRAW = 14, S_DRAW1 = 15, S_DRAW2 = 16, S_DRAW3 = 18, S_END = 17, S_CLR = 19;
+           S_SCAN = 12, S_SCAN2 = 13, S_DRAW = 14, S_DRAW1 = 15, S_DRAW2 = 16, S_DRAW3 = 18, S_END = 17, S_CLR = 19,
+           S_AFF0 = 20, S_AFF = 21;
+// version 2: a turned and sized layer - each pixel's place in the picture, (u, v), 16.16: at the
+// line's left (U0, V0) + (DUY, DVY) x the line, then + (DUX, DVX) a pixel along. Up to 4 pixels
+// that fall in the same 8 bytes go as one read.
+reg  [31:0] af_u, af_v;
+reg  [8:0]  af_r;              // the pixel
+reg         af_bn;             // a read being gathered: its word, its pixels
+reg  [1:0]  af_n;
+reg  [20:0] af_w;
+reg  [11:0] af_off;
+reg  [8:0]  af_r0;
 
 reg  [4:0] st;
 reg  [8:0] L;                  // the raster line being drawn
@@ -730,7 +788,8 @@ wire signed [15:0] sy  = $signed({7'd0, L}) - 16'sd51 - $signed({{8{yadj[7]}}, y
 wire signed [15:0] sx0 = -16'sd32 - $signed({{8{xadj[7]}}, xadj});    // the x of raster X 0
 wire drained = rqf_empty && (outstanding == 0) && (df_count == 0) && !c_busy
                && !p_v[0] && !p_v[1] && !p_v[2] && !p_v[3]
-               && !bw_we[0] && !bw_we[1] && !bw_we[2] && !bw_we[3];
+               && !bw_we[0] && !bw_we[1] && !bw_we[2] && !bw_we[3]
+               && !o_v[0] && !o_v[1] && !o_v[2] && !o_v[3];
 
 // how far ahead line L is
 wire [8:0] ahead = (L >= vic_y) ? (L - vic_y) : (L + nl - vic_y);
@@ -837,7 +896,8 @@ always @(posedge clk) begin
 
 		// a layer: the line scroll, the map entries, then the tiles
 		S_LAY0: begin
-			if (lctrl[lay][2]) begin
+			if (lctrl[lay][3] && lmode[lay][2]) st <= S_AFF0;
+			else if (lctrl[lay][2]) begin
 				if (!rqf_full) begin
 					reg [23:0] la;
 					la = lsbase[lay] + {14'd0, L, 1'b0};
@@ -904,10 +964,10 @@ always @(posedge clk) begin
 				mc  = (mc0 + {3'd0, ti}) & ((9'd32 << mw) - 9'd1);
 				if (lctrl[lay][3]) begin
 					ta = tilebase[lay] + ({13'd0, mr, ty} << (8 + mw)) + {12'd0, mc, 3'd0};
-					push(ta[23:3], {{(TW-20){1'b0}}, 1'b1, 4'd0, 1'b0, 1'b0, xb, K_TILE});
+					push(ta[23:3], {lmode[lay][1:0], {(TW-22){1'b0}}, 1'b1, 4'd0, 1'b0, 1'b0, xb, K_TILE});
 				end
 				else
-				push(ta[23:3], {{(TW-20){1'b0}}, lctrl[lay][1], e[15:12], ta[2], e[10], xb, K_TILE});
+				push(ta[23:3], {lmode[lay][1:0], {(TW-22){1'b0}}, lctrl[lay][1], e[15:12], ta[2], e[10], xb, K_TILE});
 				ti <= ti + 6'd1;
 			end
 		end
@@ -971,12 +1031,58 @@ always @(posedge clk) begin
 			reg [5:0] px0;
 			xb  = $signed(se[15:0]) + 16'sd32 + $signed({{8{xadj[7]}}, xadj});
 			px0 = se[54] ? {wk[2:0], 3'd0} : {wk[1:0], 4'd0};
-			push(srow + {17'd0, wk}, {sidx, px0, se[54], se[59:56], shalf, se[52], se[49:48], xb, K_SPR});
+			push(srow + {17'd0, wk}, {se[63:62], sidx, px0, se[54], se[59:56], shalf, se[52], se[49:48], xb, K_SPR});
 			if (wk + 4'd1 == nw) begin
 				if (hk == 0) begin pass <= pass + 3'd1; st <= S_PASS; end
 				else begin hk <= hk - 7'd1; st <= S_DRAW; end
 			end
 			else wk <= wk + 4'd1;
+		end
+
+		// version 2: a turned and sized layer, a pixel a clock
+		S_AFF0: begin
+			af_u <= af_u0 + af_duy * {23'd0, L};
+			af_v <= af_v0 + af_dvy * {23'd0, L};
+			af_r <= 0; af_bn <= 0;
+			st <= S_AFF;
+		end
+		S_AFF: begin
+			reg  [1:0] mw, mh;
+			reg [15:0] ui, vi;
+			reg        ok, last, flush;
+			reg [23:0] a;
+			mw = lctrl[lay][5:4]; mh = lctrl[lay][7:6];
+			last = (af_r == RW);
+			ui = af_u[31:16]; vi = af_v[31:16];
+			ok = !last && (!lmode[lay][3] || ((ui >> (8 + mw)) == 16'd0 && (vi >> (8 + mh)) == 16'd0));
+			ui = ui & ((16'd256 << mw) - 16'd1);
+			vi = vi & ((16'd256 << mh) - 16'd1);
+			a  = tilebase[lay] + ({8'd0, vi} << (8 + mw)) + {8'd0, ui};
+			flush = af_bn && (!ok || a[23:3] != af_w || af_n == 2'd3);
+			if (!flush || !rqf_full) begin
+				if (flush)
+					push(af_w, {lmode[lay][1:0], {(TW-37){1'b0}}, af_off, af_n, 1'b1, 1'b1, 4'd0, 1'b0, 1'b0, 1'b0, af_r0, K_TILE});
+				if (last) begin
+					if (!flush || !af_bn) begin pass <= pass + 3'd1; st <= S_PASS; end
+					af_bn <= 0;
+				end
+				else begin
+					if (ok) begin
+						if (af_bn && !flush) begin
+							af_n <= af_n + 2'd1;
+							af_off[(af_n + 2'd1)*3 +: 3] <= a[2:0];
+						end
+						else begin
+							af_bn <= 1; af_n <= 0; af_w <= a[23:3]; af_r0 <= af_r;
+							af_off <= {9'd0, a[2:0]};
+						end
+					end
+					else af_bn <= 0;
+					af_r <= af_r + 9'd1;
+					af_u <= af_u + af_dux;
+					af_v <= af_v + af_dvx;
+				end
+			end
 		end
 
 		S_END: if (drained && !cop_w) begin

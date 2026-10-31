@@ -28,6 +28,7 @@ class Octo:
         s.sat = bytes(1024)
         # version 2
         s.divq = 0; s.divr = 0
+        s.r[0x92] = 1; s.r[0x9E] = 1                    # turning and sizing: 1.0 across, 1.0 down
         s.acc_ss = 0; s.acc_sl = 0; s.coll_ss = 0; s.coll_sl = 0
     def g(s, n, d=0): return s.r.get(n, d)
     def g24(s, n): return s.g(n) | s.g(n+1) << 8 | s.g(n+2) << 16
@@ -103,8 +104,18 @@ class Octo:
         xadj, yadj = s8(s.g(0x0C)), s8(s.g(0x0D))
         y = L - 51 - yadj
         sx0 = -32 - xadj
+        def put(R, c, m):                               # version 2: see-through colours
+            u = buf[R]
+            if m and u is not None:
+                o = 0
+                for sh in (0, 8, 16):
+                    a, b = (u >> sh) & 255, (c >> sh) & 255
+                    v = (a + b) >> 1 if m == 1 else min(255, a + b) if m == 2 else max(0, a - b)
+                    o |= v << sh
+                c = o
+            buf[R] = c
         def layer(k):
-            b = 0x20 + 16*k; lc = s.g(b)
+            b = 0x20 + 16*k; lc = s.g(b); lmr = s.g(b+15); lm = lmr & 3
             if not lc & 1: return
             bpp8 = lc & 2; mw = 32 << ((lc >> 4) & 3); mh = 32 << ((lc >> 6) & 3)
             mapb, tileb = s.g24(b+1), s.g24(b+4)
@@ -112,13 +123,29 @@ class Octo:
             vy = (y + s.g16(b+10)) & 0xFFFF
             vx0 = (sx0 + s.g16(b+8) + ls) & 0xFFFF
             ty = vy & 7; mr = (vy >> 3) & (mh-1)
+            if lc & 8 and lmr & 4:                      # version 2: turned and sized
+                g32 = lambda n: s.g24(n) | s.g(n+3) << 24
+                M = 0xFFFFFFFF
+                u = (g32(0x88) + g32(0x98) * L) & M; v = (g32(0x8C) + g32(0x9C) * L) & M
+                dux, dvx = g32(0x90), g32(0x94)
+                wb, hb = 8 + ((lc >> 4) & 3), 8 + ((lc >> 6) & 3)
+                for R in range(RW):
+                    ui, vi = u >> 16, v >> 16
+                    u = (u + dux) & M; v = (v + dvx) & M
+                    if lmr & 8 and (ui >> wb or vi >> hb): continue
+                    pix = s.vram[(tileb + ((vi & ((1 << hb) - 1)) << wb) + (ui & ((1 << wb) - 1))) & 0xFFFFFF]
+                    if pix:
+                        put(R, s.pal[pix], lm)
+                        if own[R] & 0x80: s.acc_sl |= 1 << (own[R] & 0x7F)
+                        own[R] |= 0x100
+                return
             if lc & 8:                                  # version 2: a bitmap layer, a byte a pixel
                 rowa = tileb + ((vy & (mh*8 - 1)) * mw * 8)
                 for R in range(RW):
                     vx = (vx0 + R) & 0xFFFF
                     pix = s.vram[(rowa + (vx & (mw*8 - 1))) & 0xFFFFFF]
                     if pix:
-                        buf[R] = s.pal[pix]
+                        put(R, s.pal[pix], lm)
                         if own[R] & 0x80: s.acc_sl |= 1 << (own[R] & 0x7F)
                         own[R] |= 0x100
                 return
@@ -134,7 +161,7 @@ class Octo:
                     bb = s.vram[(tileb + tile*32 + row*4 + c//2) & 0xFFFFFF]
                     pix = bb >> 4 if c % 2 == 0 else bb & 15; idx = bank*16 + pix
                 if pix:
-                    buf[R] = s.pal[idx]
+                    put(R, s.pal[idx], lm)
                     if own[R] & 0x80: s.acc_sl |= 1 << (own[R] & 0x7F)
                     own[R] |= 0x100
         def sprites(p):
@@ -153,6 +180,7 @@ class Octo:
                 a, a2 = e[6], e[7]
                 w, h = 8 << (a & 3), 8 << ((a >> 2) & 3)
                 hf, vf, bpp8, bank = (a >> 4) & 1, (a >> 5) & 1, (a >> 6) & 1, a2 & 15
+                sm = a2 >> 6
                 r = y - Y; rr = h-1-r if vf else r
                 bpr = w if bpp8 else w // 2
                 ra = gfx0 + gi*32 + rr*bpr
@@ -163,7 +191,7 @@ class Octo:
                         bb = s.vram[(ra + sc//2) & 0xFFFFFF]
                         pix = bb >> 4 if sc % 2 == 0 else bb & 15; idx = bank*16 + pix
                     if pix and 0 <= R < RW:
-                        buf[R] = s.pal[idx]
+                        put(R, s.pal[idx], sm)
                         if own[R] & 0x80: s.acc_ss |= 1 << j | 1 << (own[R] & 0x7F)
                         if own[R] & 0x100: s.acc_sl |= 1 << j
                         own[R] = (own[R] & 0x100) | 0x80 | j

@@ -30,7 +30,7 @@ for m in range(64*64):
 pos = [(20, 20), (36, 28), (150, 40), (60, 80), (250, 150), (264, 160), (100, 200), (300, 30), (64, 100), (232, 60), (180, 120), (196, 124)]
 for j, (X, Y) in enumerate(pos):
     gi = j * 32
-    vram[SAT + j*8: SAT + j*8 + 8] = bytes([X & 255, (X >> 8) & 255, Y & 255, (Y >> 8) & 255, gi & 255, gi >> 8, 0x40 | 0x80 | 2 | 8, rng.randrange(3) << 4])
+    vram[SAT + j*8: SAT + j*8 + 8] = bytes([X & 255, (X >> 8) & 255, Y & 255, (Y >> 8) & 255, gi & 255, gi >> 8, 0x40 | 0x80 | 2 | 8, rng.randrange(3) << 4 | (j % 4) << 6])   # (version 2: each mixes its own way)
     for b in range(32*32): vram[SGFX + gi*32 + b] = 0 if (b % 32 < 4 and j % 3 == 0) else (j * 17 + b) & 255 or 1
 W(0x20, 1 | 2 | 1 << 4 | 1 << 6); W24(0x21, MAP0); W24(0x24, TILES0); W16(0x28, 0); W16(0x2A, 0)
 W24(0x13, SAT); W24(0x16, SGFX); W(0x0F, len(pos))
@@ -67,7 +67,14 @@ blit(3, 0, BL + 0x10000, 120, 90, 0, 128, fill=0x79, line=(60, 0, 60, 89))
 blit(0, BL, TILES0 + 64, 8, 8, 64, 8)                                # into tile 1 (the picture shows it)
 # a bitmap layer (layer 1: a byte a pixel, 512 x 512), drawn on by the blitter - it shows
 BMP = 0x200000
-W(0x30, 1 | 2 | 8 | 1 << 4 | 1 << 6); W24(0x34, BMP); W16(0x38, 5); W16(0x3A, 3)
+W(0x30, 1 | 2 | 8 | 1 << 4 | 1 << 6); W24(0x34, BMP)
+# version 2: turned (a third of the way round) and sized (x1.25), half and half; odd seeds: nothing outside it
+import math
+an, sc = 0.52 + seed * 0.1, 0.8
+fx = lambda f: int(round(f * 65536)) & 0xFFFFFFFF
+W32(0x90, fx(math.cos(an) * sc)); W32(0x94, fx(math.sin(an) * sc)); W32(0x98, fx(-math.sin(an) * sc)); W32(0x9C, fx(math.cos(an) * sc))
+W32(0x88, fx(-40.3)); W32(0x8C, fx(60.7 - seed * 3))
+W(0x3F, 1 | 4 | (8 if seed & 1 else 0)); W16(0x38, 5); W16(0x3A, 3)
 blit(1, 0, BMP + 40 * 512 + 100, 60, 30, 0, 512, fill=0x33)
 for k in range(6):
     blit(3, 0, BMP, 512, 512, 0, 512, fill=0x40 + k * 9, line=(10 + k * 30, 20, 300 - k * 25, 250 - k * 13))
