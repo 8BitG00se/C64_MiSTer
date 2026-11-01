@@ -5,8 +5,9 @@ AUTORUN = $02A8         ; 1: SHIFT+RUN/STOP asked for LOAD"*",8 - RUN goes in af
 PLOT    = $FFF0
         * = $F92C
 ; BASIC's cold start calls this instead of printing COMMODORE 64 BASIC V2 / BYTES FREE
-newboot jsr $F72C                ; OCTOPHONIC OS: the @ and / commands (wedge.asm)
-        lda #$06                ; one colour, border and page (navy, with OctoVIC)
+newboot jsr $A644                ; NEW: the program pointers ($2B-$2E, $0801), as the banner
+                                ; routine it replaces ($E422) did on its way out
+frame   lda #$06                ; (the browser calls frame: the screen, without the NEW)                ; one colour, border and page (navy, with OctoVIC)
         sta $D020
         sta $D021
         lda #$01
@@ -154,7 +155,15 @@ octon   ldx #0
         sta $D605               ; on, the VIC's palette, KEY
         lda #$01                ; (left open while the start screen shows; RUN, SYS and LOAD shut it)
         sta OCTST
-npos    ldx #4                  ; READY. comes on row 5
+npos    ldx #8                  ; OCTOPHONIC OS: F1 BROWSE, right of OCTOVIC 256
+-       lda hint,x
+        sta $0400 + 120 + 31,x
+        lda #$0F
+        sta $D800 + 120 + 31,x
+        dex
+        bpl -
+        jsr $F72C               ; the @ and / commands, F1 (wedge.asm)
+        ldx #4                  ; READY. comes on row 5
         ldy #0
         clc
         jmp PLOT
@@ -208,6 +217,7 @@ shiftrun sei
 
 title   !scr "octophonic 64 v1.1", 0
 vicname !scr "octovic 256", 0
+hint    !scr "f1 browse"
 !src "bandpal.inc"
 credit  !text "OCTOPHONIC 64 V1.1 - BY NEAL - 8BITG00SE", 0
 tapeend

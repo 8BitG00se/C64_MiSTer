@@ -1,33 +1,51 @@
 diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
 new file mode 100644
-index 0000000..be37f64
+index 0000000..be56762
 --- /dev/null
 +++ b/support/octo/octo.cpp
-@@ -0,0 +1,503 @@
-+// OCTOPHONIC OS (milestone 1) - by Mong00se.
+@@ -0,0 +1,862 @@
++// OCTOPHONIC OS (milestone 1, build 2) - by Mong00se.
 +//
 +// With /media/fat/octophonic/os.ini on the card, the MiSTer starts straight into the Octophonic 64
-+// core instead of the menu, plain F12 goes to the C64 (Win+F12 opens the MiSTer menu), and the
-+// 6502 can ask Main for things through a small mailbox in the core ($D6F0-$D6FF, OctoVIC page):
++// core instead of the menu, plain F12 goes to the C64 (Win+F12, or F12 held for 2 seconds, opens the
++// MiSTer menu), and the 6502 asks Main for things through a mailbox in the core ($D6F0-$D6FF).
 +//
-+//   01 DIR    a page of the current folder as ready-to-print PETSCII text at ADDR
-+//   02 CHDIR  change folder (NAME; ".." up, "" or "/" back to the start folder)
-+//   03 LOAD   file NAME into C64 RAM at its own load address (ARG b0: at ADDR), no reset
-+//   04 RUN    file NAME the way the menu loads a program (.prg) or cartridge (.crt);
-+//             a disk image (.d64/.g64/.d81) is put in drive 8 instead
-+//   05 INFO   a line of text about the OS at ADDR
++// The C64 side is only a front end. Everything it asks for is done by the same Main code the MiSTer
++// menu uses: folders are read with ScanDirectory (the menu's own file list, same filter, same sort,
++// zips as folders), programs and cartridges are loaded with c64_open_file and the menu's indexes,
++// disks are mounted with user_io_file_mount, chip files are loaded and remembered the way the
++// menu's "FC" entries do it, options are changed with user_io_status_set and saved with
++// user_io_status_save, and a chip preset (.mgl) is started with xml_load, as picking it in the menu.
 +//
-+// Main sees the mailbox through three commands on the hps_io extension bus (see the core's
-+// rtl/octovic/octo_os.sv): 0x70 poll, 0x71 read the registers and the name, 0x72 write registers.
-+// Without os.ini none of this runs and Main behaves exactly as the stock one.
++//   01 DIR      a page of the folder as ready-to-print PETSCII text at ADDR (the @ command)
++//   02 CHDIR    change folder (NAME; ".." up, "" or "/" back to the start folder)
++//   03 LOAD     file NAME into C64 RAM at its own load address (ARG b0: at ADDR), no reset
++//   04 RUN      file NAME, as picking it in the menu (the / command)
++//   05 INFO     a line of text about the OS at ADDR
++//   06 LIST     for the browser: the path (40 bytes), then 32-byte records from entry LEN, VALUE of
++//               them; RESULT = entries in all, VALUE = how many were written
++//   07 OPEN     entry LEN of the list, as picking it in the menu: a folder (VALUE $10), a disk into
++//               drive 8 (VALUE 8), a program or cartridge loaded and run (VALUE 1, the core resets)
++//   08 SETLIST  the settings page: 40-byte lines (label 20, value 20) at ADDR; RESULT = how many
++//   09 SETSTEP  setting ARG to its next (VALUE 1) or previous (VALUE $FF) choice; applied and saved,
++//               except the chip preset, which only changes on SETAPPLY
++//   0A SETAPPLY start the chosen chip preset (and keep it as the one the OS boots with)
++//   0F SHELL    the browser (octophonic/SHELL.PRG) into RAM at its own load address
++//
++// Every request is written to /media/fat/octophonic/os.log (what, where, the result, how long).
++// Main sees the mailbox through hps_io's extension bus (rtl/octovic/octo_os.sv): 0x70 poll,
++// 0x71 read the registers and the name, 0x72 write registers. Without os.ini none of this runs and
++// Main behaves exactly as the stock one.
 +
 +#include <stdio.h>
 +#include <stdlib.h>
++#include <stdarg.h>
 +#include <string.h>
 +#include <strings.h>
 +#include <ctype.h>
 +#include <dirent.h>
 +#include <unistd.h>
++#include <time.h>
 +#include <sys/stat.h>
 +#include <vector>
 +#include <string>
@@ -42,9 +60,14 @@ index 0000000..be37f64
 +#include "../c64/c64.h"
 +#include "octo.h"
 +
-+#define OS_INI      "/media/fat/octophonic/os.ini"
++#define OS_DIR      "/media/fat/octophonic"
++#define OS_INI      OS_DIR "/os.ini"
++#define OS_LOG      OS_DIR "/os.log"
++#define OS_SHELL    OS_DIR "/SHELL.PRG"
 +#define OS_FLAG     "/tmp/octoos_booted"
 +#define OS_TOP      "/media/fat"
++#define OS_EXTS     "PRGCRTREUD64G64T64D81"   // the core's own menu: F1 PRGCRTREU and S0 D64G64T64D81
++#define CHIP_DIR    "games/C64/My Chips"
 +
 +#define UIO_OCTO_POLL  0x70
 +#define UIO_OCTO_READ  0x71
@@ -61,8 +84,32 @@ index 0000000..be37f64
 +static char os_boot[512] = "_Computer/Octophonic 64.mgl";
 +static char os_start[512] = "";
 +static int  os_active = 0;
-+static char cwd[1024];
++static char cwd[1024];                   // the folder, relative to /media/fat ("" is the top)
 +static unsigned long poll_timer = 0;
++static unsigned long f12_time = 0;       // F12 held down since (the MiSTer menu after 2 s)
++static int  last_status = 0;             // the reply of the request being logged
++
++// ------------------------------------------------------------------------------------------ log
++
++static void os_log(const char *fmt, ...)
++{
++	struct stat st;
++	if (!stat(OS_LOG, &st) && st.st_size > 64 * 1024) rename(OS_LOG, OS_LOG ".1");
++	FILE *f = fopen(OS_LOG, "a");
++	if (!f) return;
++	time_t t = time(0);
++	char ts[32];
++	strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", localtime(&t));
++	fprintf(f, "%s ", ts);
++	va_list ap;
++	va_start(ap, fmt);
++	vfprintf(f, fmt, ap);
++	va_end(ap);
++	fputc('\n', f);
++	fclose(f);
++}
++
++// ------------------------------------------------------------------------------------------ ini
 +
 +static void read_ini()
 +{
@@ -89,10 +136,31 @@ index 0000000..be37f64
 +	fclose(f);
 +}
 +
-+static int is_dir(const char *p)
++// os.ini with boot= changed, everything else kept as it is
++static void write_boot(const char *boot)
 +{
-+	struct stat st;
-+	return !stat(p, &st) && S_ISDIR(st.st_mode);
++	std::vector<std::string> lines;
++	int done = 0;
++	FILE *f = fopen(OS_INI, "r");
++	if (f)
++	{
++		char line[600];
++		while (fgets(line, sizeof(line), f))
++		{
++			const char *p = line;
++			while (*p == ' ' || *p == '\t') p++;
++			if (!strncasecmp(p, "boot=", 5)) { lines.push_back(std::string("boot=") + boot + "\n"); done = 1; }
++			else lines.push_back(line);
++		}
++		fclose(f);
++	}
++	if (!done) lines.push_back(std::string("boot=") + boot + "\n");
++	f = fopen(OS_INI ".new", "w");
++	if (!f) return;
++	for (auto &l : lines) fputs(l.c_str(), f);
++	fclose(f);
++	rename(OS_INI ".new", OS_INI);
++	snprintf(os_boot, sizeof(os_boot), "%s", boot);
 +}
 +
 +static int ends_with(const char *s, const char *ext)
@@ -101,7 +169,7 @@ index 0000000..be37f64
 +	return a >= b && !strcasecmp(s + a - b, ext);
 +}
 +
-+// ---------------------------------------------------------------------------------------- boot
++// ----------------------------------------------------------------------------------------- boot
 +
 +void octo_os_boot(const char *core_path)
 +{
@@ -114,6 +182,7 @@ index 0000000..be37f64
 +
 +	char full[1024];
 +	snprintf(full, sizeof(full), "%s%s%s", os_boot[0] == '/' ? "" : OS_TOP, os_boot[0] == '/' ? "" : "/", os_boot);
++	os_log("boot: %s", full);
 +	printf("Octophonic OS: starting %s\n", full);
 +	if (ends_with(full, ".mgl") && !access(full, R_OK)) { xml_load(full); return; }
 +	if (ends_with(full, ".rbf") && !access(full, R_OK)) { fpga_load_rbf(full); return; }
@@ -128,12 +197,13 @@ index 0000000..be37f64
 +			strcmp(de->d_name, best) > 0) snprintf(best, sizeof(best), "%s", de->d_name);
 +	}
 +	closedir(d);
-+	if (!best[0]) { printf("Octophonic OS: no core found, staying in the menu\n"); return; }
++	if (!best[0]) { os_log("boot: no core found, staying in the menu"); return; }
 +	snprintf(full, sizeof(full), OS_TOP "/_Computer/%s", best);
++	os_log("boot: %s (launcher missing)", full);
 +	fpga_load_rbf(full);
 +}
 +
-+// ------------------------------------------------------------------------------------- mailbox
++// -------------------------------------------------------------------------------------- mailbox
 +
 +static uint16_t mb_poll()
 +{
@@ -153,6 +223,7 @@ index 0000000..be37f64
 +
 +static void mb_reply(int status, int res, int len = -1, int value = -1)
 +{
++	last_status = status;
 +	spi_uio_cmd_cont(UIO_OCTO_WRITE);
 +	spi_w((R_RESL << 8) | (res & 0xFF));
 +	spi_w((R_RESH << 8) | ((res >> 8) & 0xFF));
@@ -171,18 +242,25 @@ index 0000000..be37f64
 +	os_active = 0;
 +	read_ini();
 +	if (!os_enabled || !is_c64()) return;
-+	if ((mb_poll() >> 8) != OCTO_MAGIC) return;    // not a core with the mailbox
++	uint16_t w = mb_poll();
++	if ((w >> 8) != OCTO_MAGIC) { os_log("core: no mailbox (poll %04X) - the OS is off for this core", w); return; }
 +	os_active = 1;
 +
-+	if (os_start[0] && is_dir(os_start)) snprintf(cwd, sizeof(cwd), "%s", os_start);
-+	else if (is_dir(OS_TOP "/games/C64")) snprintf(cwd, sizeof(cwd), OS_TOP "/games/C64");
++	// the start folder, relative to /media/fat like the menu's paths
++	const char *s = os_start;
++	if (!strncmp(s, OS_TOP "/", strlen(OS_TOP) + 1)) s += strlen(OS_TOP) + 1;
++	char full[1024];
++	snprintf(full, sizeof(full), OS_TOP "/%s", s);
++	struct stat st;
++	if (s[0] && !stat(full, &st) && S_ISDIR(st.st_mode)) snprintf(cwd, sizeof(cwd), "%s", s);
++	else if (!stat(OS_TOP "/games/C64", &st) && S_ISDIR(st.st_mode)) snprintf(cwd, sizeof(cwd), "games/C64");
 +	else
 +	{
 +		mkdir(OS_TOP "/Octophonic", 0777);
-+		snprintf(cwd, sizeof(cwd), OS_TOP "/Octophonic");
++		snprintf(cwd, sizeof(cwd), "Octophonic");
 +	}
 +	snprintf(os_start, sizeof(os_start), "%s", cwd);
-+	printf("Octophonic OS: active, folder %s\n", cwd);
++	os_log("core: OS active, folder /%s", cwd);
 +}
 +
 +int octo_os_active()
@@ -190,7 +268,7 @@ index 0000000..be37f64
 +	return os_active;
 +}
 +
-+// ------------------------------------------------------------------------------------- helpers
++// -------------------------------------------------------------------------------------- helpers
 +
 +// into C64 RAM at addr, through the core's raw download (2-byte address, then the bytes)
 +static void ram_write(uint16_t addr, const uint8_t *data, uint32_t len)
@@ -226,7 +304,6 @@ index 0000000..be37f64
 +	{
 +		unsigned char u = (unsigned char)*in;
 +		if (u >= 0xC1 && u <= 0xDA) u = u - 0xC1 + 'a';
-+		else if (u >= 0x61 && u <= 0x7A) u = u;    // already ascii lower
 +		else if (u == 0xA4) u = '_';
 +		else if (u < 0x20 || u > 0x7E) continue;
 +		out[n++] = (char)u;
@@ -235,26 +312,15 @@ index 0000000..be37f64
 +	while (n && out[n - 1] == ' ') out[--n] = 0;  // trailing spaces from the screen line
 +}
 +
-+struct Entry { std::string name; int dir; long long size; };
-+
-+static void list_dir(std::vector<Entry> &v)
++static void put_text(std::vector<uint8_t> &out, const char *s)
 +{
-+	v.clear();
-+	DIR *d = opendir(cwd);
-+	if (!d) return;
-+	while (struct dirent *de = readdir(d))
-+	{
-+		if (de->d_name[0] == '.') continue;
-+		std::string p = std::string(cwd) + "/" + de->d_name;
-+		struct stat st;
-+		if (stat(p.c_str(), &st)) continue;
-+		v.push_back({ de->d_name, S_ISDIR(st.st_mode) ? 1 : 0, (long long)st.st_size });
-+	}
-+	closedir(d);
-+	std::sort(v.begin(), v.end(), [](const Entry &a, const Entry &b) {
-+		if (a.dir != b.dir) return a.dir > b.dir;
-+		return strcasecmp(a.name.c_str(), b.name.c_str()) < 0;
-+	});
++	for (; *s; s++) out.push_back(*s == '\n' ? 0x0D : to_pet(*s));
++}
++
++static void put_field(std::vector<uint8_t> &out, const char *s, int width)
++{
++	int l = (int)strlen(s);
++	for (int i = 0; i < width; i++) out.push_back(i < l ? to_pet(s[i]) : ' ');
 +}
 +
 +static std::string base_of(const std::string &n)
@@ -271,8 +337,58 @@ index 0000000..be37f64
 +	return n.substr(dot + 1);
 +}
 +
-+// find NAME among the entries (dirs or files): whole name, name without its extension, then
-+// the first that starts with it ("*" at the end means the same)
++// --------------------------------------------------------------- the folder, as the menu sees it
++
++struct Entry { std::string name; int dir; int up; };
++
++// the menu's own scan of the current folder: same filter (the core's file types), same sort,
++// ".." at the top below /media/fat, zips as folders
++static void scan(std::vector<Entry> &v)
++{
++	v.clear();
++	static char path[1024];
++	snprintf(path, sizeof(path), "%s", cwd);
++	ScanDirectory(path, SCANF_INIT, OS_EXTS, SCANO_DIR);
++	int n = flist_nDirEntries();
++	for (int i = 0; i < n; i++)
++	{
++		direntext_t *e = flist_DirItem(i);
++		if (!e) continue;
++		Entry x;
++		x.name = e->de.d_name;
++		x.dir = e->de.d_type == DT_DIR;
++		x.up = !strcmp(e->de.d_name, "..");
++		if (x.up && !cwd[0]) continue;
++		v.push_back(x);
++	}
++}
++
++static std::string full_of(const std::string &name)
++{
++	return std::string(OS_TOP "/") + (cwd[0] ? std::string(cwd) + "/" : std::string()) + name;
++}
++
++static long long blocks_of(const Entry &e)
++{
++	if (e.dir) return 0;
++	struct stat st;
++	if (stat(full_of(e.name).c_str(), &st)) return 0;     // inside a zip: no size to show
++	long long b = (st.st_size + 253) / 254;
++	return b > 65535 ? 65535 : b;
++}
++
++static int type_of(const Entry &e)
++{
++	if (e.up) return 5;
++	if (e.dir) return 0;
++	const char *n = e.name.c_str();
++	if (ends_with(n, ".prg")) return 1;
++	if (ends_with(n, ".d64") || ends_with(n, ".g64") || ends_with(n, ".t64") || ends_with(n, ".d81")) return 2;
++	if (ends_with(n, ".crt")) return 3;
++	return 4;
++}
++
++// find NAME among the entries (dirs or files): whole name, without its extension, then by its start
 +static int find_entry(const std::vector<Entry> &v, const char *want, int dirs)
 +{
 +	char w[64];
@@ -284,7 +400,7 @@ index 0000000..be37f64
 +	{
 +		for (size_t i = 0; i < v.size(); i++)
 +		{
-+			if (v[i].dir != dirs) continue;
++			if (v[i].dir != dirs || v[i].up) continue;
 +			const std::string &n = v[i].name;
 +			if (pass == 0 && !strcasecmp(n.c_str(), w)) return (int)i;
 +			if (pass == 1 && !strcasecmp(base_of(n).c_str(), w)) return (int)i;
@@ -294,28 +410,80 @@ index 0000000..be37f64
 +	return -1;
 +}
 +
-+static void put_text(std::vector<uint8_t> &out, const char *s)
++static void go_up()
 +{
-+	for (; *s; s++) out.push_back(*s == '\n' ? 0x0D : to_pet(*s));
++	char *s = strrchr(cwd, '/');
++	if (s) *s = 0;
++	else cwd[0] = 0;
 +}
 +
-+// ------------------------------------------------------------------------------------ commands
++static void go_into(const std::string &name)
++{
++	size_t l = strlen(cwd);
++	snprintf(cwd + l, sizeof(cwd) - l, "%s%s", l ? "/" : "", name.c_str());
++}
++
++// a file, exactly as picking it in the menu does it (the core's F1 PRGCRTREU and S0 entries)
++static int run_path(const std::string &path, const std::vector<Entry> *folder)
++{
++	const char *p = path.c_str();
++	if (ends_with(p, ".d64") || ends_with(p, ".g64") || ends_with(p, ".t64") || ends_with(p, ".d81"))
++	{
++		mb_reply(ST_DONE, 0, -1, 8);                // VALUE 8: a disk went into drive 8
++		os_log("  mount #8 %s", p);
++		user_io_file_mount(p, 0);
++		return 1;
++	}
++	int idx = ends_with(p, ".prg") ? 0x01 : ends_with(p, ".crt") ? 0x41 : ends_with(p, ".reu") ? 0x81 : -1;
++	if (idx < 0) { mb_reply(E_CANTRUN, 0); return 0; }
++
++	std::string reu;
++	if (idx == 0x01 && folder)
++	{
++		// a demo's REU goes in first, as its launcher does: the .reu of the same name, or the only
++		// .reu in the folder
++		std::string base = base_of(path.substr(path.rfind('/') + 1));
++		int reus = 0;
++		std::string only;
++		for (auto &e : *folder)
++		{
++			if (e.dir || strcasecmp(ext_of(e.name).c_str(), "reu")) continue;
++			reus++;
++			only = e.name;
++			if (!strcasecmp(base_of(e.name).c_str(), base.c_str())) reu = e.name;
++		}
++		if (reu.empty() && reus == 1) reu = only;
++	}
++	mb_reply(ST_DONE, 0, -1, idx == 0x81 ? 2 : 1);  // the core may reset now: the reply goes first
++	if (!reu.empty())
++	{
++		os_log("  REU %s (index 0x81)", full_of(reu).c_str());
++		c64_open_file(full_of(reu).c_str(), 0x81);
++	}
++	os_log("  load %s (index 0x%02X)", p, idx);
++	if (idx != 0x81) user_io_store_filename(p);
++	c64_open_file(p, idx);
++	return 1;
++}
++
++// ----------------------------------------------------------------------------------- commands
 +
 +static void cmd_dir(uint16_t addr, int first, int lines)
 +{
 +	std::vector<Entry> v;
-+	list_dir(v);
++	scan(v);
 +	if (lines <= 0 || lines > 40) lines = 20;
 +	if (!addr) addr = 0xA000;
-+	int up = strcmp(cwd, OS_TOP) != 0;             // a ".." line at the top, except at the very top
-+	int total = (int)v.size() + up;
++	int total = (int)v.size();
++	int files = 0;
++	for (auto &e : v) files += !e.up;
 +
 +	std::vector<uint8_t> out;
 +	char line[96];
 +	if (first == 0)
 +	{
 +		const char *leaf = strrchr(cwd, '/');
-+		leaf = leaf ? leaf + 1 : cwd;
++		leaf = leaf ? leaf + 1 : (cwd[0] ? cwd : "/");
 +		char nm[20];
 +		snprintf(nm, sizeof(nm), "%-16.16s", leaf);
 +		out.push_back(0x12);                        // reverse on, like a disk header
@@ -327,22 +495,19 @@ index 0000000..be37f64
 +	int i = first, shown = 0;
 +	for (; i < total && shown < lines; i++, shown++)
 +	{
-+		if (up && i == 0) { put_text(out, "0    \"..\"               DIR\n"); continue; }
-+		const Entry &e = v[i - up];
-+		std::string shown_name = e.dir ? e.name : base_of(e.name);
-+		std::string type = e.dir ? "DIR" : ext_of(e.name);
++		const Entry &e = v[i];
++		std::string shown_name = (e.dir || e.up) ? e.name : base_of(e.name);
++		std::string type = (e.dir || e.up) ? "DIR" : ext_of(e.name);
 +		if (shown_name.size() > 26) shown_name = shown_name.substr(0, 26);
-+		long long blocks = e.dir ? 0 : (e.size + 253) / 254;
-+		if (blocks > 9999) blocks = 9999;
 +		char q[40];
 +		snprintf(q, sizeof(q), "\"%s\"", shown_name.c_str());
-+		snprintf(line, sizeof(line), "%-5lld%-18s %.3s\n", blocks, q, type.c_str());
++		snprintf(line, sizeof(line), "%-5lld%-18s %.3s\n", blocks_of(e), q, type.c_str());
 +		put_text(out, line);
 +	}
 +	int more = i < total;
 +	if (!more)
 +	{
-+		snprintf(line, sizeof(line), "%d %s.\n", (int)v.size(), v.size() == 1 ? "ENTRY" : "ENTRIES");
++		snprintf(line, sizeof(line), "%d %s.\n", files, files == 1 ? "ENTRY" : "ENTRIES");
 +		put_text(out, line);
 +	}
 +	out.push_back(0);
@@ -369,17 +534,9 @@ index 0000000..be37f64
 +		part[n] = 0;
 +		while (*name == '/') name++;
 +		if (!n) continue;
-+		if (!strcmp(part, ".."))
-+		{
-+			if (strcmp(cwd, OS_TOP))
-+			{
-+				char *s = strrchr(cwd, '/');
-+				if (s && s != cwd) *s = 0;
-+			}
-+			continue;
-+		}
++		if (!strcmp(part, "..")) { go_up(); continue; }
 +		std::vector<Entry> v;
-+		list_dir(v);
++		scan(v);
 +		int k = find_entry(v, part, 1);
 +		if (k < 0)
 +		{
@@ -388,31 +545,22 @@ index 0000000..be37f64
 +			mb_reply(err, 0);
 +			return;
 +		}
-+		size_t l = strlen(cwd);
-+		snprintf(cwd + l, sizeof(cwd) - l, "/%s", v[k].name.c_str());
++		go_into(v[k].name);
 +	}
 +	mb_reply(ST_DONE, 0);
 +}
 +
-+static int find_file(const char *name, std::string &path)
-+{
-+	std::vector<Entry> v;
-+	list_dir(v);
-+	int k = find_entry(v, name, 0);
-+	if (k < 0) return 0;
-+	path = std::string(cwd) + "/" + v[k].name;
-+	return 1;
-+}
-+
 +static void cmd_load(const char *name, uint16_t addr, int use_addr)
 +{
-+	std::string path;
-+	if (!find_file(name, path)) { mb_reply(E_NOTFOUND, 0); return; }
-+	FILE *f = fopen(path.c_str(), "rb");
-+	if (!f) { mb_reply(E_READ, 0); return; }
++	std::vector<Entry> v;
++	scan(v);
++	int k = find_entry(v, name, 0);
++	if (k < 0) { mb_reply(E_NOTFOUND, 0); return; }
++	fileTYPE f = {};
++	if (!FileOpen(&f, full_of(v[k].name).c_str())) { mb_reply(E_READ, 0); return; }
 +	static uint8_t buf[65536 + 2];
-+	size_t n = fread(buf, 1, sizeof(buf), f);
-+	fclose(f);
++	int n = FileReadAdv(&f, buf, sizeof(buf));
++	FileClose(&f);
 +	if (n < 2) { mb_reply(E_READ, 0); return; }
 +	uint16_t at = use_addr ? addr : (uint16_t)(buf[0] | (buf[1] << 8));
 +	size_t len = n - 2;
@@ -423,48 +571,11 @@ index 0000000..be37f64
 +
 +static void cmd_run(const char *name)
 +{
-+	std::string path;
-+	if (!find_file(name, path)) { mb_reply(E_NOTFOUND, 0); return; }
-+	const char *p = path.c_str();
-+	if (ends_with(p, ".d64") || ends_with(p, ".g64") || ends_with(p, ".d81"))
-+	{
-+		mb_reply(ST_DONE, 0, -1, 8);                // VALUE 8: a disk went into drive 8
-+		user_io_file_mount(p, 0);
-+		return;
-+	}
-+	if (ends_with(p, ".crt"))
-+	{
-+		mb_reply(ST_DONE, 0, -1, 1);
-+		c64_open_file(p, 0x41);
-+		return;
-+	}
-+	if (ends_with(p, ".prg") || ext_of(path).empty())
-+	{
-+		// a demo's REU goes in first, as its launcher does: the .reu of the same name, or the only
-+		// .reu in the folder
-+		std::vector<Entry> v;
-+		list_dir(v);
-+		std::string base = base_of(path.substr(path.rfind('/') + 1)), reu;
-+		int reus = 0;
-+		for (auto &e : v)
-+		{
-+			if (e.dir || strcasecmp(ext_of(e.name).c_str(), "reu")) continue;
-+			reus++;
-+			if (!strcasecmp(base_of(e.name).c_str(), base.c_str())) reu = e.name;
-+			else if (reus == 1 && reu.empty()) reu = "?" + e.name;
-+		}
-+		if (!reu.empty() && reu[0] == '?') reu = (reus == 1) ? reu.substr(1) : "";
-+		mb_reply(ST_DONE, 0, -1, reu.empty() ? 1 : 2); // the core resets and runs it
-+		if (!reu.empty())
-+		{
-+			std::string rp = std::string(cwd) + "/" + reu;
-+			printf("Octophonic OS: REU %s\n", rp.c_str());
-+			user_io_file_tx(rp.c_str(), 0x81);
-+		}
-+		c64_open_file(p, 1);
-+		return;
-+	}
-+	mb_reply(E_CANTRUN, 0);
++	std::vector<Entry> v;
++	scan(v);
++	int k = find_entry(v, name, 0);
++	if (k < 0) { mb_reply(E_NOTFOUND, 0); return; }
++	run_path(full_of(v[k].name), &v);
 +}
 +
 +static void cmd_info(uint16_t addr)
@@ -473,16 +584,253 @@ index 0000000..be37f64
 +	std::vector<uint8_t> out;
 +	char line[200];
 +	extern const char *version;
-+	snprintf(line, sizeof(line), "OCTOPHONIC OS 1, MAIN %s\nFOLDER %s\n", version + 5, cwd);
++	snprintf(line, sizeof(line), "OCTOPHONIC OS 1, MAIN %s\nFOLDER /%s\n", version + 5, cwd);
 +	put_text(out, line);
 +	out.push_back(0);
 +	ram_write(addr, out.data(), out.size());
 +	mb_reply(ST_DONE, (int)out.size());
 +}
 +
++// record: type (0 folder, 1 program, 2 disk, 3 cartridge, 4 other, 5 ".."), blocks (2 bytes),
++// the extension (3), the name (26), PETSCII and space-filled
++static void cmd_list(uint16_t addr, int first, int count)
++{
++	std::vector<Entry> v;
++	scan(v);
++	if (!addr) addr = 0xCA00;
++	if (count <= 0 || count > 32) count = 17;
++	int total = (int)v.size();
++	std::vector<uint8_t> out;
++	char path[1100];
++	snprintf(path, sizeof(path), "/%s", cwd);
++	size_t pl = strlen(path);
++	put_field(out, pl > 40 ? (std::string("...") + (path + pl - 37)).c_str() : path, 40);
++	int written = 0;
++	for (int i = first; i < total && written < count; i++, written++)
++	{
++		const Entry &e = v[i];
++		uint8_t rec[32];
++		memset(rec, ' ', sizeof(rec));
++		long long b = blocks_of(e);
++		rec[0] = (uint8_t)type_of(e);
++		rec[1] = b & 0xFF; rec[2] = (b >> 8) & 0xFF;
++		std::string ext = (e.dir || e.up) ? "DIR" : ext_of(e.name);
++		for (int k = 0; k < 3 && k < (int)ext.size(); k++) rec[3 + k] = to_pet(ext[k]);
++		std::string nm = (e.dir || e.up) ? e.name : base_of(e.name);
++		for (int k = 0; k < 26 && k < (int)nm.size(); k++) rec[6 + k] = to_pet(nm[k]);
++		out.insert(out.end(), rec, rec + 32);
++	}
++	ram_write(addr, out.data(), out.size());
++	mb_reply(ST_DONE, total, -1, written);
++}
++
++static void cmd_open(int idx)
++{
++	std::vector<Entry> v;
++	scan(v);
++	if (idx < 0 || idx >= (int)v.size()) { mb_reply(E_NOTFOUND, 0); return; }
++	const Entry &e = v[idx];
++	if (e.up) { go_up(); mb_reply(ST_DONE, 0, -1, 0x10); return; }
++	if (e.dir) { go_into(e.name); mb_reply(ST_DONE, 0, -1, 0x10); return; }
++	os_log("  open %s", e.name.c_str());
++	run_path(full_of(e.name), &v);
++}
++
++// the browser itself: SHELL.PRG next to os.ini, into RAM at its own load address, no reset
++static void cmd_shell()
++{
++	FILE *f = fopen(OS_SHELL, "rb");
++	if (!f) { os_log("  %s is missing", OS_SHELL); mb_reply(E_NOTFOUND, 0); return; }
++	static uint8_t buf[16384 + 2];
++	size_t n = fread(buf, 1, sizeof(buf), f);
++	fclose(f);
++	if (n < 3) { mb_reply(E_READ, 0); return; }
++	uint16_t at = buf[0] | (buf[1] << 8);
++	ram_write(at, buf + 2, (uint32_t)(n - 2));
++	mb_reply(ST_DONE, at);
++}
++
++// ----------------------------------------------------------------------------------- settings
++
++// the menu options the settings page shows: the same option bits as the core's menu (c64.sv)
++struct Opt { const char *label; const char *bits; const char *choices[5]; int n; };
++static const Opt opts[] = {
++	{ "LEFT SIDS 1357",   "[13]",     { "6581", "8580" }, 2 },
++	{ "RIGHT SIDS 2468",  "[16]",     { "6581", "8580" }, 2 },
++	{ "MY CHIPS",         "[101]",    { "ON", "OFF" }, 2 },
++	{ "OCTOPHONIC",       "[98:97]",  { "8 SIDS", "4 SIDS", "OFF" }, 3 },
++	{ "OCTOSID FX",       "[100:99]", { "OFF", "CHORUS", "ECHO", "CHORUS+ECHO" }, 4 },
++	{ "SPLIT SCREENS",    "[102]",    { "OFF", "VGA C64+HDMI" }, 2 },
++	{ "TURBO MODE",       "[47:46]",  { "C128", "OFF", "SMART" }, 3 },
++	{ "TURBO SPEED",      "[49:48]",  { "2X", "3X", "4X" }, 3 },
++};
++#define N_OPTS ((int)(sizeof(opts) / sizeof(opts[0])))
++// lines: 0 the chip preset, 1 left chip file, 2 right chip file, then the options
++#define S_PRESET 0
++#define S_CHIPL  1
++#define S_CHIPR  2
++#define S_OPT0   3
++
++static std::vector<std::string> presets;   // the Octophonic launchers in _Computer
++static int preset_sel = -1;                // the one chosen on the page (applied by SETAPPLY)
++
++static void scan_presets()
++{
++	presets.clear();
++	DIR *d = opendir(OS_TOP "/_Computer");
++	if (!d) return;
++	while (struct dirent *de = readdir(d))
++		if (!strncasecmp(de->d_name, "Octophonic 64", 13) && ends_with(de->d_name, ".mgl"))
++			presets.push_back(std::string("_Computer/") + de->d_name);
++	closedir(d);
++	std::sort(presets.begin(), presets.end(), [](const std::string &a, const std::string &b) { return strcasecmp(a.c_str(), b.c_str()) < 0; });
++}
++
++static int current_preset()
++{
++	for (int i = 0; i < (int)presets.size(); i++) if (!strcasecmp(presets[i].c_str(), os_boot)) return i;
++	return -1;
++}
++
++static std::string preset_label(int i)
++{
++	if (i < 0 || i >= (int)presets.size()) return "?";
++	std::string s = presets[i].substr(10);         // without _Computer/
++	s = base_of(s);
++	if (!strncasecmp(s.c_str(), "Octophonic 64 - ", 16)) s = s.substr(16);
++	else if (!strcasecmp(s.c_str(), "Octophonic 64")) s = "PLAIN";
++	size_t p = s.find(" (");
++	if (p != std::string::npos) s = s.substr(0, p);
++	return s;
++}
++
++static void scan_chips(std::vector<std::string> &v)
++{
++	v.clear();
++	DIR *d = opendir(OS_TOP "/" CHIP_DIR);
++	if (!d) return;
++	while (struct dirent *de = readdir(d))
++		if (de->d_name[0] != '.' && ends_with(de->d_name, ".chp")) v.push_back(de->d_name);
++	closedir(d);
++	std::sort(v.begin(), v.end(), [](const std::string &a, const std::string &b) { return strcasecmp(a.c_str(), b.c_str()) < 0; });
++}
++
++// the chip file the menu remembers for "Load My Chip" n (2 left, 3 right): the FC entries' store
++static std::string chip_stored(int n)
++{
++	char cfgname[64], path[1024] = {};
++	snprintf(cfgname, sizeof(cfgname), "%s.f%d", user_io_get_core_name(), n);
++	if (FileLoadConfig(cfgname, path, sizeof(path) - 1) <= 0) return "";
++	const char *s = strrchr(path, '/');
++	return s ? s + 1 : path;
++}
++
++static void chip_load(int n, const std::string &file)
++{
++	char path[1024];
++	snprintf(path, sizeof(path), OS_TOP "/" CHIP_DIR "/%s", file.c_str());
++	os_log("  chip %s: %s (index %d)", n == 2 ? "left" : "right", path, n);
++	char cfgname[64];
++	snprintf(cfgname, sizeof(cfgname), "%s.f%d", user_io_get_core_name(), n);
++	FileSaveConfig(cfgname, path, sizeof(path));      // as the menu's FC entry remembers it
++	c64_open_file(path, n);                          // and loads it (CHP is the entry's first type)
++}
++
++static void cmd_setlist(uint16_t addr)
++{
++	if (!addr) addr = 0xCA00;
++	scan_presets();
++	if (preset_sel < 0 || preset_sel >= (int)presets.size()) preset_sel = current_preset();
++	std::vector<uint8_t> out;
++	char val[64];
++	int cur = current_preset();
++	snprintf(val, sizeof(val), "%s%s", preset_label(preset_sel).c_str(), (preset_sel != cur) ? " (RETURN)" : "");
++	put_field(out, "CHIP PRESET", 20); put_field(out, val, 20);
++	for (int n = 2; n <= 3; n++)
++	{
++		std::string c = chip_stored(n);
++		put_field(out, n == 2 ? "MY CHIP LEFT" : "MY CHIP RIGHT", 20);
++		put_field(out, c.empty() ? "-" : base_of(c).c_str(), 20);
++	}
++	for (int i = 0; i < N_OPTS; i++)
++	{
++		uint32_t x = user_io_status_get(opts[i].bits);
++		put_field(out, opts[i].label, 20);
++		put_field(out, (int)x < opts[i].n ? opts[i].choices[x] : "?", 20);
++	}
++	ram_write(addr, out.data(), out.size());
++	mb_reply(ST_DONE, S_OPT0 + N_OPTS);
++}
++
++static void cmd_setstep(int line, int dir)
++{
++	int step = (dir == 0xFF) ? -1 : 1;
++	if (line == S_PRESET)
++	{
++		scan_presets();
++		if (presets.empty()) { mb_reply(E_NOTFOUND, 0); return; }
++		if (preset_sel < 0) preset_sel = current_preset();
++		preset_sel = (preset_sel + step + (int)presets.size()) % (int)presets.size();
++		mb_reply(ST_DONE, 0);
++		return;
++	}
++	if (line == S_CHIPL || line == S_CHIPR)
++	{
++		int n = line == S_CHIPL ? 2 : 3;
++		std::vector<std::string> v;
++		scan_chips(v);
++		if (v.empty()) { mb_reply(E_NOTFOUND, 0); return; }
++		std::string c = chip_stored(n);
++		int k = -1;
++		for (int i = 0; i < (int)v.size(); i++) if (!strcasecmp(v[i].c_str(), c.c_str())) k = i;
++		k = (k + step + (int)v.size()) % (int)v.size();
++		mb_reply(ST_DONE, 0);
++		chip_load(n, v[k]);
++		return;
++	}
++	int i = line - S_OPT0;
++	if (i < 0 || i >= N_OPTS) { mb_reply(E_BADCMD, 0); return; }
++	uint32_t x = user_io_status_get(opts[i].bits);
++	x = (x + step + opts[i].n) % opts[i].n;
++	user_io_status_set(opts[i].bits, x);              // as the menu does on a change
++	user_io_status_save(user_io_create_config_name(1)); // and its Save Settings
++	os_log("  option %s %s = %s", opts[i].label, opts[i].bits, opts[i].choices[x]);
++	mb_reply(ST_DONE, 0);
++}
++
++static void cmd_setapply()
++{
++	scan_presets();
++	if (preset_sel < 0 || preset_sel >= (int)presets.size()) { mb_reply(E_NOTFOUND, 0); return; }
++	std::string p = presets[preset_sel];
++	write_boot(p.c_str());
++	mb_reply(ST_DONE, 0, -1, 1);                     // the core restarts with the preset
++	char full[1024];
++	snprintf(full, sizeof(full), OS_TOP "/%s", p.c_str());
++	os_log("  preset %s (and the boot preset from now on)", full);
++	xml_load(full);                                  // as picking the launcher in the menu
++}
++
++// ------------------------------------------------------------------------- F12 held: the menu
++
++void octo_f12(int press)
++{
++	if (!os_active || user_io_osd_is_visible()) { f12_time = 0; return; }
++	if (press == 1) f12_time = GetTimer(2000);       // the first press only: repeats don't count
++	else if (!press) f12_time = 0;
++}
++
++// --------------------------------------------------------------------------------------- poll
++
 +void octo_poll()
 +{
 +	if (!os_active) return;
++	if (f12_time && CheckTimer(f12_time))
++	{
++		f12_time = 0;
++		os_log("F12 held: the MiSTer menu");
++		user_io_octo_menu();
++	}
 +	if (poll_timer && !CheckTimer(poll_timer)) return;
 +	poll_timer = GetTimer(4);
 +
@@ -495,7 +843,10 @@ index 0000000..be37f64
 +	from_pet(raw, name, sizeof(name));
 +	uint16_t addr = reg[R_ADDRL] | (reg[R_ADDRH] << 8);
 +	int len = reg[R_LENL] | (reg[R_LENH] << 8);
-+	printf("Octophonic OS: cmd %02X name '%s' addr %04X\n", reg[R_CMD], name, addr);
++	unsigned long t0 = GetTimer(0);
++	char was[1024];
++	snprintf(was, sizeof(was), "%s", cwd);
++	last_status = -1;
 +
 +	switch (reg[R_CMD])
 +	{
@@ -504,15 +855,23 @@ index 0000000..be37f64
 +	case 0x03: cmd_load(name, addr, reg[R_ARG] & 1); break;
 +	case 0x04: cmd_run(name); break;
 +	case 0x05: cmd_info(addr); break;
++	case 0x06: cmd_list(addr, len, reg[R_VALUE]); break;
++	case 0x07: cmd_open(len); break;
++	case 0x08: cmd_setlist(addr); break;
++	case 0x09: cmd_setstep(reg[R_ARG], reg[R_VALUE]); break;
++	case 0x0A: cmd_setapply(); break;
++	case 0x0F: cmd_shell(); break;
 +	default:   mb_reply(E_BADCMD, 0); break;
 +	}
++	os_log("cmd %02X name '%s' addr %04X len %d folder /%s -> /%s status %02X, %lu ms",
++		reg[R_CMD], name, addr, len, was, cwd, last_status & 0xFF, GetTimer(0) - t0);
 +}
 diff --git a/support/octo/octo.h b/support/octo/octo.h
 new file mode 100644
-index 0000000..5eda80a
+index 0000000..0f00e64
 --- /dev/null
 +++ b/support/octo/octo.h
-@@ -0,0 +1,15 @@
+@@ -0,0 +1,19 @@
 +// OCTOPHONIC OS - the parts of Main that make a MiSTer boot straight into Octophonic 64 and
 +// answer the 6502's requests (list a folder, change folder, load, load-and-run).
 +// Everything here is switched off unless /media/fat/octophonic/os.ini exists.
@@ -526,10 +885,14 @@ index 0000000..5eda80a
 +int  octo_os_active();
 +// called from user_io_poll(): serve the mailbox
 +void octo_poll();
++// F12 pressed (1) or let go (0): held for 2 s, it opens the MiSTer menu
++void octo_f12(int press);
++// in user_io.cpp: let the core's F12 go and open the MiSTer menu
++void user_io_octo_menu();
 +
 +#endif
 diff --git a/user_io.cpp b/user_io.cpp
-index 0717aa0..cf4bd9e 100644
+index 0717aa0..b64eb50 100644
 --- a/user_io.cpp
 +++ b/user_io.cpp
 @@ -42,6 +42,7 @@
@@ -574,3 +937,20 @@ index 0717aa0..cf4bd9e 100644
  	user_io_send_buttons(0);
  
  	mac_poll();   // Mac SCSI family: Toolbox slot announce + deferred CD work
+@@ -4438,9 +4443,16 @@ void user_io_osd_key_enable(char on)
+ 	input_switch(-1);
+ }
+ 
++void user_io_octo_menu()                       // OCTOPHONIC OS: F12 held for 2 s
++{
++	send_keycode(KEY_F12, 0);
++	menu_key_set(KEY_F12);
++}
++
+ void user_io_kbd(uint16_t key, int press)
+ {
+ 	register_activity();
++	if (key == KEY_F12) octo_f12(press);           // OCTOPHONIC OS: hold F12 for the menu
+ 
+ 	if(is_menu()) spi_uio_cmd(UIO_KEYBOARD); //ping the Menu core to wakeup
+ 

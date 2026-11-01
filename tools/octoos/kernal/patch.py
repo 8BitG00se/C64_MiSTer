@@ -16,6 +16,8 @@ d[K(0xF92C):K(0xF92C)+len(o)]=o
 # OCTOPHONIC OS: the wedge in the tape room below, and device 1 (tape) turned away
 w=open('wedge.bin','rb').read(); assert len(w)<=0xF92C-0xF72C
 d[K(0xF72C):K(0xF72C)+len(w)]=w
+w2=open('wedge2.bin','rb').read(); assert len(w2)<=0xFCD1-0xFB97
+d[K(0xFB97):K(0xFB97)+len(w2)]=w2
 for a in (0xF533,0xF659):                    # LOAD, SAVE: LSR / BCS tape / JMP illegal
     assert d[K(a):K(a)+6]==bytes([0x4A,0xB0,0x03,0x4C,0x13,0xF7]),hex(a)
     d[K(a)+1:K(a)+3]=bytes([0xEA,0xEA])
