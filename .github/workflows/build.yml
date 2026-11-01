@@ -5,7 +5,7 @@ name: Build core
 
 on:
   push:
-    branches: [ master, octovic, octovic2, octophonic-v1.1 ]
+    branches: [ master, octovic, octovic2, octophonic-v1.1, octovic-mem, octophonic-core3 ]
   workflow_dispatch:
 
 permissions:
@@ -23,6 +23,16 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
 
+      - name: OctoVIC register map test (every register, the version, the core's name, the meters)
+        run: |
+          sudo apt-get install -y -qq verilator >/dev/null
+          sim/regmap/run.sh
+
+      - name: Stamp the core's build date (OctoVIC $D6B4-$D6B6)
+        run: |
+          sed -i "s/localparam \[23:0\] CORE_DATE = 24'h[0-9]*;/localparam [23:0] CORE_DATE = 24'h$(date -u +%y%m%d);/" rtl/octovic/octovic.sv
+          grep -n "CORE_TAG\|CORE_DATE" rtl/octovic/octovic.sv | head -2
+
       - name: Compile with Quartus 17.0 Lite
         continue-on-error: true
         id: compile
@@ -33,7 +43,8 @@ jobs:
       - name: Name the core
         run: |
           mkdir -p out
-          cp output_files/C64.rbf "out/C64_Octophonic_$(date +%Y%m%d).rbf"
+          TAG=$(sed -n 's/^localparam \[63:0\] CORE_TAG *= *"\([^"]*\)".*/\1/p' rtl/octovic/octovic.sv | tr -d ' ' | tr 'A-Z' 'a-z')
+          cp output_files/C64.rbf "out/C64_Octophonic_$(date -u +%Y%m%d)_${TAG}.rbf"
           grep -h -A3 "Fitter Resource Usage Summary" output_files/*.fit.summary output_files/*.fit.rpt 2>/dev/null | head -20 || true
           cat output_files/C64.fit.summary || true
 
