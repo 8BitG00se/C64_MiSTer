@@ -683,6 +683,7 @@ settings
         sta COL + 24*40,x
         dex
         bpl -
+        jsr corenm              ; the running core's name and build date, right of SETTINGS
 sreload lda #<LBUF
         sta MB_AL
         lda #>LBUF
@@ -1010,6 +1011,45 @@ rowlo   !for i, 0, 24 { !byte <(SCR + i*40) }
 rowhi   !for i, 0, 24 { !byte >(SCR + i*40) }
 colours !byte 7, 1, 13, 8, 12, 7, 12, 12
 autold  !byte $4C, $4F, $41, $44, $22, $2A, $22, $2C, $38, $0D   ; LOAD"*",8 RETURN, in full
+; the core's name ($D6B8-$D6BF) and build date ($D6B4-$D6B6, BCD) on the settings title row:
+; "core mem3     01.11.26" - from OctoVIC itself, so it is always the core really running
+corenm  ldx #4
+-       lda t_core,x
+        sta SCR + 5*40 + 18,x
+        dex
+        bpl -
+        ldx #7
+-       lda $D6B8,x
+        and #$3F                ; ASCII to screen codes
+        sta SCR + 5*40 + 23,x
+        dex
+        bpl -
+        ldx #2                  ; day, month, year at 32, 35, 38
+        ldy #6
+-       lda $D6B4,x
+        pha
+        lsr
+        lsr
+        lsr
+        lsr
+        ora #$30
+        sta SCR + 5*40 + 32,y
+        pla
+        and #$0F
+        ora #$30
+        sta SCR + 5*40 + 33,y
+        cpx #0
+        beq +
+        lda #$2E
+        sta SCR + 5*40 + 31,y
++       tya
+        sec
+        sbc #3
+        tay
+        dex
+        bpl -
+        rts
+t_core  !scr "core "
 stitle  !scr "settings                                "
 shelp   !scr "up/down pick  left/right change  f7 back"
 hdr     !scr " name                         type size "

@@ -43,7 +43,13 @@ octon   ldx #0
         sta $D800 + 120,x
         inx
         bne -
-+       lda #$01                ; the VIC's palette: 6 navy, 3 cyan
++       ldx #7                  ; the core's name ($D6B8-$D6BF, e.g. MEM3), right of OCTOVIC 256
+-       lda $D6B8,x
+        and #$3F                ; (ASCII to screen codes: letters, digits, space)
+        sta $0400 + 120 + 13,x
+        dex
+        bpl -
+        lda #$01                ; the VIC's palette: 6 navy, 3 cyan
         sta $D619
         lda #$06
         sta $D61A
@@ -63,27 +69,13 @@ octon   ldx #0
         sta $D619
         ldx #0
         ldy #$11
--       sty $D61A
-        lda bandpal,x
-        sta $D61B
-        lda bandpal+1,x
-        sta $D61C
-        lda bandpal+2,x
-        sta $D61D
-        lda bandpal+3,x
-        sta $D61B
-        lda bandpal+4,x
-        sta $D61C
-        lda bandpal+5,x
-        sta $D61D
+-       sty $D61A               ; (the index steps on by itself after each blue)
+        jsr bandrgb             ; entry 1 (bright)
+        jsr bandrgb             ; entry 2 (dark)
         tya
         clc
         adc #$10
         tay
-        txa
-        clc
-        adc #6
-        tax
         cpx #48
         bne -
         lda #$00                ; VRAM 0: the block, 16 x 16, 16 colours
@@ -197,6 +189,16 @@ w_load  jsr octoff
 ; SHIFT+RUN/STOP: the buffer gets LOAD"*",8 in full (not the tape's LOAD) and RUN follows the load -
 ; wedge.asm's SHIFTR2 ($F929), called straight from the KERNAL (patch.py)
 shiftrun = SHIFTR2
+bandrgb lda bandpal,x           ; one band colour: R, G, B (X steps on 3)
+        sta $D61B
+        lda bandpal+1,x
+        sta $D61C
+        lda bandpal+2,x
+        sta $D61D
+        inx
+        inx
+        inx
+        rts
 navyrgb lda #28                 ; navy: 28, 32, 92
         sta $D61B
         lda #32
