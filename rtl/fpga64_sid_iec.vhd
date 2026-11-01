@@ -149,6 +149,12 @@ port(
 	sid_oct     : in  std_logic := '0';
 	-- OCTOPHONIC: OctoSID FX from the menu (b0 chorus, b1 echo) - see rtl/octovic/sid_fx.sv
 	sid_fx_osd  : in  std_logic_vector(1 downto 0) := "00";
+	-- OCTOPHONIC OS: the mailbox's link to Main (hps_io EXT_BUS) - rtl/octovic/octo_os.sv
+	os_io_enable : in  std_logic := '0';
+	os_io_strobe : in  std_logic := '0';
+	os_io_din    : in  std_logic_vector(15 downto 0) := (others => '0');
+	os_ext_act   : out std_logic;
+	os_ext_dout  : out std_logic_vector(15 downto 0);
 
 	-- OCTOPHONIC: OctoVIC's VRAM, in the DDR3 (docs/OCTOVIC.md)
 	ogx_ddr_addr       : out std_logic_vector(28 downto 0);
@@ -304,6 +310,8 @@ signal fx1, fx2, fx3 : std_logic;
 signal p1_addr, p2_addr : unsigned(4 downto 0);
 signal p1_data, p2_data : unsigned(7 downto 0);
 signal octo_do      : std_logic_vector(7 downto 0);
+signal cs_mbox      : std_logic;                       -- OCTOPHONIC OS: $D6F0-$D6FF
+signal mbox_do      : std_logic_vector(7 downto 0);
 signal pulseRd_io   : std_logic;
 signal octo_rgb     : std_logic_vector(23 downto 0);
 signal vicBus       : unsigned(7 downto 0);
@@ -444,6 +452,23 @@ component sid_fx
 		inj_addr : out std_logic_vector(4 downto 0);
 		inj_data : out std_logic_vector(7 downto 0)
 	);
+end component;
+
+component octo_os
+port (
+	clk       : in  std_logic;
+	reset     : in  std_logic;
+	cs        : in  std_logic;
+	wr        : in  std_logic;
+	addr      : in  std_logic_vector(3 downto 0);
+	din       : in  std_logic_vector(7 downto 0);
+	dout      : out std_logic_vector(7 downto 0);
+	io_enable : in  std_logic;
+	io_strobe : in  std_logic;
+	io_din    : in  std_logic_vector(15 downto 0);
+	ext_act   : out std_logic;
+	ext_dout  : out std_logic_vector(15 downto 0)
+);
 end component;
 
 component octovic
@@ -827,6 +852,24 @@ p2_data <= unsigned(fx_data) when (fx2 or fx3) = '1' else cpuDo;
 -- really takes the byte (not while the VIC holds it with RDY, when it would read again)
 pulseRd_io <= enableCpu and not dma_active and baLoc and not cpuWe;
 
+-- OCTOPHONIC OS: the mailbox at $D6F0-$D6FF (OctoVIC leaves $F0-$FF unused)
+cs_mbox <= cs_octo when cpuAddr(7 downto 4) = "1111" else '0';
+mbox: octo_os
+port map (
+	clk       => clk32,
+	reset     => reset,
+	cs        => cs_mbox,
+	wr        => pulseWr_io,
+	addr      => std_logic_vector(cpuAddr(3 downto 0)),
+	din       => std_logic_vector(cpuDo),
+	dout      => mbox_do,
+	io_enable => os_io_enable,
+	io_strobe => os_io_strobe,
+	io_din    => os_io_din,
+	ext_act   => os_ext_act,
+	ext_dout  => os_ext_dout
+);
+
 octo: octovic
 port map (
 	clk            => clk32,
@@ -969,7 +1012,8 @@ io_data_i <= io_data when io_ext = '1' else
 -- $D400-$D7FF (io_data only for $DE00/$DF00), so sidData is the SID picked, not always the
 -- first pair - before this, SIDs 3 to 8 read back SID 2's last byte, their OSC3 and ENV3
 -- never moved, and a SID finder (the OCTOPHONIC launcher's) saw three SIDs of eight.
-sid_rd <= unsigned(octo_do) when cs_octo = '1' else
+sid_rd <= unsigned(mbox_do) when cs_mbox = '1' else
+          unsigned(octo_do) when cs_octo = '1' else
           sid4_do when (sid4_sel_l or sid4_sel_r) = '1' else
           sid3_do when (sid3_sel_l or sid3_sel_r) = '1' else
           sid2_do when (sid2_sel_l or sid2_sel_r) = '1' else

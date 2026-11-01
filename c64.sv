@@ -375,10 +375,18 @@ wire  [7:0] pd1,pd2,pd3,pd4;
 
 wire [64:0] RTC;
 
+// OCTOPHONIC OS: Main talks to the mailbox (rtl/octovic/octo_os.sv) over hps_io's EXT_BUS
+wire [35:0] EXT_BUS;
+wire        os_ext_act;
+wire [15:0] os_ext_dout;
+assign EXT_BUS[32]   = os_ext_act;
+assign EXT_BUS[15:0] = os_ext_dout;
+
 hps_io #(.CONF_STR(CONF_STR), .VDNUM(2), .BLKSZ(1)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
+	.EXT_BUS(EXT_BUS),
 
 	.joystick_0(joyA),
 	.joystick_1(joyB),
@@ -429,6 +437,7 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(2), .BLKSZ(1)) hps_io
 );
 
 wire load_prg   = ioctl_index == 'h01;
+wire load_raw   = ioctl_index == 'h0A;    // OCTOPHONIC OS: straight into RAM - no reset, no BASIC pointers
 wire load_crt   = ioctl_index == 'h41 || ioctl_index == 5;
 wire load_reu   = ioctl_index == 'h81;
 wire load_tap   = ioctl_index == 'hC1;
@@ -723,7 +732,7 @@ always @(posedge clk_sys) begin
 
 
 	if (ioctl_wr) begin
-		if (load_prg) begin
+		if (load_prg | load_raw) begin
 			// PRG header
 			// Load address low-byte
 			if      (ioctl_addr == 0) begin ioctl_load_addr[7:0]  <= ioctl_data; inj_end[7:0]  <= ioctl_data; end
@@ -1071,6 +1080,11 @@ fpga64_sid_iec fpga64
 	.sid_quad(~status[98]),               // OCTOPHONIC (8 SIDs, 4 SIDs, Off): SIDs at $D400, $D420, $D500, $D520
 	.sid_oct(status[98:97] == 2'b00),
 	.sid_fx_osd(status[100:99]),
+	.os_io_enable(EXT_BUS[34]),
+	.os_io_strobe(EXT_BUS[33]),
+	.os_io_din(EXT_BUS[31:16]),
+	.os_ext_act(os_ext_act),
+	.os_ext_dout(os_ext_dout),
 
 	.ogx_ddr_addr(ogx_ddram_addr),
 	.ogx_ddr_burstcnt(ogx_ddram_burstcnt),

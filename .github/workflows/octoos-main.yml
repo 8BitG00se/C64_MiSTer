@@ -1,0 +1,54 @@
+# OCTOPHONIC OS: builds Octophonic Main - MiSTer's Main_MiSTer with tools/octoos/main's patch on
+# top - with the same ARM compiler MiSTer itself uses. The program comes out on the branch
+# octoos-main-build (MiSTer, MiSTer.elf and the build log), where it can be fetched with git.
+name: Build Octophonic Main
+
+on:
+  push:
+    branches: [ octophonic-v1.1 ]
+    paths: [ 'tools/octoos/main/**', '.github/workflows/octoos-main.yml' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  main:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: MiSTer's compiler (Arm GNU toolchain 10.2)
+        run: |
+          wget -q https://developer.arm.com/-/media/Files/downloads/gnu-a/10.2-2020.11/binrel/gcc-arm-10.2-2020.11-x86_64-arm-none-linux-gnueabihf.tar.xz
+          tar xf gcc-arm-10.2-2020.11-x86_64-arm-none-linux-gnueabihf.tar.xz -C /opt
+          echo "/opt/gcc-arm-10.2-2020.11-x86_64-arm-none-linux-gnueabihf/bin" >> $GITHUB_PATH
+
+      - name: Main_MiSTer, and our patch
+        run: |
+          git clone -q https://github.com/MiSTer-devel/Main_MiSTer main
+          cd main
+          git checkout -q $(cat ../tools/octoos/main/UPSTREAM)
+          git apply ../tools/octoos/main/octophonic-main.patch
+
+      - name: Build
+        run: |
+          cd main
+          make -j$(nproc) 2>&1 | tee ../build.log
+          ls -la bin/MiSTer bin/MiSTer.elf
+
+      - name: Keep it
+        if: always()
+        run: |
+          mkdir -p /tmp/out
+          cp main/bin/MiSTer main/bin/MiSTer.elf /tmp/out/ 2>/dev/null || true
+          cp build.log /tmp/out/ 2>/dev/null || true
+          arm-none-linux-gnueabihf-objdump -T main/bin/MiSTer.elf 2>/dev/null | grep -o 'GLIBC_[0-9.]*' | sort -uV > /tmp/out/glibc.txt || true
+          echo "$(git rev-parse --short HEAD) $(date -u +%Y-%m-%dT%H:%MZ) upstream $(cat tools/octoos/main/UPSTREAM)" > /tmp/out/result.txt
+          cd /tmp/out
+          git init -q
+          git checkout -q -b octoos-main-build
+          git add -A
+          git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Octophonic Main: $(cat result.txt)"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" octoos-main-build
