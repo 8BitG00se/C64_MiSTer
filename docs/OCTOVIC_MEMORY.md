@@ -60,6 +60,43 @@ copper write: the copper's entries for a line are all done before that line's la
 in order, and the renderer draws one line at a time. (A 6510 write lands on whatever line is being
 drawn at that moment - up to three lines early - as documented.)
 
+## The known-good baseline: Showcase "Lanterns"
+
+Showcase build 1 runs perfectly on Neal's MiSTer (two scrolling hill layers, additive lantern
+sprites, the turned-and-sized window layer, 128 copper lists stepped by the copper's own
+animation, every picture uploaded by REU before it starts). Logged in the emulator and replayed
+through the RTL beside Horizon:
+
+| per frame, after loading | Showcase | Horizon 7 | Horizon 8 | Horizon 9 |
+|---|---|---|---|---|
+| VDATA writes (CPU/REU into VRAM) | 192 | 894 | 811 | 825 |
+| of them while the picture is drawn (lines 16-299) | 192 | 538 | 418 | 699 |
+| blitter starts | 0 | 25 | 0 | 15 |
+| copper base / switch writes (whole run) | 0 | 6,276 | 7,776 | 10,026 |
+| renderer time in maps + tiles (idle DDR3, clocks a frame) | 67,000 | | | 31,000 |
+| renderer time on sprites (clocks a frame) | 3,900 | | | 34,000 |
+
+Replayed on the OLD core: Showcase has 0 late lines at 80% busy / 40-120; Horizon 7 has 6-8 a
+frame and Horizon 8 2-5 at the same setting. At the harsh 90% / 60-160, Showcase is far over
+(200+ a frame) - and it is perfect on the real machine - so **Neal's real DDR3 behaves like the
+80% model or better**, and the 90% model is pessimistic.
+
+So Showcase actually draws MORE layer work per line than Horizon (more map and tile reads); what
+it does not do is anything that keeps the DDR3 port busy while the picture is drawn. The Horizon
+patterns that crossed the line on the old core:
+
+1. **the blitter running during the picture** (the 3D shapes: 15-25 blits a frame) and
+2. **VDATA traffic mid-picture** (3.5x Showcase's) - both kept a read in flight on the port, and on
+   the old core a line could not finish until the port was empty (the S_END bug): lines waited
+   thousands of clocks;
+3. **copper lists rebuilt and switched every frame** (2-3 COPBASE/COPCTL writes a frame), and the
+   build 5-8 copper-slot reuse (a list overwritten while it was being read), and a 160-entry
+   palette burst read a word at a time (build 7);
+4. **many big sprites** (Horizon spends 9x Showcase's time on sprites).
+
+With memory build 1, 1-3 no longer cost anything at the 80% model (Horizon 7/8/9: 0 late). 4 is
+real work and is what OctoBench's sprite tests measure.
+
 ## What changed (memory build 1)
 
 | change | why |
