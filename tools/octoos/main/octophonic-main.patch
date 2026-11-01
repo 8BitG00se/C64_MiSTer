@@ -1,9 +1,9 @@
 diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
 new file mode 100644
-index 0000000..be56762
+index 0000000..927fc01
 --- /dev/null
 +++ b/support/octo/octo.cpp
-@@ -0,0 +1,862 @@
+@@ -0,0 +1,863 @@
 +// OCTOPHONIC OS (milestone 1, build 2) - by Mong00se.
 +//
 +// With /media/fat/octophonic/os.ini on the card, the MiSTer starts straight into the Octophonic 64
@@ -261,6 +261,7 @@ index 0000000..be56762
 +	}
 +	snprintf(os_start, sizeof(os_start), "%s", cwd);
 +	os_log("core: OS active, folder /%s", cwd);
++	printf("Octophonic OS: active, folder /%s\n", cwd);
 +}
 +
 +int octo_os_active()
