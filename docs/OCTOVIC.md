@@ -57,7 +57,7 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | 1A | PALIDX | the palette entry to write |
 | 1B-1D | PALR, PALG, PALB | its red, green, blue; writing PALB stores the entry and moves PALIDX on |
 | 1E | ID (r) | $8C |
-| 1F | VERSION (r) | 2 |
+| 1F | VERSION (r) | 2; 3 with the memory work (core build 7 on) |
 | 20-2F | LAYER 0 | see below |
 | 30-3F | LAYER 1 | |
 | 40-42 | COPSTEP | the animation: added to the copper list's address each step |
@@ -108,6 +108,8 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | AF | LATAVG (r) | memory build: a running average of that round trip, clocks |
 | B0 | STALL (r) | memory build: last frame, the % of the frame the DDR3 port made OctoVIC wait |
 | B1 | LEAD (r) | memory build: last frame, the fewest lines ahead of the beam a line was finished (3 best, 0 = late) |
+| B4-B6 | BUILD DATE (r) | version 3: the core's build date, BCD: day, month, year (20xx) |
+| B8-BF | CORE NAME (r) | version 3: the core's name, 8 ASCII letters padded with spaces (e.g. CORE7) - shown on the start screen and the F8 settings |
 | C0 | SIDFX | OctoSID FX: b0 chorus, b1 echo (see below); also in the core's menu |
 
 ### A layer (20 + 16*k)

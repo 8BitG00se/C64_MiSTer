@@ -212,7 +212,7 @@ struct Mailbox
             if (! unlocked || a < 0xD600 || a >= 0xD700) return false;
             const uint8_t r = a & 0xFF;
             if (r >= 0xF0) { const uint8_t i = r & 15; v = i == 0xC ? 2 : i == 8 ? (uint8_t) name.size() : i == 0xF ? (uint8_t) net : mb[i]; return true; }
-            static const char tag[] = "MEM3    ";     // the core's name and build date (OctoVIC version 3)
+            static const char tag[] = "CORE7   ";     // the core's name and build date (OctoVIC version 3)
             v = r == 0x1E ? 0x8C : r == 0x1F ? 3 : (r >= 0xB8 && r <= 0xBF) ? (uint8_t) tag[r - 0xB8]
               : r == 0xB4 ? 0x01 : r == 0xB5 ? 0x11 : r == 0xB6 ? 0x26 : 0; return true;
         };
