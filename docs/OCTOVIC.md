@@ -92,6 +92,12 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | 94-97 | DVX | the step down the picture for each pixel along a line (0 at reset) |
 | 98-9B | DUY | the step across the picture for each line down (0 at reset) |
 | 9C-9F | DVY | the step down the picture for each line down (1.0 at reset) |
+| A0 | LATE (r) | last frame: lines shown before OctoVIC had finished drawing them (the line buffer ran dry), 0-255 |
+| A1 | LATE0 (r) | of those, lines it was still drawing layer 0 for |
+| A2 | LATE1 (r) | ... layer 1 |
+| A3 | LATEOTH (r) | ... anything else: sprites, the copper, the sprite table, or not started at all |
+| A4-A5 | LATEFIRST (r) | last frame's first late line (9 bits; $1FF none) |
+| A6-A7 | LATETOTAL (r) | late lines since reset, 16 bits, stops at $FFFF |
 | C0 | SIDFX | OctoSID FX: b0 chorus, b1 echo (see below); also in the core's menu |
 
 ### A layer (20 + 16*k)
@@ -257,3 +263,17 @@ the HDMI socket carries the VGA picture, so direct video users see the VIC side 
 
 These two bits are the future Octophonic MiSTer Adapter's arrangement: there the real C64's
 S-video is the VIC side and the MiSTer's HDMI the OctoVIC side.
+
+
+## HEALTH (core build 3)
+
+A late line is one the beam reached before OctoVIC had finished drawing it: on screen it shows
+part of a layer, or none (the backdrop), for that frame - the "whole layer missing for a frame"
+flicker. LATE ($D6A0) counts them for the last frame; LATE0/LATE1/LATEOTH say what was being drawn
+when the beam got there; LATEFIRST is where it started; LATETOTAL keeps adding up, so a 6502 that
+reads once a second still sees a single bad frame. A healthy picture reads 0 in all of them.
+
+Build 3 also changes who gets the DDR3 first: when the line being drawn is due next (one line
+ahead of the beam or less), its reads go before queued VRAM writes - as long as fewer than 10
+writes are waiting, so a 6510 or REU writing VDATA flat out never loses a byte. Before, every
+queued VRAM write went first, which is how REU streaming into VRAM could starve the picture.

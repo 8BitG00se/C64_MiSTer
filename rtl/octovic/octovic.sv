@@ -147,6 +147,12 @@ endfunction
 // the write FIFO: CPU bytes for the VRAM
 (* ramstyle = "MLAB, no_rw_check" *) reg  [31:0] wf[16];
 reg   [3:0] wf_r, wf_w;
+wire  [3:0] wf_cnt = wf_w - wf_r;
+wire        ren_urgent;        // the renderer's line is due next (set by the renderer, below)
+// HEALTH: lines shown before they were fully drawn (the line buffer ran dry) - last frame
+reg   [7:0] h_late, h_late0, h_late1, h_lateo;
+reg   [8:0] h_first;
+reg  [15:0] h_total;
 wire        wf_empty = wf_r == wf_w;
 wire        wf_full  = (wf_w + 4'd1) == wf_r;
 
@@ -306,6 +312,9 @@ always @(*) begin
 		8'h0C: dout = xadj;         8'h0D: dout = yadj;          8'h0E: dout = {7'd0, copen};
 		8'h0F: dout = sprcount;     8'h19: dout = {6'd0, palsel}; 8'h1A: dout = palidx;
 		8'h1E: dout = 8'h8C;        8'h1F: dout = 8'h02;
+		8'hA0: dout = h_late;       8'hA1: dout = h_late0;       8'hA2: dout = h_late1;      8'hA3: dout = h_lateo;
+		8'hA4: dout = h_first[7:0]; 8'hA5: dout = {7'd0, h_first[8]};
+		8'hA6: dout = h_total[7:0]; 8'hA7: dout = h_total[15:8];
 		8'h50: dout = mula[7:0];    8'h51: dout = mula[15:8];    8'h52: dout = mulb[7:0];    8'h53: dout = mulb[15:8];
 		8'h54: dout = mulr[7:0];    8'h55: dout = mulr[15:8];    8'h56: dout = mulr[23:16];  8'h57: dout = mulr[31:24];
 		8'h58: dout = mathctl;
@@ -376,7 +385,13 @@ always @(posedge clk) begin
 		if (accepted_rd) begin tf[tf_w] <= cmd_tag; tf_w <= tf_w + 5'd1; end
 		if (port_free) begin
 			ddr_rd <= 0; ddr_we <= 0;
-			if (!wf_empty) begin
+			if (ren_urgent && !rqf_empty && room && wf_cnt < 4'd10) begin   // the line is due: its reads go first
+				ddr_addr <= VBASE + {8'd0, rqf_w[rqf_rp[1:0]]};
+				cmd_tag  <= rqf_t[rqf_rp[1:0]];
+				ddr_rd   <= 1;
+				rqf_rp   <= rqf_rp + 3'd1;
+			end
+			else if (!wf_empty) begin
 				ddr_addr <= VBASE + {8'd0, wf[wf_r][31:11]};
 				ddr_din  <= {8{wf[wf_r][7:0]}};
 				ddr_be   <= 8'd1 << wf[wf_r][10:8];
@@ -799,6 +814,12 @@ wire drained = rqf_empty && (outstanding == 0) && (df_count == 0) && !c_busy
 // how far ahead line L is
 wire [8:0] ahead = (L >= vic_y) ? (L - vic_y) : (L + nl - vic_y);
 wire       may_draw = (ahead >= 9'd1) && (ahead <= 9'd3) && (L[1:0] != vic_y[1:0]);
+assign     ren_urgent = (st != S_WAIT) && (ahead <= 9'd1);
+
+// HEALTH: the line each slot last finished, and this frame's counts
+reg  [8:0] doneline[4];
+reg  [7:0] lt_n, lt_0, lt_1, lt_o;
+reg  [8:0] lt_first;
 
 task push(input [20:0] w, input [TW-1:0] t);
 	begin rqf_w[rqf_wp[1:0]] <= w; rqf_t[rqf_wp[1:0]] <= t; rqf_wp <= rqf_wp + 3'd1; end
@@ -810,13 +831,30 @@ always @(posedge clk) begin
 	cop_clr <= 0;
 	if (cop_take) cop_w <= 0;
 	if (reset) begin
+		lt_n <= 0; lt_0 <= 0; lt_1 <= 0; lt_o <= 0; lt_first <= 9'h1FF; h_total <= 0;
+		h_late <= 0; h_late0 <= 0; h_late1 <= 0; h_lateo <= 0; h_first <= 9'h1FF;
+		doneline[0] <= 9'h1FF; doneline[1] <= 9'h1FF; doneline[2] <= 9'h1FF; doneline[3] <= 9'h1FF;
 		st <= S_WAIT; L <= 0; nl <= 9'd312; prev_y <= 0; cop_w <= 0; frame <= 0; rqf_wp <= 0; map_issued <= 0; clr_we <= 0; cop_armed <= 0;
 		cop_off <= 0; sat_off <= 0; cop_k <= 0; sat_k <= 0; cop_d <= 0; sat_d <= 0;
 	end
 	else begin
 		if (anim_rst) begin cop_off <= 0; sat_off <= 0; cop_k <= 0; sat_k <= 0; cop_d <= 0; sat_d <= 0; end
 		prev_y <= vic_y;
-		if (vic_y != prev_y && vic_y < prev_y) begin nl <= prev_y + 9'd1; frame <= frame + 8'd1; end
+		if (vic_y != prev_y && vic_y < prev_y) begin
+			nl <= prev_y + 9'd1; frame <= frame + 8'd1;
+			// HEALTH: last frame's counts out, this frame's from nothing
+			h_late <= lt_n; h_late0 <= lt_0; h_late1 <= lt_1; h_lateo <= lt_o; h_first <= lt_first;
+			lt_n <= 0; lt_0 <= 0; lt_1 <= 0; lt_o <= 0; lt_first <= 9'h1FF;
+		end
+		else if (vic_y != prev_y && vic_y >= FIRST && vic_y <= LAST && ENABLE && doneline[vic_y[1:0]] != vic_y) begin
+			// HEALTH: the beam is on a line that was not finished - what was being drawn when it got there
+			if (lt_n != 8'hFF) lt_n <= lt_n + 8'd1;
+			if (h_total != 16'hFFFF) h_total <= h_total + 16'd1;
+			if (lt_first == 9'h1FF) lt_first <= vic_y;
+			if (st != S_WAIT && L == vic_y && pass[0] && !lay) begin if (lt_0 != 8'hFF) lt_0 <= lt_0 + 8'd1; end
+			else if (st != S_WAIT && L == vic_y && pass[0] && lay) begin if (lt_1 != 8'hFF) lt_1 <= lt_1 + 8'd1; end
+			else if (lt_o != 8'hFF) lt_o <= lt_o + 8'd1;
+		end
 
 		case (st)
 		S_WAIT: begin
@@ -1093,6 +1131,7 @@ always @(posedge clk) begin
 		S_END: if (drained && !cop_w) begin
 			bdl[L[1:0]] <= backdrop;
 			cdl[L[1:0]] <= ctrl[4:0];
+			doneline[L[1:0]] <= L;
 			kdl[L[1:0]] <= key;
 			L <= (L + 9'd1 == nl) ? 9'd0 : L + 9'd1;
 			st <= S_WAIT;
