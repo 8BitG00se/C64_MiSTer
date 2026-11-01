@@ -1009,7 +1009,7 @@ reuu    !word 0
 
 rowlo   !for i, 0, 24 { !byte <(SCR + i*40) }
 rowhi   !for i, 0, 24 { !byte >(SCR + i*40) }
-colours !byte 7, 1, 13, 8, 12, 7, 12, 12
+colours !byte 7, 1, 13, 3, 12, 7, 12, 12   ; folders yellow, .prg white, disks light green, .crt sky blue, others grey
 autold  !byte $4C, $4F, $41, $44, $22, $2A, $22, $2C, $38, $0D   ; LOAD"*",8 RETURN, in full
 ; the core's name ($D6B8-$D6BF) and build date ($D6B4-$D6B6, BCD) on the settings title row:
 ; "core mem3     01.11.26" - from OctoVIC itself, so it is always the core really running
