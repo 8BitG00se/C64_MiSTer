@@ -1,9 +1,9 @@
 diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
 new file mode 100644
-index 0000000..567ce14
+index 0000000..be37f64
 --- /dev/null
 +++ b/support/octo/octo.cpp
-@@ -0,0 +1,483 @@
+@@ -0,0 +1,503 @@
 +// OCTOPHONIC OS (milestone 1) - by Mong00se.
 +//
 +// With /media/fat/octophonic/os.ini on the card, the MiSTer starts straight into the Octophonic 64
@@ -440,7 +440,27 @@ index 0000000..567ce14
 +	}
 +	if (ends_with(p, ".prg") || ext_of(path).empty())
 +	{
-+		mb_reply(ST_DONE, 0, -1, 1);                // the core resets and runs it
++		// a demo's REU goes in first, as its launcher does: the .reu of the same name, or the only
++		// .reu in the folder
++		std::vector<Entry> v;
++		list_dir(v);
++		std::string base = base_of(path.substr(path.rfind('/') + 1)), reu;
++		int reus = 0;
++		for (auto &e : v)
++		{
++			if (e.dir || strcasecmp(ext_of(e.name).c_str(), "reu")) continue;
++			reus++;
++			if (!strcasecmp(base_of(e.name).c_str(), base.c_str())) reu = e.name;
++			else if (reus == 1 && reu.empty()) reu = "?" + e.name;
++		}
++		if (!reu.empty() && reu[0] == '?') reu = (reus == 1) ? reu.substr(1) : "";
++		mb_reply(ST_DONE, 0, -1, reu.empty() ? 1 : 2); // the core resets and runs it
++		if (!reu.empty())
++		{
++			std::string rp = std::string(cwd) + "/" + reu;
++			printf("Octophonic OS: REU %s\n", rp.c_str());
++			user_io_file_tx(rp.c_str(), 0x81);
++		}
 +		c64_open_file(p, 1);
 +		return;
 +	}
