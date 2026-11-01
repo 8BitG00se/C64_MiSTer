@@ -14,7 +14,10 @@ Nothing changes for a MiSTer without `/media/fat/octophonic/os.ini`.
 
 Names match whole, then without the extension, then by their start (`/HOR` finds `horizon.prg`).
 
-Every request gives up after 3 seconds with `?NO REPLY FROM OCTOPHONIC MAIN (CMD nn)`.
+Every request carries a number (SEQ) and waits up to 20 seconds for the answer with that number,
+the border flickering while Main works (a folder on a network share can take a while); then
+`?NO REPLY FROM OCTOPHONIC MAIN (CMD nn)`. In the browser, folder scans and loads show SCANNING... or
+LOADING... and also wait 20 s; the settings wait 3 s.
 
 ## F1: the browser
 
@@ -81,13 +84,18 @@ Win+F12 (or the Menu key) opens the MiSTer menu; holding F12 for 2 seconds does 
 | F8 | NAME | write: next character (max 32); read: count | reads |
 | F9 | | write: empty the name | |
 | FA/FB | RESULT | read | DIR/INFO: bytes, LOAD: end address |
-| FC | VERSION | read: 1 | |
+| FC | VERSION | read: 2 | |
+| FD | SEQ | write: the request's number, before CMD | reads |
+| FE | RSEQ | read: the number STATUS answers | writes it first in every reply |
 
 Commands: `01` DIR (PETSCII text, 0-terminated), `02` CHDIR, `03` LOAD, `04` RUN, `05` INFO,
 `06` LIST (path 40 bytes, then 32-byte records: type, blocks, ext, name), `07` OPEN (entry LEN),
 `08` SETLIST (40-byte lines: label, value), `09` SETSTEP (line ARG, VALUE 1 or $FF), `0A` SETAPPLY
 (start the chosen chip preset), `0F` SHELL (SHELL.PRG to its load address).
 Errors: `$81` not found, `$82` not a folder, `$83` too big, `$84` can't read, `$85` can't run, `$8F` unknown.
+
+An answer whose RSEQ isn't the 6502's current SEQ (the 6502 gave up and asked something else) is
+dropped whole by the core, so a late answer never lands on a newer request; Main logs it.
 
 Main's side, on hps_io's EXT_BUS: `0x70` poll (reply `$6F00` + pending), `0x71` read (each word
 after the reply: the 16 registers, then the 32 name bytes), `0x72` write (each word

@@ -1,9 +1,9 @@
 diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
 new file mode 100644
-index 0000000..927fc01
+index 0000000..4d5bddc
 --- /dev/null
 +++ b/support/octo/octo.cpp
-@@ -0,0 +1,863 @@
+@@ -0,0 +1,878 @@
 +// OCTOPHONIC OS (milestone 1, build 2) - by Mong00se.
 +//
 +// With /media/fat/octophonic/os.ini on the card, the MiSTer starts straight into the Octophonic 64
@@ -76,7 +76,7 @@ index 0000000..927fc01
 +
 +#define RAW_INDEX      0x0A     // the core's "raw RAM" download: no reset, no BASIC pointers
 +
-+enum { R_CMD, R_STATUS, R_ADDRL, R_ADDRH, R_LENL, R_LENH, R_ARG, R_VALUE, R_NAMELEN, R_9, R_RESL, R_RESH, R_VER };
++enum { R_CMD, R_STATUS, R_ADDRL, R_ADDRH, R_LENL, R_LENH, R_ARG, R_VALUE, R_NAMELEN, R_9, R_RESL, R_RESH, R_VER, R_SEQ, R_RSEQ };
 +enum { ST_IDLE = 0, ST_BUSY = 1, ST_DONE = 2,
 +       E_NOTFOUND = 0x81, E_NOTDIR = 0x82, E_TOOBIG = 0x83, E_READ = 0x84, E_CANTRUN = 0x85, E_BADCMD = 0x8F };
 +
@@ -88,6 +88,7 @@ index 0000000..927fc01
 +static unsigned long poll_timer = 0;
 +static unsigned long f12_time = 0;       // F12 held down since (the MiSTer menu after 2 s)
 +static int  last_status = 0;             // the reply of the request being logged
++static uint8_t cur_seq = 0;              // the 6502's number for the request being answered
 +
 +// ------------------------------------------------------------------------------------------ log
 +
@@ -225,6 +226,8 @@ index 0000000..927fc01
 +{
 +	last_status = status;
 +	spi_uio_cmd_cont(UIO_OCTO_WRITE);
++	spi_w((R_RSEQ << 8) | cur_seq);               // first: the core drops the whole reply if the
++	                                              // 6502 has moved on to a newer request
 +	spi_w((R_RESL << 8) | (res & 0xFF));
 +	spi_w((R_RESH << 8) | ((res >> 8) & 0xFF));
 +	if (len >= 0)
@@ -844,6 +847,7 @@ index 0000000..927fc01
 +	from_pet(raw, name, sizeof(name));
 +	uint16_t addr = reg[R_ADDRL] | (reg[R_ADDRH] << 8);
 +	int len = reg[R_LENL] | (reg[R_LENH] << 8);
++	cur_seq = reg[R_SEQ];
 +	unsigned long t0 = GetTimer(0);
 +	char was[1024];
 +	snprintf(was, sizeof(was), "%s", cwd);
@@ -864,8 +868,19 @@ index 0000000..927fc01
 +	case 0x0F: cmd_shell(); break;
 +	default:   mb_reply(E_BADCMD, 0); break;
 +	}
-+	os_log("cmd %02X name '%s' addr %04X len %d folder /%s -> /%s status %02X, %lu ms",
-+		reg[R_CMD], name, addr, len, was, cwd, last_status & 0xFF, GetTimer(0) - t0);
++	// was the answer taken? (the 6502 may have given up and asked something else meanwhile)
++	// (not after RUN, OPEN or a preset: the core may already be restarting)
++	int taken = 1;
++	if (reg[R_CMD] != 0x04 && reg[R_CMD] != 0x07 && reg[R_CMD] != 0x0A)
++	{
++		uint8_t now[16];
++		char nn[33];
++		mb_read(now, nn);
++		taken = now[R_RSEQ] == cur_seq && now[R_SEQ] == cur_seq;
++	}
++	os_log("cmd %02X seq %02X name '%s' addr %04X len %d folder /%s -> /%s status %02X, %lu ms%s",
++		reg[R_CMD], cur_seq, name, addr, len, was, cwd, last_status & 0xFF, GetTimer(0) - t0,
++		taken ? "" : " - too late, the C64 had moved on (reply dropped)");
 +}
 diff --git a/support/octo/octo.h b/support/octo/octo.h
 new file mode 100644

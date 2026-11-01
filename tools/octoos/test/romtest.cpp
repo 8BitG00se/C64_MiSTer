@@ -25,7 +25,10 @@ static std::vector<uint8_t> rd (const std::string& p) { std::ifstream f (p, std:
 struct Entry { std::string name; int dir; long long size; };
 struct Mailbox
 {
-    int ticks = 0;                       // Main answers 40 ms after the bell (its poll, the SPI, the work)
+    // Main, as it behaves: it takes one request at a time (the registers as they were when it
+    // picked it up), answers 40 ms later (slowCmd: much later, once), and the core drops an answer
+    // whose number isn't the 6502's current one
+    int busy = 0; bool pending = false; uint8_t cap[16] = {}; std::string capName; int slowCmd = -1, slowTicks = 0, drops = 0;
     struct Line { std::string label; std::vector<std::string> ch; int v; };
     std::vector<Line> lines = { { "CHIP PRESET", { "PLAIN", "WARM", "CLASSIC" }, 0 }, { "MY CHIP LEFT", { "MOS_6581_3184", "MOS_6581_5084" }, 0 }, { "MY CHIP RIGHT", { "CSG_8580R5_3591", "MOS_8580R5_4687" }, 0 },
         { "LEFT SIDS 1357", { "6581", "8580" }, 0 }, { "RIGHT SIDS 2468", { "6581", "8580" }, 0 }, { "MY CHIPS", { "ON", "OFF" }, 0 }, { "OCTOPHONIC", { "8 SIDS", "4 SIDS", "OFF" }, 0 },
@@ -129,6 +132,22 @@ struct Mailbox
         }
         else reply (0x8F, 0);
     }
+    void tick()
+    {
+        if (mute) return;
+        if (busy > 0)
+        {
+            if (--busy > 0) return;
+            uint8_t live[16]; std::memcpy (live, mb, 16); std::string liveName = name;
+            std::memcpy (mb, cap, 16); name = capName;
+            serve();
+            if (cap[0xD] == live[0xD]) { for (int r : { 1, 4, 5, 7, 0xA, 0xB }) live[r] = mb[r]; live[0xE] = cap[0xD]; pending = false; }
+            else ++drops;
+            std::memcpy (mb, live, 16); name = liveName;
+            return;
+        }
+        if (pending) { std::memcpy (cap, mb, 16); capName = name; busy = 4; if (mb[0] == slowCmd) { busy = slowTicks; slowCmd = -1; } }
+    }
     void attach (C64Machine& m)
     {
         m.getBus().ioWriteHook = [this] (uint16_t a, uint8_t v) -> bool {
@@ -136,7 +155,7 @@ struct Mailbox
             if (! unlocked || a < 0xD600 || a >= 0xD700) return false;
             const uint8_t r = a & 0xFF;
             if (r >= 0xF0) { const uint8_t i = r & 15;
-                if (i == 0) { mb[0] = v; mb[1] = 1; ticks = 4; }
+                if (i == 0) { mb[0] = v; mb[1] = 1; pending = true; }
                 else if (i == 8) { if (name.size() < 32) name += (char) v; }
                 else if (i == 9) name.clear();
                 else mb[i] = v; }
@@ -145,7 +164,7 @@ struct Mailbox
         m.getBus().ioReadHook = [this] (uint16_t a, uint8_t& v) -> bool {
             if (! unlocked || a < 0xD600 || a >= 0xD700) return false;
             const uint8_t r = a & 0xFF;
-            if (r >= 0xF0) { const uint8_t i = r & 15; v = i == 0xC ? 1 : i == 8 ? (uint8_t) name.size() : mb[i]; return true; }
+            if (r >= 0xF0) { const uint8_t i = r & 15; v = i == 0xC ? 2 : i == 8 ? (uint8_t) name.size() : mb[i]; return true; }
             v = r == 0x1E ? 0x8C : r == 0x1F ? 2 : 0; return true;
         };
     }
@@ -179,7 +198,7 @@ struct Rig
         box.ram = m->getBus().getRam(); box.top = box.cwd = folder; box.shell = shell;
         if (roms.octo) box.attach (*m);
     }
-    void run (double s) { const auto fa = m->getFrameCount(); while (m->getFrameCount() < fa + (uint64_t) (s * 50)) { m->renderStereo (l.data(), r.data(), 480); if (box.ticks > 0 && --box.ticks == 0 && ! box.mute) box.serve(); } }
+    void run (double s) { const auto fa = m->getFrameCount(); while (m->getFrameCount() < fa + (uint64_t) (s * 50)) { m->renderStereo (l.data(), r.data(), 480); box.tick(); } }
     void key (int row, int col, bool shift, double hold = 0.1)
     {
         if (shift) m->setKeyDown (1, 7, true);
@@ -212,6 +231,7 @@ struct Rig
                 else if (k == "RESTORE") { m->setKeyDown (7, 7, true); run (0.05); m->getCpu().triggerNmi(); run (0.2); m->setKeyDown (7, 7, false); run (0.5); }
                 else if (k.rfind ("WAIT", 0) == 0) run (atof (k.c_str() + 4));
                 else if (k == "MUTE") box.mute = true;
+                else if (k.rfind ("SLOW", 0) == 0) { int c, sec; std::sscanf (k.c_str() + 4, "%x,%d", &c, &sec); box.slowCmd = c; box.slowTicks = sec * 100; }
                 else if (k == "JDOWN") { m->setJoystick (2, false, true, false, false, false); run (0.15); m->setJoystick (2, false, false, false, false, false); run (0.1); }
                 else if (k == "JFIRE") { m->setJoystick (2, false, false, false, false, true); run (0.15); m->setJoystick (2, false, false, false, false, false); run (0.1); }
                 else { std::printf ("unknown key %s\n", k.c_str()); std::exit (3); }
@@ -301,8 +321,20 @@ int main (int argc, char** argv)
           [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "DISK IN DRIVE 8") && has (o, "\nHI") ? std::string() : std::string ("disk not loaded"); } },
         { "browser: F2 start folder, HOME, page keys", OCTO, { "{CLR}{F1}{WAIT1}", "{RET}{WAIT1}", "{F2}{WAIT1}", "{F5}{F1}{HOME}{WAIT1}" },
           [] (const Snap&, const Snap& o, Rig&, Rig& oc) { return oc.box.cwd == oc.box.top && has (o, "ZDISK") ? std::string() : std::string ("not at the start folder"); } },
-        { "no reply: 3 s timeout message", OCTO, { "{CLR}{MUTE}@\n{WAIT4}" },
+        { "no reply at all: the 20 s message", OCTO, { "{CLR}{MUTE}@\n{WAIT22}" },
           [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "NO REPLY FROM OCTOPHONIC MAIN (CMD 01)") ? std::string() : std::string ("no timeout message"); } },
+        { "slow network: a 7 s @ is still answered", OCTO, { "{CLR}{SLOW1,7}@\n{WAIT9}" },
+          [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "ENTRIES") && ! has (o, "NO REPLY") ? std::string() : std::string ("slow DIR not answered"); } },
+        { "slow network: the browser says SCANNING", OCTO, { "{CLR}{SLOW6,7}{F1}{WAIT3}" },
+          [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "SCANNING...") ? std::string() : std::string ("no SCANNING"); } },
+        { "slow network: the browser list after 7 s", OCTO, { "{CLR}{SLOW6,7}{F1}{WAIT9}" },
+          [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "HELLO") && ! has (o, "SCANNING") ? std::string() : std::string ("no list"); } },
+        { "@ times out, @SUB after it gets its own answer", OCTO, { "{CLR}{SLOW1,25}@\n{WAIT21}", "@SUB\n{WAIT8}" },
+          [] (const Snap&, const Snap& o, Rig&, Rig& oc) { if (! has (o, "(CMD 01)")) return std::string ("no timeout"); if (oc.box.drops != 1) return "drops " + std::to_string (oc.box.drops);
+              return has (o, "INNER") ? std::string() : std::string ("SUB not listed"); } },
+        { "browser times out, F2 after it gets its own answer", OCTO, { "{CLR}{SLOW6,25}{F1}{WAIT21}", "{F2}{WAIT8}" },
+          [] (const Snap&, const Snap& o, Rig&, Rig& oc) { if (oc.box.drops != 1) return "drops " + std::to_string (oc.box.drops);
+              return has (o, "HELLO") && ! has (o, "NO REPLY") ? std::string() : std::string ("no list after F2"); } },
     };
 
     int pass = 0, fail = 0;

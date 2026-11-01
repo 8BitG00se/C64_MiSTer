@@ -24,6 +24,8 @@ MB_NCLR = MB+9
 MB_RL   = MB+$A
 MB_RH   = MB+$B
 MB_VER  = MB+$C
+MB_SEQ  = MB+$D
+MB_RSEQ = MB+$E
 SCR     = $0400
 COL     = $D800
 FRAME   = $F92F         ; the V1.1 start screen, without NEW (octo.asm)
@@ -32,6 +34,7 @@ GETIN   = $FFE4
 STOP    = $FFE1
 CHROUT  = $FFD2
 AUTORUN = $02A8
+seq     = $02AB         ; the request number, shared with the ROM's commands
 ROWS    = 17
 TOP     = 6             ; the first list row
 LBUF    = $CA00         ; Main writes the path (40) and the records (32 each) here
@@ -51,7 +54,7 @@ start   lda #0
         lda #$38
         sta $D03F
         lda MB_VER
-        cmp #$01
+        cmp #$02
         beq +
         jmp READY
 +       jsr FRAME               ; the navy screen, the band, the title
@@ -297,22 +300,63 @@ dolist  lda #<LBUF
 +       ldx #m_none-msgs
         jmp status
 
-; the request in A; wait for Main, 3 seconds at most. Z set when it is done
-call    sta MB_CMD
-        sta lastcmd
+; the request in A, numbered (SEQ); wait for Main. Folders, loads and presets (LIST, CHDIR,
+; OPEN, SETAPPLY) may take a while on a network share: 20 seconds, with SCANNING... or
+; LOADING... on the status line and the border flickering. The rest: 3 seconds. Only an answer
+; carrying our own number counts. Z set when it is done; A = the status ($FE: no answer)
+call    sta lastcmd
+        ldy #3
+        sty secs
+        cmp #$06
+        beq long
+        cmp #$02
+        beq long
+        cmp #$07
+        beq longl
+        cmp #$0A
+        bne +
+longl   ldx #m_load-msgs
+        bne long2
+long    ldx #m_scan-msgs
+long2   ldy #20
+        sty secs
+        jsr status              ; (status uses Y: secs is set first)
++        lda #50
+        sta jifs
+        lda $D020
+        sta bsave
+        inc seq
+        lda seq
+        sta MB_SEQ
+        lda lastcmd
+        sta MB_CMD
         lda $A2
-        clc
-        adc #150
-        sta tmo
+        sta lastj
 -       lda MB_ST
         cmp #$01
+        beq tick
+        ldx MB_RSEQ             ; the answer's number: ours?
+        cpx seq
+        beq fin
+tick    lda $A2
+        cmp lastj
+        beq -
+        sta lastj
+        and #3
         bne +
-        lda $A2
-        cmp tmo
+        inc $D020
++       dec jifs
+        bne -
+        lda #50
+        sta jifs
+        dec secs
         bne -
         lda #$FE
-        rts
-+       cmp #$02
+fin     pha
+        lda bsave
+        sta $D020
+        pla
+        cmp #$02
         rts
 
 ; an error (A) on the status line
@@ -816,6 +860,7 @@ help    !scr "ret run f1/f5 page f3 up f7 ready f8 set"
 msgs
 m_none    !scr 0
 m_load    !scr "loading...", 0
+m_scan    !scr "scanning...", 0
 m_noreply !scr "?no reply from octophonic main (cmd   ", 0
 m_err     !scr "?os error", 0
 m_nf      !scr "?not found", 0
@@ -835,7 +880,10 @@ num     !word 0
 dig     !byte 0
 lead    !byte 0
 tmp     !byte 0
-tmo     !byte 0
+secs    !byte 0
+jifs    !byte 0
+bsave   !byte 0
+lastj   !byte 0
 lastcmd !byte 0
 mountonly !byte 0
 sline   !byte 0
