@@ -109,6 +109,7 @@ localparam CONF_STR = {
 	"P1O[84:82],Palette,Colodore,Ultimate,Pepto-PAL,Vice,Vice6569R1,Vice6569R5,Vice8565R2,Lemon64;",
 	"P1O[5:4],Aspect Ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"P1O[10:8],Scandoubler Fx,None,HQ2x-320,HQ2x-160,CRT 25%,CRT 50%,CRT 75%;",
+	"P1O[102],Split Screens,Off,VGA C64 + HDMI Octo;",
 	"d1P1O[32],Vertical Crop,No,Yes;",
 	"P1O[31:30],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 	"P1-;",
@@ -969,6 +970,9 @@ wire        UMAXromH;
 
 wire [17:0] audio_l,audio_r;
 wire  [7:0] r,g,b;
+wire [23:0] vic_rgb;                       // SPLIT SCREENS: the VIC's picture alone, in step with r/g/b
+wire        split = status[102];
+assign VGA2_EN = split;                    // SPLIT SCREENS: the VGA output shows the VIC alone
 
 wire        ntsc_req = status[2];
 
@@ -1001,6 +1005,8 @@ fpga64_sid_iec fpga64
 	.r(r),
 	.g(g),
 	.b(b),
+	.vic_rgb_out(vic_rgb),
+	.split(split),
 
 	.game(game),
 	.exrom(exrom),
@@ -1538,7 +1544,7 @@ drv_overlay drv_ovl (
 reg [2:0] ovl_color;
 always @(posedge CLK_VIDEO) ovl_color <= tape_ovl_color | drv_ovl_color;
 
-video_mixer #(.GAMMA(1)) video_mixer
+video_mixer_split #(.GAMMA(1)) video_mixer
 (
 	.CLK_VIDEO(CLK_VIDEO),
 
@@ -1550,6 +1556,9 @@ video_mixer #(.GAMMA(1)) video_mixer
 	.R((ovl_color & 4) ? 8'hFF : ovl_color ? 8'h00 : r),
 	.G((ovl_color & 2) ? 8'hFF : ovl_color ? 8'h00 : g),
 	.B((ovl_color & 1) ? 8'hFF : ovl_color ? 8'h00 : b),
+	.ALT_R((ovl_color & 4) ? 8'hFF : ovl_color ? 8'h00 : vic_rgb[23:16]),
+	.ALT_G((ovl_color & 2) ? 8'hFF : ovl_color ? 8'h00 : vic_rgb[15:8]),
+	.ALT_B((ovl_color & 1) ? 8'hFF : ovl_color ? 8'h00 : vic_rgb[7:0]),
 	.HSync(hsync_out),
 	.VSync(vsync_out),
 	.HBlank(hblank),
@@ -1562,6 +1571,9 @@ video_mixer #(.GAMMA(1)) video_mixer
 	.VGA_R(VGA_R),
 	.VGA_G(VGA_G),
 	.VGA_B(VGA_B),
+	.VGA2_R(VGA2_R),
+	.VGA2_G(VGA2_G),
+	.VGA2_B(VGA2_B),
 	.VGA_VS(VGA_VS),
 	.VGA_HS(VGA_HS),
 	.VGA_DE(vga_de)

@@ -27,6 +27,13 @@ output        VGA_HS,
 output        VGA_VS,
 output        VGA_DE,    // = ~(VBlank | HBlank)
 output        VGA_F1,
+
+// OCTOPHONIC SPLIT SCREENS: a second picture for the analogue VGA output, same timing as VGA_R/G/B
+// (VGA2_EN high: the VGA output shows VGA2_R/G/B, HDMI still shows VGA_R/G/B)
+output  [7:0] VGA2_R,
+output  [7:0] VGA2_G,
+output  [7:0] VGA2_B,
+output        VGA2_EN,
 output [1:0]  VGA_SL,
 output        VGA_SCALER, // Force VGA scaler
 output        VGA_DISABLE, // analog out is off

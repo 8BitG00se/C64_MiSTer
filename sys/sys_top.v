@@ -1398,6 +1398,28 @@ scanlines #(0) VGA_scanlines
 	.ce_out(vga_ce_sl)
 );
 
+// OCTOPHONIC SPLIT SCREENS: the VGA output's own copy, fed the core's second picture when it asks
+// (the same delays as above, so its syncs are the same; the HDMI scaler keeps the first)
+wire [23:0] vga2_data_sl;
+wire        vga2_de_sl, vga2_vs_sl, vga2_hs_sl;
+scanlines #(0) VGA2_scanlines
+(
+	.clk(clk_vid),
+
+	.scanlines(scanlines),
+	.din(~de_emu ? 24'd0 : vga2_en ? {r2_out, g2_out, b2_out} : {r_out, g_out, b_out}),
+	.hs_in(hs_fix),
+	.vs_in(vs_fix),
+	.de_in(de_emu),
+	.ce_in(ce_pix),
+
+	.dout(vga2_data_sl),
+	.hs_out(vga2_hs_sl),
+	.vs_out(vga2_vs_sl),
+	.de_out(vga2_de_sl),
+	.ce_out()
+);
+
 wire [23:0] vga_data_osd;
 wire        vga_vs_osd, vga_hs_osd, vga_de_osd;
 osd vga_osd
@@ -1410,10 +1432,10 @@ osd vga_osd
 	.osd_status(osd_status),
 
 	.clk_video(clk_vid),
-	.din(vga_data_sl),
-	.hs_in(vga_hs_sl),
-	.vs_in(vga_vs_sl),
-	.de_in(vga_de_sl),
+	.din(vga2_data_sl),
+	.hs_in(vga2_hs_sl),
+	.vs_in(vga2_vs_sl),
+	.de_in(vga2_de_sl),
 
 	.dout(vga_data_osd),
 	.hs_out(vga_hs_osd),
@@ -1683,6 +1705,8 @@ wire        audio_s;
 wire  [1:0] audio_mix;
 wire  [1:0] scanlines;
 wire  [7:0] r_out, g_out, b_out, hr_out, hg_out, hb_out;
+wire  [7:0] r2_out, g2_out, b2_out;   // OCTOPHONIC SPLIT SCREENS: the core's second picture, for the VGA output
+wire        vga2_en;
 wire        vs_fix, hs_fix, de_emu, vs_emu, hs_emu, f1;
 wire        hvs_fix, hhs_fix, hde_emu;
 wire        clk_vid, ce_pix, clk_ihdmi, ce_hpix;
@@ -1769,6 +1793,10 @@ emu emu
 	.VGA_VS(vs_emu),
 	.VGA_DE(de_emu),
 	.VGA_F1(f1),
+	.VGA2_R(r2_out),
+	.VGA2_G(g2_out),
+	.VGA2_B(b2_out),
+	.VGA2_EN(vga2_en),
 	.VGA_SCALER(vga_force_scaler),
 
 `ifndef MISTER_DUAL_SDRAM

@@ -38,10 +38,10 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | 00-02 | VADDR | VRAM byte address, low byte first (24 bits) |
 | 03 | VINC | added to VADDR after every VDATA read or write |
 | 04 | VDATA | write: VRAM[VADDR] = value. Read: VRAM[VADDR] (fetched when VADDR was set or moved on; allow 2 us) |
-| 05 | CTRL | b0 ENABLE (draw the layers and sprites), b1 VICPAL (the VIC's 16 colours from OctoVIC's VIC palette), b2 VICBACK (the VIC behind everything, else in front), b3 KEYEN (with the VIC in front: its KEY colour is see-through, to the layers or else the backdrop) |
+| 05 | CTRL | b0 ENABLE (draw the layers and sprites), b1 VICPAL (the VIC's 16 colours from OctoVIC's VIC palette), b2 VICBACK (the VIC behind everything, else in front), b3 KEYEN (with the VIC in front: its KEY colour is see-through, to the layers or else the backdrop), b4 HIDEVIC (with ENABLE: the VIC is left out of the picture - the layers and sprites over the backdrop; see SPLIT SCREENS) |
 | 06 | KEY | the VIC colour (0-15) that is see-through when KEYEN |
 | 07 | - | (reserved) |
-| 08 | STATUS (r) | b0 VRAM writes still queued, b1 the divider busy, b2 the blitter busy |
+| 08 | STATUS (r) | b0 VRAM writes still queued, b1 the divider busy, b2 the blitter busy, b3 SPLIT (the Split Screens menu option is on) |
 | 09-0A | LINE (r) | the raster line being shown |
 | 0B | FRAME (r) | counts frames |
 | 0C | XADJ | signed: moves all of OctoVIC's picture right (fine alignment, normally 0) |
@@ -235,3 +235,25 @@ instead, CTRL and KEY show up to three lines later. The VIC palette acts as the 
 On screen, the VIC's pixel is then put in front (see-through where it is the KEY colour) or behind.
 
 VRAM is at DDR3 byte address $32000000 (16 MB); the 1541's track buffers are at $30000000.
+
+
+## SPLIT SCREENS (core build 3)
+
+The menu option Audio & Video > Split Screens sends two different pictures out of the MiSTer:
+
+- **VGA (the analogue I/O board, native 15 kHz):** the VIC-II's picture alone - what a real C64's
+  S-video would show. OctoVIC's layers and sprites never appear on it, whatever CTRL says.
+- **HDMI:** OctoVIC's picture as usual. With CTRL b4 HIDEVIC set (and b0 ENABLE), the VIC is left
+  out of it: the layers and sprites are drawn over the backdrop, so a stats screen drawn on the VIC
+  shows only on the VGA screen.
+
+A program reads STATUS ($D608) b3 to know the option is on: set, it can put its stats on the VIC
+(text, colour RAM, the C64's own characters) and set HIDEVIC; clear, it keeps everything on one
+screen as before (and should leave HIDEVIC clear, or the VIC's picture is not shown anywhere).
+
+The option needs the VGA output at the core's own timing: vga_scaler=0 and forced_scandoubler=0
+in MiSTer.ini (with the scandoubler on, VGA shows the same picture as HDMI). With direct_video=1
+the HDMI socket carries the VGA picture, so direct video users see the VIC side on HDMI.
+
+These two bits are the future Octophonic MiSTer Adapter's arrangement: there the real C64's
+S-video is the VIC side and the MiSTer's HDMI the OctoVIC side.

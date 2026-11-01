@@ -78,6 +78,9 @@ port(
 	r           : out unsigned(7 downto 0);
 	g           : out unsigned(7 downto 0);
 	b           : out unsigned(7 downto 0);
+	-- SPLIT SCREENS: the VIC's picture alone (for the VGA output), in step with r/g/b
+	vic_rgb_out : out std_logic_vector(23 downto 0);
+	split       : in  std_logic := '0';
 
 	-- cartridge port
 	game        : in  std_logic;
@@ -459,6 +462,8 @@ port (
 	vic_index      : in  std_logic_vector(3 downto 0);
 	vic_rgb        : in  std_logic_vector(23 downto 0);
 	rgb            : out std_logic_vector(23 downto 0);
+	rgb_vic        : out std_logic_vector(23 downto 0);
+	split          : in  std_logic;
 	ddr_addr       : out std_logic_vector(28 downto 0);
 	ddr_burstcnt   : out std_logic_vector(7 downto 0);
 	ddr_rd         : out std_logic;
@@ -838,6 +843,8 @@ port map (
 	vic_index      => std_logic_vector(vicColorIndex),
 	vic_rgb        => std_logic_vector(pal_r & pal_g & pal_b),
 	rgb            => octo_rgb,
+	rgb_vic        => vic_rgb_out,
+	split          => split,
 	ddr_addr       => ogx_ddr_addr,
 	ddr_burstcnt   => ogx_ddr_burstcnt,
 	ddr_rd         => ogx_ddr_rd,
@@ -998,18 +1005,47 @@ end process;
 process(clk32)
 	type chip_out is array (0 to 7) of signed(17 downto 0);
 	variable o         : chip_out;
-	variable sl, sr    : signed(20 downto 0);
+	variable sl, sr    : signed(20 downto 0);   -- the program's own SIDs (dry)
+	variable fl, fr    : signed(20 downto 0);   -- OctoSID FX: SIDs that only play the effect
+	variable tl, tr    : signed(21 downto 0);
 	variable nl, nr    : integer range 0 to 8;
 	variable onl, onr  : boolean;
-	variable pl        : std_logic_vector(7 downto 0);
+	variable pl, fx    : std_logic_vector(7 downto 0);
+
+	-- soft limiter: full level up to 3/4 of the range, then a quarter of anything above it, then the rail
+	function soft(x : signed(21 downto 0)) return signed is
+		constant T  : signed(21 downto 0) := to_signed( 98304, 22);
+		constant FS : signed(21 downto 0) := to_signed(131071, 22);
+		variable y  : signed(21 downto 0);
+	begin
+		y := x;
+		if    x >  T then y :=  T + shift_right(x - T, 2); if y >  FS then y :=  FS; end if;
+		elsif x < -T then y := -T + shift_right(x + T, 2); if y < -FS then y := -FS; end if;
+		end if;
+		return y(17 downto 0);
+	end function;
+
+	function scale(x : signed(21 downto 0); n : integer) return signed is
+	begin
+		if    n <= 1 then return x;
+		elsif n = 2  then return shift_right(x, 1);
+		elsif n <= 4 then return shift_right(x, 2);
+		else              return shift_right(x, 3);
+		end if;
+	end function;
 begin
 	if rising_edge(clk32) then
 		o := (signed(sid1_aud_l), signed(sid1_aud_r), signed(sid2_aud_l), signed(sid2_aud_r),
 		      signed(sid3_aud_l), signed(sid3_aud_r), signed(sid4_aud_l), signed(sid4_aud_r));
-		sl := (others => '0'); sr := (others => '0'); nl := 0; nr := 0;
+		sl := (others => '0'); sr := (others => '0'); fl := (others => '0'); fr := (others => '0');
+		nl := 0; nr := 0;
 		pl := sid_played and sid_awake; pl(0) := '1';   -- SID 1 always: a digi with no gate is still sound; a SID asleep adds nothing
-		if sidfx_mode(0) = '1' then pl(1) := '1'; end if;                  -- OctoSID FX: its SIDs play
-		if sidfx_mode(1) = '1' then pl(2) := '1'; pl(3) := '1'; end if;
+		fx := (others => '0');
+		-- OctoSID FX: its SIDs play - as the effect, on top of the program's sound, not as more SIDs to share the level with
+		if sidfx_mode(0) = '1' and pl(1) = '0' then fx(1) := '1'; end if;
+		if sidfx_mode(1) = '1' and pl(2) = '0' then fx(2) := '1'; end if;
+		if sidfx_mode(1) = '1' and pl(3) = '0' then fx(3) := '1'; end if;
+		pl := pl or fx;
 		for c in 0 to 7 loop
 			-- which side(s): its own, or both when its partner (c xor 1) has not played
 			if c mod 2 = 0 then
@@ -1021,19 +1057,19 @@ begin
 			if (c >= 2 and sid_quad = '0') or (c >= 4 and sid_oct = '0') or pl(c) = '0' then
 				onl := false; onr := false;
 			end if;
-			if onl then sl := sl + resize(o(c), 21); nl := nl + 1; end if;
-			if onr then sr := sr + resize(o(c), 21); nr := nr + 1; end if;
+			if fx(c) = '1' then
+				if onl then fl := fl + resize(o(c), 21); end if;
+				if onr then fr := fr + resize(o(c), 21); end if;
+			else
+				if onl then sl := sl + resize(o(c), 21); nl := nl + 1; end if;
+				if onr then sr := sr + resize(o(c), 21); nr := nr + 1; end if;
+			end if;
 		end loop;
-		if    nl <= 1 then mix_l <= sl(17 downto 0);
-		elsif nl = 2  then mix_l <= sl(18 downto 1);
-		elsif nl <= 4 then mix_l <= sl(19 downto 2);
-		else               mix_l <= sl(20 downto 3);
-		end if;
-		if    nr <= 1 then mix_r <= sr(17 downto 0);
-		elsif nr = 2  then mix_r <= sr(18 downto 1);
-		elsif nr <= 4 then mix_r <= sr(19 downto 2);
-		else               mix_r <= sr(20 downto 3);
-		end if;
+		-- the dry sound at the level it has with FX off, the effect at half that on top, then the limiter
+		tl := scale(resize(sl, 22) + resize(shift_right(fl, 1), 22), nl);
+		tr := scale(resize(sr, 22) + resize(shift_right(fr, 1), 22), nr);
+		mix_l <= soft(tl);
+		mix_r <= soft(tr);
 	end if;
 end process;
 

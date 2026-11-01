@@ -36,6 +36,8 @@ module octovic
 	input       [3:0] vic_index,   // the pixel's colour (valid the clock after the strobe)
 	input      [23:0] vic_rgb,     // that colour through the core's palette
 	output reg [23:0] rgb,         // the picture
+	output reg [23:0] rgb_vic,     // SPLIT SCREENS: the VIC's picture alone (for the VGA output), in step with rgb
+	input             split,       // SPLIT SCREENS: the menu option is on (read in STATUS b3)
 
 	// the DDR3 (Avalon)
 	output reg [28:0] ddr_addr,
@@ -299,7 +301,7 @@ always @(*) begin
 	case (addr)
 		8'h00: dout = vaddr[7:0];   8'h01: dout = vaddr[15:8];  8'h02: dout = vaddr[23:16];
 		8'h03: dout = vinc;         8'h04: dout = vrd_data;     8'h05: dout = ctrl;
-		8'h06: dout = {4'd0, key};  8'h08: dout = {5'd0, blt_busy, div_busy, ~wf_empty};
+		8'h06: dout = {4'd0, key};  8'h08: dout = {4'd0, split, blt_busy, div_busy, ~wf_empty};
 		8'h09: dout = vic_y[7:0];   8'h0A: dout = {7'd0, vic_y[8]};  8'h0B: dout = frame;
 		8'h0C: dout = xadj;         8'h0D: dout = yadj;          8'h0E: dout = {7'd0, copen};
 		8'h0F: dout = sprcount;     8'h19: dout = {6'd0, palsel}; 8'h1A: dout = palidx;
@@ -464,7 +466,7 @@ endgenerate
 // the backdrop as it was when each line was drawn (the copper changes it a line at a time)
 reg [23:0] bdl[4];
 // and CTRL and KEY: a copper split lands on its own line, not up to three lines early
-reg  [3:0] cdl[4];
+reg  [4:0] cdl[4];
 reg  [3:0] kdl[4];
 
 // the display: the VIC's pixel and ours
@@ -482,13 +484,16 @@ always @(posedge clk) begin
 		reg [23:0] vc;
 		reg [24:0] q;
 		reg        op;
-		reg  [3:0] c;
+		reg  [4:0] c;
+		reg [23:0] vh;
 		c  = cdl[d_slot];
 		vc = c[1] ? vpal[vic_index] : vic_rgb;
+		vh = (c[0] & c[4]) ? bdl[d_slot] : vc;     // HIDEVIC: the VIC is left out of this picture - the backdrop instead
 		q  = lb_q[d_bank];
 		op = d1_in & q[24];
+		rgb_vic <= vc;                              // SPLIT SCREENS: the VIC alone, whatever CTRL says
 		if (!c[0])                                  rgb <= vc;
-		else if (c[2])                              rgb <= op ? q[23:0] : vc;
+		else if (c[2] | c[4])                       rgb <= op ? q[23:0] : vh;
 		else if (c[3] && vic_index == kdl[d_slot])  rgb <= op ? q[23:0] : bdl[d_slot];
 		else                                        rgb <= vc;
 	end
@@ -1087,7 +1092,7 @@ always @(posedge clk) begin
 
 		S_END: if (drained && !cop_w) begin
 			bdl[L[1:0]] <= backdrop;
-			cdl[L[1:0]] <= ctrl[3:0];
+			cdl[L[1:0]] <= ctrl[4:0];
 			kdl[L[1:0]] <= key;
 			L <= (L + 9'd1 == nl) ? 9'd0 : L + 9'd1;
 			st <= S_WAIT;
