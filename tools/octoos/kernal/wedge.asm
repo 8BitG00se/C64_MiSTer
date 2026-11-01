@@ -6,7 +6,8 @@
 ;   /NAME        load and run it (.prg, .crt); a disk image goes into drive 8
 ;   @@           the browser (F1 at READY types it: wedge2.asm)
 ; The work is done by Main on the MiSTer; the 6502 talks to it through the mailbox at $D6F0.
-; Every request gives up after 3 seconds with ?NO REPLY FROM OCTOPHONIC MAIN (CMD nn).
+; Every request gives up after 20 seconds (the border flickers while Main works) with
+; ?NO REPLY FROM OCTOPHONIC MAIN (CMD nn). Each carries a number, so a late answer is never taken.
 MB      = $D6F0
 MB_CMD  = MB
 MB_ST   = MB+1
@@ -29,6 +30,7 @@ LASTCMD = $02A9         ; the last request, for the no-reply message
 TIMEOUT = $02AA         ; the jiffy that request gives up at
 SETKEY  = $FB97         ; wedge2.asm: F1 at READY, the no-reply message
 NOREPLY = $FB9A
+CALL2   = $FB9D
 SHELLAT = $C000         ; where SHELL.PRG goes
 
         * = $F72C
@@ -148,27 +150,8 @@ error   cmp #$FE                ; no reply in 3 seconds
 +       jsr print
         jmp ready
 
-; the command in A: wait for Main (RUN/STOP gives up); Z set when it's done
-call    sta MB_CMD
-        sta LASTCMD
-        lda $A2                 ; 3 seconds from now
-        clc
-        adc #150
-        sta TIMEOUT
--       jsr STOP
-        beq ++
-        lda MB_ST
-        cmp #$01
-        bne +
-        lda $A2
-        cmp TIMEOUT
-        bne -
-        lda #$FE                ; no reply
-        rts
-+       cmp #$02
-        rts
-++      lda #$FF
-        rts
+; the command in A: wait for Main (RUN/STOP gives up, 20 s at most); Z set when it's done
+call    jmp CALL2               ; wedge2.asm: the sequence number, the wait, the border
 
 ; the name from BUF,x to the end of the line, without quotes
 name    sta MB_NCLR
@@ -194,7 +177,7 @@ open    lda #$4F
         lda #$38
         sta $D03F
         lda MB_VER
-        cmp #$01
+        cmp #$02
         bne +
         clc
         rts

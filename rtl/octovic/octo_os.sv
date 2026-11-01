@@ -7,11 +7,16 @@
 //   F8 NAME    write: the next character of the name (up to 32); read: how many there are
 //   F9         write: empty the name
 //   FA/FB RESULT   read: what the command gives back
-//   FC VERSION read: 1
+//   FC VERSION read: 2 (2: with the sequence tag)
+//   FD SEQ     read/write: the 6502's number for its request (written before CMD)
+//   FE RSEQ    read: the number of the request STATUS answers
 // Main reaches it through hps_io's EXT_BUS with three commands of its own:
 //   70 poll    the reply word is $6F00 + pending
 //   71 read    after the reply word, each word reads the next byte: the 16 registers, then the name
-//   72 write   each word {register, value} writes a register; writing STATUS ends the request
+//   72 write   each word {register, value} writes a register; writing STATUS ends the request.
+//              Main writes RSEQ ($E) first: when it isn't the 6502's current SEQ, the reply is to a
+//              request the 6502 has given up on, and nothing in that write reaches the registers -
+//              so a late answer can never land on a newer request.
 // No block RAM: the name is kept in logic.
 
 module octo_os
@@ -32,7 +37,8 @@ module octo_os
 	output     [15:0] ext_dout
 );
 
-reg  [7:0] r_cmd, r_status, r_addrl, r_addrh, r_lenl, r_lenh, r_arg, r_val, r_resl, r_resh;
+reg  [7:0] r_cmd, r_status, r_addrl, r_addrh, r_lenl, r_lenh, r_arg, r_val, r_resl, r_resh, r_seq, r_rseq;
+reg        h_ok;                         // this reply is for the request the 6502 is waiting on
 (* ramstyle = "logic" *) reg [7:0] name [0:31];
 reg  [5:0] nlen;
 reg        pending;
@@ -56,7 +62,9 @@ function [7:0] regbyte(input [5:0] i);
 		4'h6: regbyte = r_arg;    4'h7: regbyte = r_val;
 		4'h8: regbyte = {2'b00, nlen};
 		4'hA: regbyte = r_resl;   4'hB: regbyte = r_resh;
-		4'hC: regbyte = 8'h01;
+		4'hC: regbyte = 8'h02;
+		4'hD: regbyte = r_seq;
+		4'hE: regbyte = r_rseq;
 		default: regbyte = 8'h00;
 	endcase
 endfunction
@@ -69,14 +77,16 @@ always @(*) begin
 		4'h6: dout = r_arg;    4'h7: dout = r_val;
 		4'h8: dout = {2'b00, nlen};
 		4'hA: dout = r_resl;   4'hB: dout = r_resh;
-		4'hC: dout = 8'h01;
+		4'hC: dout = 8'h02;
+		4'hD: dout = r_seq;
+		4'hE: dout = r_rseq;
 		default: dout = 8'hFF;
 	endcase
 end
 
 always @(posedge clk) begin
 	if (reset) begin
-		{r_cmd, r_status, r_addrl, r_addrh, r_lenl, r_lenh, r_arg, r_val, r_resl, r_resh} <= 0;
+		{r_cmd, r_status, r_addrl, r_addrh, r_lenl, r_lenh, r_arg, r_val, r_resl, r_resh, r_seq, r_rseq} <= 0;
 		nlen    <= 0;
 		pending <= 0;
 	end
@@ -88,6 +98,7 @@ always @(posedge clk) begin
 			4'h6: r_arg   <= din;  4'h7: r_val   <= din;
 			4'h8: if (!nlen[5]) begin name[nlen[4:0]] <= din; nlen <= nlen + 1'd1; end
 			4'h9: nlen <= 0;
+			4'hD: r_seq <= din;
 			default: ;
 		endcase
 	end
@@ -96,6 +107,7 @@ always @(posedge clk) begin
 	if (~io_enable) begin
 		h_act   <= 0;
 		h_first <= 1;
+		h_ok    <= 1;
 		h_out   <= 0;
 	end
 	else if (io_strobe) begin
@@ -115,7 +127,11 @@ always @(posedge clk) begin
 			end
 			if (h_cmd == 8'h72) begin
 				h_out <= 0;
-				case (io_din[11:8])
+				if (io_din[11:8] == 4'hE) begin
+					h_ok <= (io_din[7:0] == r_seq);
+					if (io_din[7:0] == r_seq) r_rseq <= io_din[7:0];
+				end
+				else if (h_ok) case (io_din[11:8])
 					4'h1: begin r_status <= io_din[7:0]; pending <= 0; end
 					4'h4: r_lenl <= io_din[7:0];  4'h5: r_lenh <= io_din[7:0];
 					4'h6: r_arg  <= io_din[7:0];  4'h7: r_val  <= io_din[7:0];

@@ -2,14 +2,68 @@
 ; (the tape's write and IRQ code; nothing else in the KERNAL calls in here). By Mong00se.
 ;   F1 at READY: the browser (types @@ on a clear screen, for the wedge to pick up)
 ;   the no-reply message: ?NO REPLY FROM OCTOPHONIC MAIN (CMD nn)
+;   call2: a request to Main, numbered (SEQ), waited on for up to 20 seconds with the border
+;   flickering so it never looks hung; only an answer with our own number counts
 !src "wedge.lbl"
 KEYLOG  = $028F
 NDX     = $C6
 KEYD    = $0277
+SEQV    = $02AB             ; the number of our last request
+BSAVE   = $02AC             ; the border colour, put back after the wait
+SECS    = $02AD             ; seconds left
+JIFS    = $02AE             ; jiffies left in this second
+LASTJ   = $02AF
 
         * = $FB97
         jmp setkey
         jmp noreply
+        jmp call2
+
+; the request in A, numbered; wait for Main. Z set when it is done; A = the status,
+; $FE no answer in 20 s, $FF RUN/STOP
+call2   inc SEQV
+        ldx SEQV
+        stx MB+$D               ; SEQ first, then the bell
+        sta MB_CMD
+        sta LASTCMD
+        lda $D020
+        sta BSAVE
+        lda #20
+        sta SECS
+        lda #50
+        sta JIFS
+        lda $A2
+        sta LASTJ
+wait    jsr STOP
+        beq gaveup
+        lda MB_ST
+        cmp #$01
+        beq tick
+        ldx MB+$E               ; the answer's number: ours?
+        cpx SEQV
+        beq fin
+tick    lda $A2
+        cmp LASTJ
+        beq wait
+        sta LASTJ
+        and #3
+        bne +
+        inc $D020               ; Main is working: the border says so
++       dec JIFS
+        bne wait
+        lda #50
+        sta JIFS
+        dec SECS
+        bne wait
+        lda #$FE
+        bne fin
+gaveup  lda #$FF
+fin     pha
+        lda BSAVE
+        sta $D020
+        pla
+        cmp #$02
+        rts
 
 setkey  php                     ; the keyboard's decode vector: through keyhk first
         sei                     ; (both bytes before the next IRQ uses it)
