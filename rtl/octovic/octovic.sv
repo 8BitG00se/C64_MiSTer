@@ -315,6 +315,12 @@ always @(*) begin
 		8'hA0: dout = h_late;       8'hA1: dout = h_late0;       8'hA2: dout = h_late1;      8'hA3: dout = h_lateo;
 		8'hA4: dout = h_first[7:0]; 8'hA5: dout = {7'd0, h_first[8]};
 		8'hA6: dout = h_total[7:0]; 8'hA7: dout = h_total[15:8];
+		// MEMORY BUILD meter
+		8'hA8: dout = h_rep;        8'hA9: dout = h_blank;
+		8'hAA: dout = h_worst[7:0]; 8'hAB: dout = h_worst[15:8];
+		8'hAC: dout = h_wl[7:0];    8'hAD: dout = {7'd0, h_wl[8]};
+		8'hAE: dout = h_latmax;     8'hAF: dout = h_latavg;
+		8'hB0: dout = h_stall;      8'hB1: dout = {6'd0, h_lead};
 		8'h50: dout = mula[7:0];    8'h51: dout = mula[15:8];    8'h52: dout = mulb[7:0];    8'h53: dout = mulb[15:8];
 		8'h54: dout = mulr[7:0];    8'h55: dout = mulr[15:8];    8'h56: dout = mulr[23:16];  8'h57: dout = mulr[31:24];
 		8'h58: dout = mathctl;
@@ -429,11 +435,65 @@ always @(posedge clk) begin
 	end
 end
 
+// MEMORY BUILD meter: DDR3 read latency (a read asked for with none on its way, to its answer:
+// the round trip), and how much of the frame the port turned OctoVIC's requests away
+reg        lat_on;
+reg  [7:0] lat_c, lat_max, h_latmax, lat_avg, h_latavg;
+reg [19:0] stall_c, fclk_c;
+reg  [7:0] fr_prev;
+reg  [7:0] h_stall;
+reg [26:0] dv_num;
+reg [19:0] dv_den;
+reg  [6:0] dv_q;
+reg  [2:0] dv_i;
+reg        dv_on;
+always @(posedge clk) begin
+	if (reset) begin
+		lat_on <= 0; lat_c <= 0; lat_max <= 0; h_latmax <= 0; lat_avg <= 0; h_latavg <= 0;
+		stall_c <= 0; fclk_c <= 0; fr_prev <= 0; h_stall <= 0; dv_on <= 0;
+	end
+	else begin
+		if (lat_on) begin
+			if (lat_c != 8'hFF) lat_c <= lat_c + 8'd1;
+			if (ddr_dout_ready) begin
+				lat_on <= 0;
+				if (lat_c > lat_max) lat_max <= lat_c;
+				lat_avg <= lat_avg - (lat_avg >> 3) + (lat_c >> 3);
+			end
+		end
+		else if (accepted_rd && outstanding == 0) begin lat_on <= 1; lat_c <= 8'd1; end
+		fclk_c <= fclk_c + 20'd1;
+		if ((ddr_rd | ddr_we) & ddr_busy && stall_c != 20'hFFFFF) stall_c <= stall_c + 20'd1;
+		fr_prev <= frame;
+		if (frame != fr_prev) begin
+			h_latmax <= lat_max; h_latavg <= lat_avg; lat_max <= 0;
+			dv_num <= stall_c * 7'd100; dv_den <= fclk_c; dv_q <= 0; dv_i <= 3'd6; dv_on <= 1;
+			stall_c <= 0; fclk_c <= 0;
+		end
+		else if (dv_on) begin            // stall x 100 / clocks, a bit a clock
+			if (dv_num >= ({7'd0, dv_den} << dv_i)) begin dv_num <= dv_num - ({7'd0, dv_den} << dv_i); dv_q[dv_i] <= 1; end
+			if (dv_i == 0) dv_on <= 0; else dv_i <= dv_i - 3'd1;
+		end
+		else h_stall <= {1'b0, dv_q};
+	end
+end
+
 // the answers: into a FIFO with their tags
 (* ramstyle = "MLAB, no_rw_check" *) reg  [63:0]   df_d[32];
 (* ramstyle = "MLAB, no_rw_check" *) reg [TW-1:0]  df_t[32];
 reg   [4:0]   df_r, df_w;
 wire          df_pop;
+// MEMORY BUILD: the renderer's own reads not yet used (asked for and on their way, or back and
+// waiting) - a line is done when its own are in, not when the port is empty (the blitter's and the
+// VDATA port's reads kept it from ever being empty, so a line waited thousands of clocks at its end)
+reg  [6:0] ren_out;
+wire       ren_kind_acc = cmd_tag[2:0] != K_VRD && cmd_tag[2:0] != K_BLT;
+wire       ren_kind_pop = df_t[df_r][2:0] != K_VRD && df_t[df_r][2:0] != K_BLT;
+always @(posedge clk) begin
+	if (reset) ren_out <= 0;
+	else ren_out <= ren_out + ((accepted_rd && ren_kind_acc) ? 7'd1 : 7'd0) - ((df_pop && ren_kind_pop) ? 7'd1 : 7'd0);
+end
+
 always @(posedge clk) begin
 	if (reset) begin
 		outstanding <= 0; df_w <= 0; tf_r <= 0; df_count <= 0;
@@ -480,6 +540,8 @@ endgenerate
 
 // the backdrop as it was when each line was drawn (the copper changes it a line at a time)
 reg [23:0] bdl[4];
+// HEALTH: the line each slot last finished (set by the renderer when a line is done)
+reg  [8:0] doneline[4];
 // and CTRL and KEY: a copper split lands on its own line, not up to three lines early
 reg  [4:0] cdl[4];
 reg  [3:0] kdl[4];
@@ -488,12 +550,36 @@ reg  [3:0] kdl[4];
 reg        d1;                 // the clock after the strobe
 reg        d1_in;              // that pixel is in what we draw
 reg  [1:0] d_slot;
+// MEMORY BUILD: a line the renderer has not finished is never shown half drawn (that showed one
+// layer through another). The line above is shown again if it is still in the buffer (it is for
+// up to two lines), else the layers are left out of that line. Decided at the line's start.
+reg  [8:0] dy_prev;
+reg  [8:0] last_good;
+reg        show_ok;
+reg  [7:0] rep_n, blank_n, h_rep, h_blank;
 always @(posedge clk) begin
 	d1 <= pix_en;
-	if (pix_en) begin
+	if (reset) begin
+		dy_prev <= 9'h1FF; last_good <= 9'h1FF; show_ok <= 0; rep_n <= 0; blank_n <= 0; h_rep <= 0; h_blank <= 0;
+	end
+	else if (pix_en) begin
 		d_bank <= vic_x[1:0];
-		d_slot <= vic_y[1:0];
 		d1_in  <= (vic_x < RW) && (vic_y >= FIRST) && (vic_y <= LAST);
+		if (vic_y != dy_prev) begin
+			dy_prev <= vic_y;
+			if (vic_y < dy_prev) begin h_rep <= rep_n; h_blank <= blank_n; rep_n <= 0; blank_n <= 0; end
+			if (doneline[vic_y[1:0]] == vic_y || vic_y < FIRST || vic_y > LAST || !ENABLE) begin
+				d_slot <= vic_y[1:0]; show_ok <= 1; last_good <= vic_y;
+			end
+			else if (last_good < vic_y && vic_y - last_good <= 9'd2 && doneline[last_good[1:0]] == last_good) begin
+				d_slot <= last_good[1:0]; show_ok <= 1;
+				if (rep_n != 8'hFF) rep_n <= rep_n + 8'd1;
+			end
+			else begin
+				show_ok <= 0;
+				if (blank_n != 8'hFF) blank_n <= blank_n + 8'd1;
+			end
+		end
 	end
 	if (d1) begin
 		reg [23:0] vc;
@@ -505,7 +591,7 @@ always @(posedge clk) begin
 		vc = c[1] ? vpal[vic_index] : vic_rgb;
 		vh = (c[0] & c[4]) ? bdl[d_slot] : vc;     // HIDEVIC: the VIC is left out of this picture - the backdrop instead
 		q  = lb_q[d_bank];
-		op = d1_in & q[24];
+		op = d1_in & q[24] & show_ok;
 		rgb_vic <= vc;                              // SPLIT SCREENS: the VIC alone, whatever CTRL says
 		if (!c[0])                                  rgb <= vc;
 		else if (c[2] | c[4])                       rgb <= op ? q[23:0] : vh;
@@ -550,6 +636,16 @@ reg   [15:0] ls_val;
 reg          ls_got;
 reg   [63:0] cop_word;
 reg          cop_got;
+// MEMORY BUILD: the copper's words come through a little queue, asked for ahead (a long run of
+// entries no longer waits a DDR3 round trip per word). cop_iss/cop_use count words asked for and
+// used up (the renderer), cop_arr words come back (the consumer); cop_skip: words still due from a
+// line that stopped part way, thrown away when they come.
+(* ramstyle = "MLAB, no_rw_check" *) reg [63:0] cq_d[8];
+reg    [7:0] cop_iss, cop_use, cop_arr, cop_skip;
+reg    [3:0] cop_win;
+reg   [20:0] cop_fetch;
+wire         cq_avail = cop_arr != cop_use;
+wire  [63:0] cq_head  = cq_d[cop_use[2:0]];
 reg          p_v[4];
 reg    [8:0] p_a[4];
 reg    [1:0] p_b[4];
@@ -658,7 +754,7 @@ always @(posedge clk) begin
 	sat_we <= 0;
 	for (k = 0; k < 4; k = k + 1) ent_we[k] <= 0;
 	if (reset) begin
-		c_busy <= 0; df_r <= 0; ls_got <= 0; cop_got <= 0; map_done <= 0;
+		c_busy <= 0; df_r <= 0; ls_got <= 0; cop_got <= 0; map_done <= 0; cop_arr <= 0;
 		for (k = 0; k < 4; k = k + 1) begin p_v[k] <= 0; bw_we[k] <= 0; o_v[k] <= 0; ow_we[k] <= 0; end
 		acc_ss <= 0; acc_sl <= 0; coll_ss <= 0; coll_sl <= 0; coll_new <= 0; blt_got <= 0;
 	end
@@ -744,7 +840,7 @@ always @(posedge clk) begin
 				end
 				K_SAT: begin sat_we <= 1; sat_wa <= df_t[df_r][9:3]; sat_wd <= df_d[df_r]; end
 				K_LS:  begin ls_val <= df_d[df_r][df_t[df_r][4:3]*16 +: 16]; ls_got <= 1; end
-				K_COP: begin cop_word <= df_d[df_r]; cop_got <= 1; end
+				K_COP: begin cq_d[cop_arr[2:0]] <= df_d[df_r]; cop_arr <= cop_arr + 8'd1; end
 				K_VRD: vrd_data <= df_d[df_r][df_t[df_r][5:3]*8 +: 8];
 				K_BLT: begin blt_rdata <= df_d[df_r]; blt_got <= 1; end
 				default: ;
@@ -806,7 +902,7 @@ wire       lay = pass[1];      // pass 1 -> layer 0, pass 3 -> layer 1
 wire [1:0] sprio = (pass == 0) ? 2'd2 : (pass == 2) ? 2'd1 : 2'd0;
 wire signed [15:0] sy  = $signed({7'd0, L}) - 16'sd51 - $signed({{8{yadj[7]}}, yadj});
 wire signed [15:0] sx0 = -16'sd32 - $signed({{8{xadj[7]}}, xadj});    // the x of raster X 0
-wire drained = rqf_empty && (outstanding == 0) && (df_count == 0) && !c_busy
+wire drained = rqf_empty && (ren_out == 0) && !c_busy
                && !p_v[0] && !p_v[1] && !p_v[2] && !p_v[3]
                && !bw_we[0] && !bw_we[1] && !bw_we[2] && !bw_we[3]
                && !o_v[0] && !o_v[1] && !o_v[2] && !o_v[3];
@@ -817,8 +913,14 @@ wire       may_draw = (ahead >= 9'd1) && (ahead <= 9'd3) && (L[1:0] != vic_y[1:0
 assign     ren_urgent = (st != S_WAIT) && (ahead <= 9'd1);
 
 // HEALTH: the line each slot last finished, and this frame's counts
-reg  [8:0] doneline[4];
 reg  [7:0] lt_n, lt_0, lt_1, lt_o;
+// MEMORY BUILD meter: the longest a line took to draw (clocks, from starting it to done), which
+// line, and the least lead (lines ahead of the beam) a line was finished with - last frame
+reg [19:0] clk_n;
+reg [19:0] ln_t0;
+reg [15:0] fw_worst, h_worst;
+reg  [8:0] fw_wl, h_wl;
+reg  [1:0] fw_lead, h_lead;
 reg  [8:0] lt_first;
 
 task push(input [20:0] w, input [TW-1:0] t);
@@ -833,18 +935,23 @@ always @(posedge clk) begin
 	if (reset) begin
 		lt_n <= 0; lt_0 <= 0; lt_1 <= 0; lt_o <= 0; lt_first <= 9'h1FF; h_total <= 0;
 		h_late <= 0; h_late0 <= 0; h_late1 <= 0; h_lateo <= 0; h_first <= 9'h1FF;
+		clk_n <= 0; ln_t0 <= 0; fw_worst <= 0; fw_wl <= 0; fw_lead <= 2'd3; h_worst <= 0; h_wl <= 0; h_lead <= 2'd3;
 		doneline[0] <= 9'h1FF; doneline[1] <= 9'h1FF; doneline[2] <= 9'h1FF; doneline[3] <= 9'h1FF;
 		st <= S_WAIT; L <= 0; nl <= 9'd312; prev_y <= 0; cop_w <= 0; frame <= 0; rqf_wp <= 0; map_issued <= 0; clr_we <= 0; cop_armed <= 0;
 		cop_off <= 0; sat_off <= 0; cop_k <= 0; sat_k <= 0; cop_d <= 0; sat_d <= 0;
+		cop_iss <= 0; cop_use <= 0; cop_skip <= 0; cop_win <= 1;
 	end
 	else begin
 		if (anim_rst) begin cop_off <= 0; sat_off <= 0; cop_k <= 0; sat_k <= 0; cop_d <= 0; sat_d <= 0; end
 		prev_y <= vic_y;
+		clk_n <= clk_n + 20'd1;
 		if (vic_y != prev_y && vic_y < prev_y) begin
 			nl <= prev_y + 9'd1; frame <= frame + 8'd1;
 			// HEALTH: last frame's counts out, this frame's from nothing
 			h_late <= lt_n; h_late0 <= lt_0; h_late1 <= lt_1; h_lateo <= lt_o; h_first <= lt_first;
 			lt_n <= 0; lt_0 <= 0; lt_1 <= 0; lt_o <= 0; lt_first <= 9'h1FF;
+			h_worst <= fw_worst; h_wl <= fw_wl; h_lead <= fw_lead;
+			fw_worst <= 0; fw_wl <= 0; fw_lead <= 2'd3;
 		end
 		else if (vic_y != prev_y && vic_y >= FIRST && vic_y <= LAST && ENABLE && doneline[vic_y[1:0]] != vic_y) begin
 			// HEALTH: the beam is on a line that was not finished - what was being drawn when it got there
@@ -882,6 +989,7 @@ always @(posedge clk) begin
 					end
 				end
 				scanned <= 0;
+				ln_t0 <= clk_n;
 				clr_a <= {L[1:0], 7'd0}; clr_we <= 1;
 				if (L == 0) coll_latch <= 1;
 				st <= S_CLR;
@@ -896,22 +1004,31 @@ always @(posedge clk) begin
 		end
 
 		// the copper: the entries for this line (and any earlier ones) done in order
-		S_COP: if (!rqf_full) begin
-			push(cop_ptr[23:3], {{(TW-3){1'b0}}, K_COP});
-			st <= S_COPW;
+		// MEMORY BUILD: first any words left from a line that stopped part way are thrown away
+		// (they come back in order), then the queue is filled from cop_ptr while the entries are used
+		S_COP: begin
+			if (cop_use != cop_skip) begin if (cq_avail) cop_use <= cop_use + 8'd1; end
+			else begin cop_fetch <= cop_ptr[23:3]; cop_win <= 1; st <= S_COPA; end
 		end
-		S_COPW: if (cop_got) begin cop_clr <= 1; st <= S_COPA; end
-		S_COPA: if (!cop_w) begin
+		S_COPA: begin
+			reg        pushing;
+			reg  [7:0] iss_n;
 			reg [31:0] e;
-			e = cop_ptr[2] ? cop_word[63:32] : cop_word[31:0];
-			if (e[15:0] == 16'hFFFF || e[15:0] > {7'd0, L}) st <= S_SAT;
-			else begin
-				if (e[23:16] > 8'h04) begin cop_w <= 1; cop_wa <= e[23:16]; cop_wd <= e[31:24]; end
+			pushing = !rqf_full && ((cop_iss - cop_use) < {4'd0, cop_win});
+			if (pushing) begin push(cop_fetch, {{(TW-3){1'b0}}, K_COP}); cop_fetch <= cop_fetch + 21'd1; end
+			iss_n = cop_iss + {7'd0, pushing};
+			cop_iss <= iss_n;
+			if (!cop_w && cq_avail) begin
+				e = cop_ptr[2] ? cq_head[63:32] : cq_head[31:0];
+				if (e[15:0] == 16'hFFFF || e[15:0] > {7'd0, L}) begin cop_skip <= iss_n; st <= S_SAT; end
+				else begin
+					if (e[23:16] > 8'h04) begin cop_w <= 1; cop_wa <= e[23:16]; cop_wd <= e[31:24]; end
 `ifdef OCTO_DEBUG
-				if (e[23:16] >= 8'h20) $display("COPPER L %0d ptr %h e %h word %h", L, cop_ptr, e, cop_word);
+					if (e[23:16] >= 8'h20) $display("COPPER L %0d ptr %h e %h word %h", L, cop_ptr, e, cq_head);
 `endif
-				cop_ptr <= cop_ptr + 24'd4;
-				st <= cop_ptr[2] ? S_COP : S_COPA;        // the next entry: in the next word, or this one
+					cop_ptr <= cop_ptr + 24'd4;
+					if (cop_ptr[2]) begin cop_use <= cop_use + 8'd1; cop_win <= 4'd8; end   // a whole word used: a run - ask ahead
+				end
 			end
 		end
 
@@ -1133,11 +1250,39 @@ always @(posedge clk) begin
 			cdl[L[1:0]] <= ctrl[4:0];
 			doneline[L[1:0]] <= L;
 			kdl[L[1:0]] <= key;
+			begin
+				reg [19:0] dur;
+				dur = clk_n - ln_t0;
+				if (L >= FIRST && L <= LAST && ENABLE) begin
+					if (dur[19:16] != 0) begin fw_worst <= 16'hFFFF; fw_wl <= L; end
+					else if (dur[15:0] > fw_worst) begin fw_worst <= dur[15:0]; fw_wl <= L; end
+					if (ahead == 0 || ahead > 9'd3) fw_lead <= 2'd0;
+					else if (ahead[1:0] < fw_lead) fw_lead <= ahead[1:0];
+				end
+			end
 			L <= (L + 9'd1 == nl) ? 9'd0 : L + 9'd1;
 			st <= S_WAIT;
 		end
 		default: st <= S_WAIT;
 		endcase
+`ifdef OCTO_PROF
+		begin : prof
+			integer pc[0:31]; integer i;
+			integer lp[0:31]; integer j;
+			pc[st] = pc[st] + 1; lp[st] = lp[st] + 1;
+			if (st == S_WAIT) for (j = 0; j < 22; j = j + 1) lp[j] = 0;
+			if (st == S_END && drained && !cop_w && (clk_n - ln_t0) > 4000) begin
+				$write("SLOW L%0d %0d wf%0d:", L, clk_n - ln_t0, wf_cnt);
+				for (j = 0; j < 22; j = j + 1) if (lp[j] != 0) $write(" %0d:%0d", j, lp[j]);
+				$write("\n");
+			end
+			if (vic_y != prev_y && vic_y < prev_y) begin
+				$write("PROF");
+				for (i = 0; i < 22; i = i + 1) begin $write(" %0d:%0d", i, pc[i]); pc[i] = 0; end
+				$write("\n");
+			end
+		end
+`endif
 		// the copper switched on, or moved: it waits for the next raster line 0
 		if (cop_disarm) cop_armed <= 0;
 	end

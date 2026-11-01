@@ -98,6 +98,14 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | A3 | LATEOTH (r) | ... anything else: sprites, the copper, the sprite table, or not started at all |
 | A4-A5 | LATEFIRST (r) | last frame's first late line (9 bits; $1FF none) |
 | A6-A7 | LATETOTAL (r) | late lines since reset, 16 bits, stops at $FFFF |
+| A8 | REPEAT (r) | memory build: last frame, late lines shown as a copy of the line above (instead of half drawn) |
+| A9 | BLANK (r) | memory build: last frame, late lines shown without the layers (no finished line close enough to copy) |
+| AA-AB | WORST (r) | memory build: last frame, the longest any line took to draw, in clocks (31.5 MHz PAL: 2016 clocks = one raster line; up to three lines ahead is fine) |
+| AC-AD | WORSTLINE (r) | memory build: which line that was (9 bits) |
+| AE | LATMAX (r) | memory build: last frame, the longest DDR3 round trip seen (a read asked for with none in flight, to its answer), clocks, 255 = 255 or more |
+| AF | LATAVG (r) | memory build: a running average of that round trip, clocks |
+| B0 | STALL (r) | memory build: last frame, the % of the frame the DDR3 port made OctoVIC wait |
+| B1 | LEAD (r) | memory build: last frame, the fewest lines ahead of the beam a line was finished (3 best, 0 = late) |
 | C0 | SIDFX | OctoSID FX: b0 chorus, b1 echo (see below); also in the core's menu |
 
 ### A layer (20 + 16*k)
@@ -277,3 +285,20 @@ Build 3 also changes who gets the DDR3 first: when the line being drawn is due n
 ahead of the beam or less), its reads go before queued VRAM writes - as long as fewer than 10
 writes are waiting, so a 6510 or REU writing VDATA flat out never loses a byte. Before, every
 queued VRAM write went first, which is how REU streaming into VRAM could starve the picture.
+
+
+## MEMORY (core memory build 1)
+
+See docs/OCTOVIC_MEMORY.md for the measurements. Three changes and a meter:
+
+- **A line is finished when its own reads are in.** It used to wait for the DDR3 port to be
+  completely idle; the blitter's reads and the VDATA port's kept it busy, so with the blitter or
+  REU streaming running a line could wait 5,000-15,000 clocks at its end - the main cause of the
+  late lines (flicker) on real hardware.
+- **The copper reads ahead.** A run of copper entries (a palette burst) is fetched up to 8 words
+  ahead instead of one DDR3 round trip per word.
+- **A late line is never shown half drawn.** Half drawn, the layer drawn first showed where the next
+  should be (one layer flashing through another). Now the line above is shown again if it is still
+  in the buffer (REPEAT), else that line has no layers (BLANK). Both are counted.
+- **The meter** ($D6A8-$D6B1, above): how long lines take, how close to the beam they finish, the
+  DDR3 round trip and how often the port says wait. OctoBench prints them as a table.
