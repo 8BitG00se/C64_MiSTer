@@ -8,6 +8,7 @@
 KEYLOG  = $028F
 NDX     = $C6
 KEYD    = $0277
+AUTORUN = $02A8
 SEQV    = $02AB             ; the number of our last request
 BSAVE   = $02AC             ; the border colour, put back after the wait
 SECS    = $02AD             ; seconds left
@@ -124,5 +125,20 @@ hex     cmp #10
         jmp CHROUT
 
 nrmsg   !pet 13, "?no reply from octophonic main (cmd ", 0
+
+; RUN after SHIFT+RUN/STOP's load, spelt out in full
+runkeys lda #0
+        sta AUTORUN
+        ldx #3
+-       lda runtxt,x
+        sta KEYD,x
+        dex
+        bpl -
+        lda #4
+        sta NDX
+        rts
+runtxt  !byte $52, $55, $4E, $0D        ; RUN RETURN
 wedge2end
-!if wedge2end > $FCD1 { !error "past the tape room" }
+!if wedge2end > $FCCE { !error "past the tape room" }
+        * = $FCCE
+        jmp runkeys             ; RUNKEYS (octo.asm's w_load): fixed

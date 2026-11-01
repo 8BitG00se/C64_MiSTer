@@ -10,6 +10,9 @@
 //   FC VERSION read: 2 (2: with the sequence tag)
 //   FD SEQ     read/write: the 6502's number for its request (written before CMD)
 //   FE RSEQ    read: the number of the request STATUS answers
+//   FF NET     read: from Main - b1-0 the network share: 0 none set up, 1 waiting for it, 2 there,
+//              3 set up but not there; b7 a screenshot is being copied out of video memory, b6 its
+//              PNG is being written (kept through a reset: Main only sends it when it changes)
 // Main reaches it through hps_io's EXT_BUS with three commands of its own:
 //   70 poll    the reply word is $6F00 + pending
 //   71 read    after the reply word, each word reads the next byte: the 16 registers, then the name
@@ -37,7 +40,7 @@ module octo_os
 	output     [15:0] ext_dout
 );
 
-reg  [7:0] r_cmd, r_status, r_addrl, r_addrh, r_lenl, r_lenh, r_arg, r_val, r_resl, r_resh, r_seq, r_rseq;
+reg  [7:0] r_cmd, r_status, r_addrl, r_addrh, r_lenl, r_lenh, r_arg, r_val, r_resl, r_resh, r_seq, r_rseq, r_net;
 reg        h_ok;                         // this reply is for the request the 6502 is waiting on
 (* ramstyle = "logic" *) reg [7:0] name [0:31];
 reg  [5:0] nlen;
@@ -65,6 +68,7 @@ function [7:0] regbyte(input [5:0] i);
 		4'hC: regbyte = 8'h02;
 		4'hD: regbyte = r_seq;
 		4'hE: regbyte = r_rseq;
+		4'hF: regbyte = r_net;
 		default: regbyte = 8'h00;
 	endcase
 endfunction
@@ -80,13 +84,14 @@ always @(*) begin
 		4'hC: dout = 8'h02;
 		4'hD: dout = r_seq;
 		4'hE: dout = r_rseq;
+		4'hF: dout = r_net;
 		default: dout = 8'hFF;
 	endcase
 end
 
 always @(posedge clk) begin
 	if (reset) begin
-		{r_cmd, r_status, r_addrl, r_addrh, r_lenl, r_lenh, r_arg, r_val, r_resl, r_resh, r_seq, r_rseq} <= 0;
+		{r_cmd, r_status, r_addrl, r_addrh, r_lenl, r_lenh, r_arg, r_val, r_resl, r_resh, r_seq, r_rseq} <= 0;   // (NET is Main's: kept)
 		nlen    <= 0;
 		pending <= 0;
 	end
@@ -127,7 +132,8 @@ always @(posedge clk) begin
 			end
 			if (h_cmd == 8'h72) begin
 				h_out <= 0;
-				if (io_din[11:8] == 4'hE) begin
+				if (io_din[11:8] == 4'hF) r_net <= io_din[7:0];   // any time: not part of a reply
+				else if (io_din[11:8] == 4'hE) begin
 					h_ok <= (io_din[7:0] == r_seq);
 					if (io_din[7:0] == r_seq) r_rseq <= io_din[7:0];
 				end

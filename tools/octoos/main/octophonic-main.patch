@@ -1,9 +1,61 @@
+diff --git a/scaler.cpp b/scaler.cpp
+index 317b4a8..b5ef425 100644
+--- a/scaler.cpp
++++ b/scaler.cpp
+@@ -414,6 +414,13 @@ bool write_screenshot(const char *filename, const uint8_t *argb,
+ 
+ // atomic variables for worker process
+ static std::atomic<bool> screenshot_pending_atomic{false};
++int screenshot_quiet = 0;   // OCTOPHONIC OS: its own screenshots don't put a message on the screen
++
++// OCTOPHONIC OS: 2 asked for (the framebuffer is copied at the next vsync), 1 being written, 0 none
++int screenshot_state()
++{
++	return screenshot_requested ? 2 : screenshot_pending_atomic ? 1 : 0;
++}
+ static std::atomic<ScreenshotResult_atomic*> screenshot_result_data_atomic{nullptr};
+ 
+ static struct { const char *fmtstr; Imlib_Load_Error err_code; } err_strings[] = {
+@@ -656,18 +663,18 @@ void screenshot_cb(void)
+                     snprintf(msg, sizeof(msg), "Screen saved to\n%s",
+                             result_data->filename + strlen(SCREENSHOT_DIR "/"));
+                     printf("%s\n", msg);
+-                    if (cfg.screenshot_info) Info(msg);
++                    if (cfg.screenshot_info && !screenshot_quiet) Info(msg);
+                 }
+                 else
+                 {
+                     printf("Screenshot saved\n");
+-                    if (cfg.screenshot_info) Info("Screenshot saved");
++                    if (cfg.screenshot_info && !screenshot_quiet) Info("Screenshot saved");
+                 }
+                 break;
+ 
+             case SCREENSHOT_FAILURE:
+                 printf("Screenshot failed\n");
+-                Info("Screenshot failed");
++                if (!screenshot_quiet) Info("Screenshot failed");
+                 break;
+ 
+             default:
+diff --git a/scaler.h b/scaler.h
+index 6991398..299637f 100644
+--- a/scaler.h
++++ b/scaler.h
+@@ -37,5 +37,7 @@ void mister_scaler_free(mister_scaler *);
+ 
+ void request_screenshot(char *cmd, int scaled = 0);
+ void screenshot_cb(void);
++int  screenshot_state();      // OCTOPHONIC OS
++extern int screenshot_quiet;  // OCTOPHONIC OS
+ 
+ #endif
 diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
 new file mode 100644
-index 0000000..64c632d
+index 0000000..e248279
 --- /dev/null
 +++ b/support/octo/octo.cpp
-@@ -0,0 +1,914 @@
+@@ -0,0 +1,1391 @@
 +// OCTOPHONIC OS (milestone 1, build 2) - by Mong00se.
 +//
 +// With /media/fat/octophonic/os.ini on the card, the MiSTer starts straight into the Octophonic 64
@@ -30,6 +82,14 @@ index 0000000..64c632d
 +//   09 SETSTEP  setting ARG to its next (VALUE 1) or previous (VALUE $FF) choice; applied and saved,
 +//               except the chip preset, which only changes on SETAPPLY
 +//   0A SETAPPLY start the chosen chip preset (and keep it as the one the OS boots with)
++//   0B NOSHARE  stop waiting for the network share: the SD card's folder
++//   0C SHOT     a screenshot (MiSTer's own: the scaler's picture, as Win+PrtScn) saved as
++//               <share>/C64/Octophonic/Screenshots/NAME.png (no share: /media/fat/screenshots/Octophonic)
++//               - answered at once, saved in the background, at most one a second. NET b7 is set
++//               while the picture is being copied out of video memory, b6 while the PNG is written
++//   0D APPEND   VALUE $FF: file ARG (0-3) is NAME (a path under Screenshots, folders made as needed);
++//               otherwise NAME's text goes on the end of file ARG - VALUE b0 set: no new line yet
++//               (a long line in several pieces)
 +//   0F SHELL    the browser (octophonic/SHELL.PRG) into RAM at its own load address
 +//
 +// Every request is written to /media/fat/octophonic/os.log (what, where, the result, how long).
@@ -50,6 +110,7 @@ index 0000000..64c632d
 +#include <vector>
 +#include <string>
 +#include <algorithm>
++#include <fcntl.h>
 +
 +#include "../../spi.h"
 +#include "../../user_io.h"
@@ -58,6 +119,8 @@ index 0000000..64c632d
 +#include "../../hardware.h"
 +#include "../arcade/mra_loader.h"
 +#include "../c64/c64.h"
++#include "../../scaler.h"
++#include "../../cfg.h"
 +#include "octo.h"
 +
 +#define OS_DIR      "/media/fat/octophonic"
@@ -79,15 +142,17 @@ index 0000000..64c632d
 +
 +enum { R_CMD, R_STATUS, R_ADDRL, R_ADDRH, R_LENL, R_LENH, R_ARG, R_VALUE, R_NAMELEN, R_9, R_RESL, R_RESH, R_VER, R_SEQ, R_RSEQ };
 +enum { ST_IDLE = 0, ST_BUSY = 1, ST_DONE = 2,
-+       E_NOTFOUND = 0x81, E_NOTDIR = 0x82, E_TOOBIG = 0x83, E_READ = 0x84, E_CANTRUN = 0x85, E_BADCMD = 0x8F };
++       E_NOTFOUND = 0x81, E_NOTDIR = 0x82, E_TOOBIG = 0x83, E_READ = 0x84, E_CANTRUN = 0x85, E_NOTCONN = 0x86, E_BADCMD = 0x8F };
 +
 +static int  os_enabled = 0;
 +static char os_boot[512] = "_Computer/Octophonic 64.mgl";
 +static char os_start[512] = "";
++static char os_startin[16] = "";           // "net", "sd", "last" ("": network if there is one, else SD)
 +static int  os_active = 0;
 +static char cwd[1024];                   // the folder, relative to /media/fat ("" is the top)
 +static unsigned long poll_timer = 0;
 +static unsigned long f12_time = 0;       // F12 held down since (the MiSTer menu after 2 s)
++static std::string reu_in;                // the .reu last put in the REU (no second 16 MB load of it)
 +static int  last_status = 0;             // the reply of the request being logged
 +static uint8_t cur_seq = 0;              // the 6502's number for the request being answered
 +
@@ -101,7 +166,14 @@ index 0000000..64c632d
 +	if (!f) return;
 +	time_t t = time(0);
 +	char ts[32];
-+	strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", localtime(&t));
++	struct tm *tm = localtime(&t);
++	if (tm->tm_year < 100)                       // the clock isn't set yet (no network time): uptime
++	{
++		struct timespec up;
++		clock_gettime(CLOCK_MONOTONIC, &up);
++		snprintf(ts, sizeof(ts), "[up %5lds]", (long)up.tv_sec);
++	}
++	else strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", tm);
 +	fprintf(f, "%s ", ts);
 +	va_list ap;
 +	va_start(ap, fmt);
@@ -134,13 +206,16 @@ index 0000000..64c632d
 +		if (!strcasecmp(p, "enabled")) os_enabled = atoi(v) != 0;
 +		else if (!strcasecmp(p, "boot")) snprintf(os_boot, sizeof(os_boot), "%s", v);
 +		else if (!strcasecmp(p, "start")) snprintf(os_start, sizeof(os_start), "%s", v);
++		else if (!strcasecmp(p, "startin")) snprintf(os_startin, sizeof(os_startin), "%s", v);
 +	}
 +	fclose(f);
 +}
 +
-+// os.ini with boot= changed, everything else kept as it is
-+static void write_boot(const char *boot)
++// os.ini with KEY= changed, everything else kept as it is
++static void write_key(const char *key, const char *val)
 +{
++	char k[32];
++	snprintf(k, sizeof(k), "%s=", key);
 +	std::vector<std::string> lines;
 +	int done = 0;
 +	FILE *f = fopen(OS_INI, "r");
@@ -151,17 +226,22 @@ index 0000000..64c632d
 +		{
 +			const char *p = line;
 +			while (*p == ' ' || *p == '\t') p++;
-+			if (!strncasecmp(p, "boot=", 5)) { lines.push_back(std::string("boot=") + boot + "\n"); done = 1; }
++			if (!strncasecmp(p, k, strlen(k))) { lines.push_back(std::string(k) + val + "\n"); done = 1; }
 +			else lines.push_back(line);
 +		}
 +		fclose(f);
 +	}
-+	if (!done) lines.push_back(std::string("boot=") + boot + "\n");
++	if (!done) lines.push_back(std::string(k) + val + "\n");
 +	f = fopen(OS_INI ".new", "w");
 +	if (!f) return;
 +	for (auto &l : lines) fputs(l.c_str(), f);
 +	fclose(f);
 +	rename(OS_INI ".new", OS_INI);
++}
++
++static void write_boot(const char *boot)
++{
++	write_key("boot", boot);
 +	snprintf(os_boot, sizeof(os_boot), "%s", boot);
 +}
 +
@@ -241,6 +321,163 @@ index 0000000..64c632d
 +	DisableIO();
 +}
 +
++struct Entry { std::string name; int dir; int up; std::string target; int na; std::string size; };
++
++// ---------------------------------------------------------------------- drives and the network
++//
++// The browser's top level is the drives: SD CARD (games/C64 on the card), NETWORK (the C64 folder
++// on a network share, when this MiSTer has one set up) and USB n (games/C64 on a USB stick).
++// Folders are kept relative to /media/fat, as the menu's are ("../network/C64" for /media/network);
++// "*" is the drives level.
++//
++// The network: Main checks every second whether a share is mounted (cifs/smb/nfs in /proc/mounts)
++// and tells the core (the mailbox's NET register): 0 no share set up, 1 set up but not there yet
++// and the OS is waiting to open it, 3 not there and not waited for, 2 there. While the OS waits (a
++// share that is still connecting at power-on), the moment it appears the folder becomes the
++// share's C64 folder; after 60 seconds, or when the C64 side says so, it stays on the SD card.
++
++#define DRIVES      "*"
++#define NET_SEEN    OS_DIR "/net.seen"      // a share has been seen on this MiSTer: wait for it
++#define OS_LAST     OS_DIR "/last.txt"      // the last folder, for "start in: last used"
++
++static int  net_conf = 0;            // a share is set up on this MiSTer
++static int  net_state = 0;           // what NET says
++static char net_root[1024] = "";     // the share's C64 folder (relative), when it is there
++static int  net_wait = 0;            // waiting to open the share as it appears
++static unsigned long net_deadline = 0, net_timer = 0;
++
++static int dir_at(const char *rel)
++{
++	char full[1100];
++	snprintf(full, sizeof(full), OS_TOP "/%s", rel);
++	struct stat st;
++	return !stat(full, &st) && S_ISDIR(st.st_mode);
++}
++
++// an absolute path as one relative to /media/fat ("/media/network/C64" -> "../network/C64")
++static std::string rel_of(const std::string &abs)
++{
++	if (abs == OS_TOP) return "";
++	if (!abs.compare(0, strlen(OS_TOP) + 1, OS_TOP "/")) return abs.substr(strlen(OS_TOP) + 1);
++	if (!abs.compare(0, 7, "/media/")) return "../" + abs.substr(7);
++	return ".." + abs;                                      // (somewhere else: from / via ..)
++}
++
++static std::string sd_root()
++{
++	if (dir_at("games/C64")) return "games/C64";
++	if (dir_at("games")) return "games";
++	return "";
++}
++
++static int file_has_server(const char *path)
++{
++	FILE *f = fopen(path, "r");
++	if (!f) return 0;
++	char line[512];
++	int yes = 0;
++	while (fgets(line, sizeof(line), f))
++	{
++		const char *p = line;
++		while (*p == ' ' || *p == '\t') p++;
++		if (strncmp(p, "SERVER=", 7)) continue;
++		p += 7;
++		if (*p == '"') p++;
++		if (*p && *p != '"' && *p != '\n' && *p != '\r' && *p != ' ') yes = 1;
++	}
++	fclose(f);
++	return yes;
++}
++
++// the network shares mounted now (mount points)
++static void net_mounts(std::vector<std::string> &m)
++{
++	m.clear();
++	FILE *f = fopen("/proc/mounts", "r");
++	if (!f) return;
++	char dev[512], mp[512], type[64];
++	while (fscanf(f, "%511s %511s %63s %*[^\n]", dev, mp, type) == 3)
++		if (!strcmp(type, "cifs") || !strcmp(type, "smb3") || !strncmp(type, "nfs", 3)) m.push_back(mp);
++	fclose(f);
++	// the ones in /media/fat first: the menu's own places
++	std::stable_sort(m.begin(), m.end(), [](const std::string &a, const std::string &b) {
++		return (a.compare(0, 10, "/media/fat") == 0) > (b.compare(0, 10, "/media/fat") == 0); });
++}
++
++static int net_configured()
++{
++	std::vector<std::string> m;
++	net_mounts(m);
++	if (!m.empty() || !access(NET_SEEN, F_OK)) return 1;
++	if (file_has_server(OS_TOP "/Scripts/cifs_mount.ini") || file_has_server(OS_TOP "/Scripts/cifs_mount.sh")) return 1;
++	if (dir_at("cifs") || dir_at("games/00-NETWORK")) return 1;
++	return 0;
++}
++
++// the share's C64 folder if a share is mounted (relative to /media/fat), "" if not
++static std::string net_find()
++{
++	std::vector<std::string> m;
++	net_mounts(m);
++	if (m.empty()) return "";
++	if (os_start[0])                                         // os.ini's start= on the share
++	{
++		std::string st = rel_of(os_start[0] == '/' ? os_start : std::string(OS_TOP "/") + os_start);
++		for (auto &mp : m)
++			if (!rel_of(os_start[0] == '/' ? os_start : std::string(OS_TOP "/") + os_start).compare(0, rel_of(mp).size(), rel_of(mp)) && dir_at(st.c_str())) return st;
++	}
++	for (auto &mp : m)
++	{
++		std::string r = rel_of(mp);
++		for (const char *sub : { "/C64", "/games/C64", "/Games/C64", "/c64" })
++			if (dir_at((r + sub).c_str())) return r + sub;
++	}
++	return rel_of(m[0]);
++}
++
++static int net_sent = -1;            // the NET byte as last written to the core
++static int shot_bits()
++{
++	int st = screenshot_state();
++	return st == 2 ? 0x80 : st == 1 ? 0x40 : 0;
++}
++
++static void net_publish()
++{
++	int b = (net_state & 3) | shot_bits();
++	spi_uio_cmd_cont(UIO_OCTO_WRITE);
++	spi_w((0x0F << 8) | b);
++	DisableIO();
++	net_sent = b;
++}
++
++static void net_update()
++{
++	std::string r = net_find();
++	if (!r.empty())
++	{
++		snprintf(net_root, sizeof(net_root), "%s", r.c_str());
++		if (access(NET_SEEN, F_OK)) { FILE *f = fopen(NET_SEEN, "w"); if (f) fclose(f); }
++		net_conf = 1;
++	}
++	if (net_wait && !r.empty())
++	{
++		net_wait = 0;
++		snprintf(cwd, sizeof(cwd), "%s", net_root);
++		snprintf(os_start, sizeof(os_start), "%s", net_root);
++		os_log("network: the share is there - folder /%s", cwd);
++	}
++	if (net_wait && CheckTimer(net_deadline))
++	{
++		net_wait = 0;
++		os_log("network: no share after 60 s - staying on the SD card");
++	}
++	int st = !net_conf ? 0 : !r.empty() ? 2 : net_wait ? 1 : 3;
++	if (st != net_state) os_log("network: state %d -> %d", net_state, st);
++	net_state = st;
++	net_publish();
++}
++
 +void octo_os_core_init()
 +{
 +	os_active = 0;
@@ -250,19 +487,32 @@ index 0000000..64c632d
 +	if ((w >> 8) != OCTO_MAGIC) { os_log("core: no mailbox (poll %04X) - the OS is off for this core", w); return; }
 +	os_active = 1;
 +
-+	// the start folder, relative to /media/fat like the menu's paths
-+	const char *s = os_start;
-+	if (!strncmp(s, OS_TOP "/", strlen(OS_TOP) + 1)) s += strlen(OS_TOP) + 1;
-+	char full[1024];
-+	snprintf(full, sizeof(full), OS_TOP "/%s", s);
++	// where to start: os.ini's startin= (network, SD card, the last folder); without it the
++	// network when this MiSTer has a share, else the SD card. start= is the share's folder, if set.
++	if (os_start[0] && !strncmp(os_start, OS_TOP "/games/C64", strlen(OS_TOP "/games/C64")) && !os_start[strlen(OS_TOP "/games/C64")])
++		os_start[0] = 0;                                     // build 1/2's default: not a choice
++	net_conf = net_configured();
++	std::string nr = net_find();
++	if (!nr.empty()) snprintf(net_root, sizeof(net_root), "%s", nr.c_str());
++	const char *mode = os_startin[0] ? os_startin : (net_conf ? "net" : "sd");
++	snprintf(cwd, sizeof(cwd), "%s", sd_root().c_str());
++	net_wait = 0;
 +	struct stat st;
-+	if (s[0] && !stat(full, &st) && S_ISDIR(st.st_mode)) snprintf(cwd, sizeof(cwd), "%s", s);
-+	else if (!stat(OS_TOP "/games/C64", &st) && S_ISDIR(st.st_mode)) snprintf(cwd, sizeof(cwd), "games/C64");
-+	else
++	char full[1100];
++	if (!strcasecmp(mode, "last"))
 +	{
-+		mkdir(OS_TOP "/Octophonic", 0777);
-+		snprintf(cwd, sizeof(cwd), "Octophonic");
++		FILE *fl = fopen(OS_LAST, "r");
++		char was[1024] = {};
++		if (fl) { if (fgets(was, sizeof(was), fl)) was[strcspn(was, "\r\n")] = 0; fclose(fl); }
++		if (was[0] && dir_at(was)) snprintf(cwd, sizeof(cwd), "%s", was);
++		else if (was[0] && net_conf && nr.empty()) { net_wait = 1; }
 +	}
++	else if (!strcasecmp(mode, "net") && net_conf)
++	{
++		if (!nr.empty()) snprintf(cwd, sizeof(cwd), "%s", nr.c_str());
++		else net_wait = 1;                                    // the share is still connecting
++	}
++	if (net_wait) net_deadline = GetTimer(60000);
 +	snprintf(os_start, sizeof(os_start), "%s", cwd);
 +	// where the browser was before this core (re)started - a preset, or Main starting again
 +	FILE *fc = fopen(OS_CWD, "r");
@@ -273,11 +523,14 @@ index 0000000..64c632d
 +		{
 +			was[strcspn(was, "\r\n")] = 0;
 +			snprintf(full, sizeof(full), OS_TOP "/%s", was);
-+			if (!was[0] || (!stat(full, &st) && S_ISDIR(st.st_mode))) snprintf(cwd, sizeof(cwd), "%s", was);
++			if (!strcmp(was, DRIVES) || (!stat(full, &st) && S_ISDIR(st.st_mode))) { snprintf(cwd, sizeof(cwd), "%s", was); net_wait = 0; }
 +		}
 +		fclose(fc);
 +	}
-+	os_log("core: OS active, folder /%s", cwd);
++	net_state = !net_conf ? 0 : !nr.empty() ? 2 : net_wait ? 1 : 3;
++	net_publish();
++	os_log("core: OS active, folder /%s, start in %s, network %s%s", cwd, mode,
++		!net_conf ? "none" : nr.empty() ? "not there yet" : nr.c_str(), net_wait ? " (waiting for it)" : "");
 +	printf("Octophonic OS: active, folder /%s\n", cwd);
 +}
 +
@@ -357,13 +610,25 @@ index 0000000..64c632d
 +
 +// --------------------------------------------------------------- the folder, as the menu sees it
 +
-+struct Entry { std::string name; int dir; int up; };
-+
 +// the menu's own scan of the current folder: same filter (the core's file types), same sort,
 +// ".." at the top below /media/fat, zips as folders
-+static void scan(std::vector<Entry> &v)
++static void scan(std::vector<Entry> &v, int all = 0)
 +{
 +	v.clear();
++	if (!strcmp(cwd, DRIVES))
++	{
++		Entry sd = { "SD CARD", 1, 0, sd_root(), 0, "" };
++		v.push_back(sd);
++		if (net_conf) v.push_back({ "NETWORK", 1, 0, net_root, net_state != 2, net_state == 2 ? "" : "  OFF" });
++		for (int n = 0; n < 4; n++)
++		{
++			char u[64], nm[16];
++			snprintf(u, sizeof(u), "../usb%d/games/C64", n);
++			snprintf(nm, sizeof(nm), "USB %d", n + 1);
++			if (dir_at(u)) v.push_back({ nm, 1, 0, u, 0, "" });
++		}
++		return;
++	}
 +	static char path[1024];
 +	snprintf(path, sizeof(path), "%s", cwd);
 +	ScanDirectory(path, SCANF_INIT, OS_EXTS, SCANO_DIR);
@@ -373,12 +638,25 @@ index 0000000..64c632d
 +		direntext_t *e = flist_DirItem(i);
 +		if (!e) continue;
 +		Entry x;
++		x.na = 0;
 +		x.name = e->de.d_name;
 +		x.dir = e->de.d_type == DT_DIR;
 +		x.up = !strcmp(e->de.d_name, "..");
-+		if (x.up && !cwd[0]) continue;
 +		v.push_back(x);
 +	}
++	if (!cwd[0]) v.insert(v.begin(), { "..", 1, 1, "", 0, "" });   // the very top: up to the drives
++	// a demo's folder: its .prg first (the bar starts on it)
++	(void)all;
++	auto is_ext = [](const std::string &n, const char *x) { return ends_with(n.c_str(), x); };
++	std::vector<Entry> w;
++	for (auto &e : v) if (e.up || e.dir) w.push_back(e);
++	for (auto &e : v) if (!e.up && !e.dir && is_ext(e.name, ".prg")) w.push_back(e);
++	for (auto &e : v)
++	{
++		if (e.up || e.dir || is_ext(e.name, ".prg")) continue;
++		w.push_back(e);
++	}
++	v.swap(w);
 +}
 +
 +static std::string full_of(const std::string &name)
@@ -386,17 +664,52 @@ index 0000000..64c632d
 +	return std::string(OS_TOP "/") + (cwd[0] ? std::string(cwd) + "/" : std::string()) + name;
 +}
 +
++static long long size_of(const Entry &e)
++{
++	if (e.dir) return -1;
++	struct stat st;
++	if (stat(full_of(e.name).c_str(), &st)) return -1;     // inside a zip: no size to show
++	return st.st_size;
++}
++
 +static long long blocks_of(const Entry &e)
 +{
-+	if (e.dir) return 0;
-+	struct stat st;
-+	if (stat(full_of(e.name).c_str(), &st)) return 0;     // inside a zip: no size to show
-+	long long b = (st.st_size + 253) / 254;
-+	return b > 65535 ? 65535 : b;
++	long long z = size_of(e);
++	if (z < 0) return 0;
++	long long b = (z + 253) / 254;
++	return b > 9999 ? 9999 : b;
++}
++
++// the size as the browser shows it, 5 characters: disk blocks up to 999 (as a C64 lists them),
++// then K and M - a 16 MB .reu is "16M", not 65535 blocks
++static void size_text(const Entry &e, char *out)
++{
++	long long z = size_of(e);
++	char t[16] = "";
++	if (z >= 0)
++	{
++		long long b = (z + 253) / 254;
++		if (b < 1000) snprintf(t, sizeof(t), "%lld", b);
++		else if (z < 1000LL * 1024) snprintf(t, sizeof(t), "%lldK", (z + 1023) / 1024);
++		else if (z < 1000LL * 1024 * 1024) snprintf(t, sizeof(t), "%lldM", (z + 1024 * 1024 - 1) / (1024 * 1024));
++		else snprintf(t, sizeof(t), "%lldG", (z + (1LL << 30) - 1) >> 30);
++	}
++	snprintf(out, 6, "%5s", t);
++}
++
++// a name the C64 can show: PETSCII letters, digits and punctuation; anything else becomes '?',
++// and a name that would come out blank is shown with its folder mark or as "?"
++static std::string shown_name(const Entry &e)
++{
++	if (e.up) return ".. (UP A FOLDER)";
++	std::string n = e.dir ? e.name : base_of(e.name);
++	if (n.find_first_not_of(" ") == std::string::npos) n = "?";
++	return n;
 +}
 +
 +static int type_of(const Entry &e)
 +{
++	if (e.na) return 6;
 +	if (e.up) return 5;
 +	if (e.dir) return 0;
 +	const char *n = e.name.c_str();
@@ -432,17 +745,40 @@ index 0000000..64c632d
 +{
 +	FILE *f = fopen(OS_CWD, "w");
 +	if (f) { fprintf(f, "%s\n", cwd); fclose(f); }
++	if (strcmp(cwd, DRIVES) && (f = fopen(OS_LAST, "w"))) { fprintf(f, "%s\n", cwd); fclose(f); }
++}
++
++// the drive a folder is on: its root (the folder F3 goes up to the drives from)
++static int is_drive_root(const char *c)
++{
++	if (!strcmp(c, DRIVES)) return 0;
++	if (!strcmp(c, sd_root().c_str()) || !c[0]) return 1;
++	if (net_root[0] && !strcmp(c, net_root)) return 1;
++	for (int n = 0; n < 4; n++) { char u[64]; snprintf(u, sizeof(u), "../usb%d/games/C64", n); if (!strcmp(c, u)) return 1; }
++	return 0;
 +}
 +
 +static void go_up()
 +{
++	if (!strcmp(cwd, DRIVES)) return;
++	if (is_drive_root(cwd)) { snprintf(cwd, sizeof(cwd), DRIVES); return; }
 +	char *s = strrchr(cwd, '/');
 +	if (s) *s = 0;
 +	else cwd[0] = 0;
++	if (!strcmp(cwd, "..")) snprintf(cwd, sizeof(cwd), DRIVES);
++}
++
++static void go_into(const std::string &name);
++static void go_entry(const Entry &e)
++{
++	if (!strcmp(cwd, DRIVES)) snprintf(cwd, sizeof(cwd), "%s", e.target.c_str());
++	else go_into(e.name);
++	if (!strcmp(cwd, DRIVES) == 0 && is_drive_root(cwd)) snprintf(os_start, sizeof(os_start), "%s", cwd);
 +}
 +
 +static void go_into(const std::string &name)
 +{
++	if (!strcmp(cwd, DRIVES)) return;
 +	size_t l = strlen(cwd);
 +	snprintf(cwd + l, sizeof(cwd) - l, "%s%s", l ? "/" : "", name.c_str());
 +}
@@ -478,14 +814,38 @@ index 0000000..64c632d
 +		}
 +		if (reu.empty() && reus == 1) reu = only;
 +	}
-+	mb_reply(ST_DONE, 0, -1, idx == 0x81 ? 2 : 1);  // the core may reset now: the reply goes first
-+	if (!reu.empty())
++	if (idx == 0x81)
++	{
++		// a .reu on its own: attached as the menu does it (no reset, the C64 carries on), and the
++		// answer comes once it is in - VALUE 2, RESULT its size in 64 KB
++		os_log("  REU %s (index 0x81)", p);
++		c64_open_file(p, 0x81);
++		reu_in = path;
++		struct stat st;
++		long kb64 = stat(p, &st) ? 0 : (long)((st.st_size + 65535) >> 16);
++		// LEN: where the .prg it goes with is in the list, for the bar ($FFFF none)
++		int at = 0xFFFF;
++		if (folder)
++		{
++			std::vector<Entry> vis;
++			scan(vis);
++			std::string b = base_of(path.substr(path.rfind('/') + 1));
++			for (int i = 0; i < (int)vis.size(); i++)
++				if (!vis[i].dir && ends_with(vis[i].name.c_str(), ".prg") && !strcasecmp(base_of(vis[i].name).c_str(), b.c_str())) { at = i; break; }
++		}
++		mb_reply(ST_DONE, (int)kb64, at, 2);
++		return 1;
++	}
++	mb_reply(ST_DONE, 0, -1, 1);                    // the core resets now: the reply goes first
++	if (!reu.empty() && full_of(reu) == reu_in) os_log("  REU %s is in already", full_of(reu).c_str());
++	else if (!reu.empty())
 +	{
 +		os_log("  REU %s (index 0x81)", full_of(reu).c_str());
 +		c64_open_file(full_of(reu).c_str(), 0x81);
++		reu_in = full_of(reu);
 +	}
 +	os_log("  load %s (index 0x%02X)", p, idx);
-+	if (idx != 0x81) user_io_store_filename(p);
++	user_io_store_filename(p);
 +	c64_open_file(p, idx);
 +	return 1;
 +}
@@ -520,11 +880,11 @@ index 0000000..64c632d
 +	for (; i < total && shown < lines; i++, shown++)
 +	{
 +		const Entry &e = v[i];
-+		std::string shown_name = (e.dir || e.up) ? e.name : base_of(e.name);
++		std::string sn = e.up ? ".." : shown_name(e);
 +		std::string type = (e.dir || e.up) ? "DIR" : ext_of(e.name);
-+		if (shown_name.size() > 26) shown_name = shown_name.substr(0, 26);
++		if (sn.size() > 26) sn = sn.substr(0, 26);
 +		char q[40];
-+		snprintf(q, sizeof(q), "\"%s\"", shown_name.c_str());
++		snprintf(q, sizeof(q), "\"%s\"", sn.c_str());
 +		snprintf(line, sizeof(line), "%-5lld%-18s %.3s\n", blocks_of(e), q, type.c_str());
 +		put_text(out, line);
 +	}
@@ -569,7 +929,8 @@ index 0000000..64c632d
 +			mb_reply(err, 0);
 +			return;
 +		}
-+		go_into(v[k].name);
++		if (v[k].na) { snprintf(cwd, sizeof(cwd), "%s", keep); mb_reply(E_NOTCONN, 0); return; }
++		go_entry(v[k]);
 +	}
 +	mb_reply(ST_DONE, 0);
 +}
@@ -596,10 +957,12 @@ index 0000000..64c632d
 +static void cmd_run(const char *name)
 +{
 +	std::vector<Entry> v;
-+	scan(v);
++	scan(v, 1);
 +	int k = find_entry(v, name, 0);
 +	if (k < 0) { mb_reply(E_NOTFOUND, 0); return; }
-+	run_path(full_of(v[k].name), &v);
++	std::vector<Entry> all;
++	scan(all, 1);
++	run_path(full_of(v[k].name), &all);
 +}
 +
 +static void cmd_info(uint16_t addr)
@@ -615,8 +978,8 @@ index 0000000..64c632d
 +	mb_reply(ST_DONE, (int)out.size());
 +}
 +
-+// record: type (0 folder, 1 program, 2 disk, 3 cartridge, 4 other, 5 ".."), blocks (2 bytes),
-+// the extension (3), the name (26), PETSCII and space-filled
++// record (32 bytes): type (0 folder, 1 program, 2 disk, 3 cartridge, 4 other, 5 ".."), the size as
++// text (5, right-aligned: blocks, or K/M), the extension (3), the name (23), PETSCII, space-filled
 +static void cmd_list(uint16_t addr, int first, int count)
 +{
 +	std::vector<Entry> v;
@@ -626,7 +989,9 @@ index 0000000..64c632d
 +	int total = (int)v.size();
 +	std::vector<uint8_t> out;
 +	char path[1100];
-+	snprintf(path, sizeof(path), "/%s", cwd);
++	if (!strcmp(cwd, DRIVES)) snprintf(path, sizeof(path), "DRIVES");
++	else if (!strncmp(cwd, "../", 3)) snprintf(path, sizeof(path), "/MEDIA/%s", cwd + 3);
++	else snprintf(path, sizeof(path), "/%s", cwd);
 +	size_t pl = strlen(path);
 +	put_field(out, pl > 40 ? (std::string("...") + (path + pl - 37)).c_str() : path, 40);
 +	int written = 0;
@@ -635,13 +1000,15 @@ index 0000000..64c632d
 +		const Entry &e = v[i];
 +		uint8_t rec[32];
 +		memset(rec, ' ', sizeof(rec));
-+		long long b = blocks_of(e);
++		char sz[8];
++		if (!e.size.empty()) snprintf(sz, sizeof(sz), "%5s", e.size.c_str());
++		else size_text(e, sz);
 +		rec[0] = (uint8_t)type_of(e);
-+		rec[1] = b & 0xFF; rec[2] = (b >> 8) & 0xFF;
-+		std::string ext = (e.dir || e.up) ? "DIR" : ext_of(e.name);
-+		for (int k = 0; k < 3 && k < (int)ext.size(); k++) rec[3 + k] = to_pet(ext[k]);
-+		std::string nm = (e.dir || e.up) ? e.name : base_of(e.name);
-+		for (int k = 0; k < 26 && k < (int)nm.size(); k++) rec[6 + k] = to_pet(nm[k]);
++		for (int k = 0; k < 5; k++) rec[1 + k] = to_pet(sz[k]);
++		std::string ext = !strcmp(cwd, DRIVES) ? "DRV" : (e.dir || e.up) ? "DIR" : ext_of(e.name);
++		for (int k = 0; k < 3 && k < (int)ext.size(); k++) rec[6 + k] = to_pet(ext[k]);
++		std::string nm = shown_name(e);
++		for (int k = 0; k < 23 && k < (int)nm.size(); k++) rec[9 + k] = to_pet(nm[k]);
 +		out.insert(out.end(), rec, rec + 32);
 +	}
 +	ram_write(addr, out.data(), out.size());
@@ -655,9 +1022,12 @@ index 0000000..64c632d
 +	if (idx < 0 || idx >= (int)v.size()) { mb_reply(E_NOTFOUND, 0); return; }
 +	const Entry &e = v[idx];
 +	if (e.up) { go_up(); mb_reply(ST_DONE, 0, -1, 0x10); return; }
-+	if (e.dir) { go_into(e.name); mb_reply(ST_DONE, 0, -1, 0x10); return; }
++	if (e.na) { mb_reply(E_NOTCONN, 0); return; }
++	if (e.dir) { go_entry(e); mb_reply(ST_DONE, 0, -1, 0x10); return; }
 +	os_log("  open %s", e.name.c_str());
-+	run_path(full_of(e.name), &v);
++	std::vector<Entry> all;
++	scan(all, 1);
++	run_path(full_of(e.name), &all);
 +}
 +
 +// the browser itself: SHELL.PRG next to os.ini, into RAM at its own load address, no reset
@@ -693,7 +1063,15 @@ index 0000000..64c632d
 +#define S_PRESET 0
 +#define S_CHIPL  1
 +#define S_CHIPR  2
-+#define S_OPT0   3
++#define S_START  3       // where the OS starts: network / SD card / last used (os.ini startin=)
++#define S_OPT0   4
++static const char *startins[3] = { "net", "sd", "last" };
++static const char *startnames[3] = { "NETWORK", "SD CARD", "LAST USED" };
++static int startin_now()
++{
++	for (int i = 0; i < 3; i++) if (!strcasecmp(os_startin, startins[i])) return i;
++	return net_conf ? 0 : 1;
++}
 +
 +static std::vector<std::string> presets;   // the Octophonic launchers in _Computer
 +static int preset_sel = -1;                // the one chosen on the page (applied by SETAPPLY)
@@ -776,6 +1154,8 @@ index 0000000..64c632d
 +		put_field(out, n == 2 ? "MY CHIP LEFT" : "MY CHIP RIGHT", 20);
 +		put_field(out, c.empty() ? "-" : base_of(c).c_str(), 20);
 +	}
++	put_field(out, "START IN", 20);
++	put_field(out, startnames[startin_now()], 20);
 +	for (int i = 0; i < N_OPTS; i++)
 +	{
 +		uint32_t x = user_io_status_get(opts[i].bits);
@@ -810,6 +1190,15 @@ index 0000000..64c632d
 +		k = (k + step + (int)v.size()) % (int)v.size();
 +		mb_reply(ST_DONE, 0);
 +		chip_load(n, v[k]);
++		return;
++	}
++	if (line == S_START)
++	{
++		int k = (startin_now() + step + 3) % 3;
++		snprintf(os_startin, sizeof(os_startin), "%s", startins[k]);
++		write_key("startin", startins[k]);
++		os_log("  start in %s", startins[k]);
++		mb_reply(ST_DONE, 0);
 +		return;
 +	}
 +	int i = line - S_OPT0;
@@ -860,6 +1249,138 @@ index 0000000..64c632d
 +
 +// --------------------------------------------------------------------------------------- poll
 +
++// --------------------------------------------------------------------- screenshots and reports
++//
++// SHOT: MiSTer's own screenshot (scaler.cpp: the picture is copied out of video memory at the next
++// vsync, then written as a PNG by a worker thread) under a temporary name in /media/fat/screenshots,
++// then copied to the share once it is written - the C64 never waits for any of it.
++
++#define SHOT_TMP   "/media/fat/screenshots"
++struct ShotJob { std::string tmp, dest; unsigned long deadline; };
++static std::vector<ShotJob> shots;
++static unsigned long shot_timer = 0;
++static int shot_n = 0;
++static std::string append_file[4];
++
++// where screenshots and reports go: the share's Octophonic/Screenshots, or the SD card's
++static std::string report_dir()
++{
++	if (net_state == 2 && net_root[0]) return std::string(OS_TOP "/") + net_root + "/Octophonic/Screenshots";
++	return std::string(OS_TOP "/screenshots/Octophonic");
++}
++
++static void make_dirs(const std::string &path)        // mkdir -p of the folder part
++{
++	std::string p;
++	for (size_t i = 1; i < path.size(); i++)
++		if (path[i] == '/') { p = path.substr(0, i); mkdir(p.c_str(), 0777); }
++}
++
++// a name the 6502 sent, safe as a path below the report folder: letters, digits, - _ . and / only
++static std::string safe_rel(const char *name)
++{
++	std::string r;
++	for (const char *p = name; *p; p++)
++	{
++		char c = *p;
++		if (isalnum((unsigned char)c) || c == '-' || c == '_' || c == '/') r += c;
++		else if (c == '.' && !(r.size() && r.back() == '.')) r += c;
++		else if (c == ' ') r += '_';
++	}
++	while (!r.empty() && (r[0] == '/' || r[0] == '.')) r.erase(0, 1);
++	if (r.empty()) r = "shot";
++	return r;
++}
++
++static int copy_file(const char *from, const char *to)
++{
++	int in = open(from, O_RDONLY);
++	if (in < 0) return 0;
++	int out = open(to, O_WRONLY | O_CREAT | O_TRUNC, 0666);
++	if (out < 0) { close(in); return 0; }
++	static char buf[65536];
++	int ok = 1;
++	ssize_t n;
++	while ((n = read(in, buf, sizeof(buf))) > 0) if (write(out, buf, n) != n) { ok = 0; break; }
++	if (n < 0) ok = 0;
++	close(in);
++	if (close(out)) ok = 0;
++	return ok;
++}
++
++static int take_shot(const std::string &rel)
++{
++	if (shot_timer && !CheckTimer(shot_timer)) return 0;      // at most one a second
++	if (screenshot_state()) return 0;                         // one at a time (MiSTer's rule)
++	shot_timer = GetTimer(1000);
++	const char *ext = !strcasecmp(cfg.screenshot_image_format, "bmp") ? ".bmp" : ".png";
++	char tmp[64];
++	snprintf(tmp, sizeof(tmp), "octoshot_%d%s", shot_n++ % 100, ext);
++	std::string dest = report_dir() + "/" + rel;
++	if (dest.size() < 4 || strcasecmp(dest.c_str() + dest.size() - 4, ext)) dest += ext;
++	screenshot_quiet = 1;
++	request_screenshot(tmp, 0);                               // native size, as the core draws it
++	shots.push_back({ std::string(SHOT_TMP "/") + tmp, dest, GetTimer(15000) });
++	return 1;
++}
++
++// the screenshots once MiSTer has written them: onto the share
++static void shots_poll()
++{
++	if (shots.empty() || screenshot_state()) return;
++	ShotJob &j = shots.front();
++	struct stat st;
++	if (!stat(j.tmp.c_str(), &st) && st.st_size > 0)
++	{
++		make_dirs(j.dest);
++		if (copy_file(j.tmp.c_str(), j.dest.c_str())) { unlink(j.tmp.c_str()); os_log("shot: %s", j.dest.c_str()); }
++		else os_log("shot: could not copy %s to %s", j.tmp.c_str(), j.dest.c_str());
++		shots.erase(shots.begin());
++	}
++	else if (CheckTimer(j.deadline))
++	{
++		os_log("shot: MiSTer wrote no %s (scaler off?)", j.tmp.c_str());
++		shots.erase(shots.begin());
++	}
++	if (shots.empty()) screenshot_quiet = 0;
++}
++
++void octo_manual_shot()
++{
++	char rel[64];
++	time_t t = time(0);
++	struct tm *tm = localtime(&t);
++	if (tm->tm_year >= 119) strftime(rel, sizeof(rel), "Manual/%Y%m%d_%H%M%S", tm);
++	else snprintf(rel, sizeof(rel), "Manual/shot_%04d", shot_n);
++	os_log("CTRL+F11: %s", take_shot(rel) ? rel : "busy - no screenshot");
++}
++
++static void cmd_shot(const char *name)
++{
++	take_shot(safe_rel(name));
++	mb_reply(ST_DONE, 0);                                     // never waits for the picture
++}
++
++static void cmd_append(int slot, int value, const char *text)
++{
++	slot &= 3;
++	if (value == 0xFF)
++	{
++		append_file[slot] = safe_rel(text);
++		mb_reply(ST_DONE, 0);
++		return;
++	}
++	if (append_file[slot].empty()) { mb_reply(E_NOTFOUND, 0); return; }
++	std::string path = report_dir() + "/" + append_file[slot];
++	make_dirs(path);
++	FILE *f = fopen(path.c_str(), "a");
++	if (!f) { mb_reply(E_READ, 0); return; }
++	fputs(text, f);
++	if (!(value & 1)) fputs("\r\n", f);
++	fclose(f);
++	mb_reply(ST_DONE, 0);
++}
++
 +void octo_poll()
 +{
 +	if (!os_active) return;
@@ -869,6 +1390,9 @@ index 0000000..64c632d
 +		os_log("F12 held: the MiSTer menu");
 +		user_io_octo_menu();
 +	}
++	if (!net_timer || CheckTimer(net_timer)) { net_timer = GetTimer(1000); net_update(); }
++	shots_poll();
++	if (((net_state & 3) | shot_bits()) != net_sent) net_publish();   // NET b7/b6: a screenshot under way
 +	if (poll_timer && !CheckTimer(poll_timer)) return;
 +	poll_timer = GetTimer(4);
 +
@@ -899,6 +1423,10 @@ index 0000000..64c632d
 +	case 0x08: cmd_setlist(addr); break;
 +	case 0x09: cmd_setstep(reg[R_ARG], reg[R_VALUE]); break;
 +	case 0x0A: cmd_setapply(); break;
++	case 0x0B: net_wait = 0; snprintf(cwd, sizeof(cwd), "%s", sd_root().c_str()); snprintf(os_start, sizeof(os_start), "%s", cwd);
++	           os_log("network: not waiting - the SD card"); net_update(); mb_reply(ST_DONE, 0); break;
++	case 0x0C: cmd_shot(name); break;
++	case 0x0D: cmd_append(reg[R_ARG], reg[R_VALUE], name); break;
 +	case 0x0F: cmd_shell(); break;
 +	default:   mb_reply(E_BADCMD, 0); break;
 +	}
@@ -914,16 +1442,17 @@ index 0000000..64c632d
 +		mb_read(now, nn);
 +		taken = now[R_RSEQ] == cur_seq && now[R_SEQ] == cur_seq;
 +	}
++	if (reg[R_CMD] == 0x0D && last_status == ST_DONE) return;   // APPEND: too many to log
 +	os_log("cmd %02X seq %02X name '%s' addr %04X len %d folder /%s -> /%s status %02X, %lu ms%s",
 +		reg[R_CMD], cur_seq, name, addr, len, was, cwd, last_status & 0xFF, GetTimer(0) - t0,
 +		taken ? "" : " - too late, the C64 had moved on (reply dropped)");
 +}
 diff --git a/support/octo/octo.h b/support/octo/octo.h
 new file mode 100644
-index 0000000..0af768a
+index 0000000..c810072
 --- /dev/null
 +++ b/support/octo/octo.h
-@@ -0,0 +1,21 @@
+@@ -0,0 +1,23 @@
 +// OCTOPHONIC OS - the parts of Main that make a MiSTer boot straight into Octophonic 64 and
 +// answer the 6502's requests (list a folder, change folder, load, load-and-run).
 +// Everything here is switched off unless /media/fat/octophonic/os.ini exists.
@@ -941,12 +1470,14 @@ index 0000000..0af768a
 +void octo_f12(int press);
 +// CTRL+F12: reset the core to the V1.1 start screen (out of a running demo)
 +void octo_exit();
++// CTRL+F11: a screenshot of whatever is running, into the share's Octophonic/Screenshots/Manual
++void octo_manual_shot();
 +// in user_io.cpp: let the core's F12 go and open the MiSTer menu
 +void user_io_octo_menu();
 +
 +#endif
 diff --git a/user_io.cpp b/user_io.cpp
-index 0717aa0..b5f2584 100644
+index 0717aa0..1b9563e 100644
 --- a/user_io.cpp
 +++ b/user_io.cpp
 @@ -42,6 +42,7 @@
@@ -991,7 +1522,7 @@ index 0717aa0..b5f2584 100644
  	user_io_send_buttons(0);
  
  	mac_poll();   // Mac SCSI family: Toolbox slot announce + deferred CD work
-@@ -4438,9 +4443,21 @@ void user_io_osd_key_enable(char on)
+@@ -4438,9 +4443,26 @@ void user_io_osd_key_enable(char on)
  	input_switch(-1);
  }
  
@@ -1007,6 +1538,11 @@ index 0717aa0..b5f2584 100644
 +	if (key == KEY_F12 && octo_os_active() && (get_key_mod() & (LCTRL | RCTRL)) && !osd_is_visible)
 +	{                                              // OCTOPHONIC OS: CTRL+F12 - out of a demo
 +		if (press == 1) octo_exit();
++		return;
++	}
++	if (key == KEY_F11 && octo_os_active() && (get_key_mod() & (LCTRL | RCTRL)) && !osd_is_visible)
++	{                                              // OCTOPHONIC OS: CTRL+F11 - a screenshot
++		if (press == 1) octo_manual_shot();
 +		return;
 +	}
 +	if (key == KEY_F12) octo_f12(press);           // OCTOPHONIC OS: hold F12 for the menu

@@ -32,6 +32,7 @@ SETKEY  = $FB97         ; wedge2.asm: F1 at READY, the no-reply message
 NOREPLY = $FB9A
 CALL2   = $FB9D
 SHELLAT = $C000         ; where SHELL.PRG goes
+AUTORUN = $02A8
 
         * = $F72C
 osinit  lda #<wedge             ; BASIC's main loop comes through here (IMAIN)
@@ -207,6 +208,22 @@ msg_nf    !pet 13, "?not found", 13, 0
 msg_nd    !pet 13, "?not a folder", 13, 0
 msg_big   !pet 13, "?too big", 13, 0
 msg_cr    !pet 13, "?can't run that", 13, 0
+; SHIFT+RUN/STOP types LOAD"*",8 spelt out in full (an abbreviated keyword shows as a graphics
+; character). X back as 1, so the KERNAL's own copy that follows puts its 'L' over our 'L' and stops
+shiftr2 sei
+        ldx #9
+-       lda ldtxt,x
+        sta $0277,x
+        dex
+        bpl -
+        lda #10
+        sta $C6
+        lda #$01
+        sta AUTORUN
+        ldx #1
+        rts
+ldtxt   !byte $4C, $4F, $41, $44, $22, $2A, $22, $2C, $38, $0D   ; LOAD"*",8 RETURN
 wedgeend
-!if wedgeend > $F92C { !error "past the tape room" }
-!if wedgeend - msgs > 255 { !error "messages too long" }
+!if wedgeend > $F929 { !error "past the tape room" }
+        * = $F929
+        jmp shiftr2             ; SHIFTR2 (octo.asm's shiftrun): fixed

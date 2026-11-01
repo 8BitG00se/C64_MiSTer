@@ -3,11 +3,16 @@
 OCTST   = $02A7         ; 1: OctoVIC is drawing the start screen
 AUTORUN = $02A8         ; 1: SHIFT+RUN/STOP asked for LOAD"*",8 - RUN goes in after it
 PLOT    = $FFF0
+RUNKEYS = $FCCE          ; wedge2.asm, fixed
+SHIFTR2 = $F929          ; wedge.asm, fixed
         * = $F92C
 ; BASIC's cold start calls this instead of printing COMMODORE 64 BASIC V2 / BYTES FREE
-newboot jsr $A644                ; NEW: the program pointers ($2B-$2E, $0801), as the banner
-                                ; routine it replaces ($E422) did on its way out
-frame   lda #$06                ; (the browser calls frame: the screen, without the NEW)                ; one colour, border and page (navy, with OctoVIC)
+newboot jmp boot                ; $F92C: BASIC's cold start (fixed: the KERNAL patch calls it)
+        jmp frame               ; $F92F: the screen alone (fixed: SHELL.PRG calls it)
+boot    jsr frame               ; the screen, then BASIC's NEW (the program pointers $2B-$2E and
+        jmp $A644               ; $0801) as the banner routine it replaces ($E422) did: as a JMP,
+                                ; last - NEW's CLR resets the stack and keeps only one return address
+frame   lda #$06                ; one colour, border and page (navy, with OctoVIC)
         sta $D020
         sta $D021
         lda #$01
@@ -42,12 +47,7 @@ octon   ldx #0
         sta $D619
         lda #$06
         sta $D61A
-        lda #28
-        sta $D61B
-        lda #32
-        sta $D61C
-        lda #92
-        sta $D61D
+        jsr navyrgb
         lda #$03
         sta $D61A
         lda #120
@@ -58,12 +58,7 @@ octon   ldx #0
         sta $D61D
         lda #$02                ; the backdrop (what shows through navy): navy
         sta $D619
-        lda #28
-        sta $D61B
-        lda #32
-        sta $D61C
-        lda #92
-        sta $D61D
+        jsr navyrgb
         lda #$00                ; the main palette: bank n, entries 1 (bright) and 2 (dark)
         sta $D619
         ldx #0
@@ -195,24 +190,19 @@ w_load  jsr octoff
         pha
         lda AUTORUN             ; SHIFT+RUN/STOP: RUN waits in the keyboard buffer
         beq +
-        lda #$00
-        sta AUTORUN
-        lda #$52                ; R
-        sta $0277
-        lda #$D5                ; shift-U (RUN abbreviated)
-        sta $0278
-        lda #$0D
-        sta $0279
-        lda #3
-        sta $C6
+        jsr RUNKEYS             ; (wedge.asm: R U N RETURN, in full)
 +       pla
         plp
         jmp $E168
-; SHIFT+RUN/STOP: the buffer gets LOAD"*",8 (not the tape's LOAD) and RUN follows the load
-shiftrun sei
-        stx $C6
-        lda #$01
-        sta AUTORUN
+; SHIFT+RUN/STOP: the buffer gets LOAD"*",8 in full (not the tape's LOAD) and RUN follows the load -
+; wedge.asm's SHIFTR2 ($F929), called straight from the KERNAL (patch.py)
+shiftrun = SHIFTR2
+navyrgb lda #28                 ; navy: 28, 32, 92
+        sta $D61B
+        lda #32
+        sta $D61C
+        lda #92
+        sta $D61D
         rts
 
 title   !scr "octophonic 64 v1.1", 0
@@ -220,5 +210,32 @@ vicname !scr "octovic 256", 0
 hint    !scr "f1 browse"
 !src "bandpal.inc"
 credit  !text "OCTOPHONIC 64 V1.1 - BY NEAL - 8BITG00SE", 0
+; the network light, top right of the start screen: the screen editor's wait for a key ($E5CD)
+; comes through here. Only at READY in direct mode while the start screen is up (OctoVIC's page open,
+; the title still on row 1 - never once a program runs or the screen has scrolled): a dot at the end
+; of the title row, coloured by what Octophonic Main says about the network share - none set up:
+; not shown; waiting or not there: red; ready: green
+netlite lda $C6                 ; the KERNAL's own three instructions
+        sta $CC
+        sta $0292
+        php
+        lda OCTST
+        beq +
+        lda $9D
+        bpl +
+        lda $0400 + 40 + 15     ; only while the start screen's title is still on row 1 (not
+        cmp #$0F                ; scrolled away): the 'O' of OCTOPHONIC
+        bne +
+        lda $D6FF               ; NET (the mailbox): 0 none set up - no light at all
+        and #3
+        beq +
+        tax
+        lda #$51                ; a dot at the end of the title row
+        sta $0400 + 40 + 39
+        lda litecol,x
+        sta $D800 + 40 + 39
++       plp                     ; Z from $C6, for the KERNAL's BEQ
+        rts
+litecol !byte 6, 2, 5, 2
 tapeend
-!if tapeend > $FB8E { !error "past the tape room" }
+!if tapeend > $FB97 { !error "past the tape room ($FB8E-$FB96 was the tape's write code, unused)" }

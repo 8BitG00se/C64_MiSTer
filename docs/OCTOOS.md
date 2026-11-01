@@ -1,4 +1,4 @@
-# Octophonic OS (milestone 1, build 2)
+# Octophonic OS (milestone 1, build 3)
 
 The MiSTer starts straight into Octophonic 64, and the SD card is used from the READY prompt.
 Nothing changes for a MiSTer without `/media/fat/octophonic/os.ini`.
@@ -36,9 +36,53 @@ loads `SHELL.PRG` from `/media/fat/octophonic` to `$C000` and runs it. F-keys an
 | F8 | settings |
 | F7, RUN/STOP | back to READY (the BASIC program is kept) |
 
-Settings (F8): cursor up/down picks a line, left/right changes it, RETURN on CHIP PRESET starts it.
+RETURN on a `.reu` attaches it (as the menu does, no reset), then the list comes back with
+`REU ATTACHED (16M)` on the status line and the bar on the `.prg` of the same name. RETURN on a
+`.prg` attaches its `.reu` first (same name, or the only one in the folder) unless that very file is
+attached already, so a 16 MB REU is never loaded twice. In each folder the `.prg` files come first
+after the folders. `..` shows as `.. (UP A FOLDER)`; sizes are blocks under 1000, else K or M; a
+name the C64 can't show comes out with `?`, never blank.
+
+## Drives and the network
+
+The top of the browser is the drives: **SD CARD** (`games/C64` on the card), **NETWORK** (the C64
+folder of a network share) and **USB n** (`games/C64` on a stick). F3 from the top of a drive goes
+up to them. NETWORK shows `OFF` while the share isn't connected (RETURN on it says so).
+
+At power-on Main decides where to start (F8: START IN - NETWORK, SD CARD or LAST USED, saved as
+`startin=` in os.ini; without it: the network if this MiSTer has a share set up, else the SD card).
+A share is "set up" if one is mounted (cifs/smb/nfs in /proc/mounts), has been seen before on this
+MiSTer, or MiSTer's cifs script has a SERVER. Both ways of mounting work: over `/media/fat/games`
+(then `games/C64` is the share) and in a folder of its own (`games/00-NETWORK/C64`,
+`/media/network/C64`); `start=` in os.ini, if it points at a folder on the share, is used.
+
+While a share that is set up is still connecting, the start screen has a red dot at the end of the
+title row (green once it is there; none at all without a share), and F1 shows
+`PLEASE WAIT - CONNECTING TO NETWORK...` and opens the share's C64 folder the moment it mounts.
+Any key, or 60 seconds, uses the SD card instead (`NO NETWORK - USING THE SD CARD`).
+
+## Screenshots and reports (for the demos' self-tests)
+
+`0C` SHOT takes a screenshot with MiSTer's own code (the scaler's picture, as Win+PrtScn) and saves
+it as `<share C64 folder>/Octophonic/Screenshots/NAME.png` (no share: `/media/fat/screenshots/
+Octophonic/NAME.png`). NAME may hold folders (`HORIZON/NIGHT-0351`); letters, digits, `- _ . /`.
+Main answers at once and does the rest in the background: the picture is copied out of video memory
+at the next vsync (NET bit 7 set from the request until that copy is done), then a worker thread
+writes the PNG (NET bit 6) and Main copies it to the share. At most one a second; a SHOT while one
+is under way is ignored. No message is put on the screen.
+
+`0D` APPEND writes text for reports: VALUE `$FF` makes file ARG (0-3) the path NAME (under the same
+Screenshots folder; folders are made); any other VALUE puts NAME's text (up to 32 characters,
+PETSCII to ASCII) on the end of file ARG, with a new line unless VALUE bit 0 is set (a long line in
+pieces). Not logged (there can be many).
+
+CTRL+F11 (OS mode): a screenshot of whatever is running into `Screenshots/Manual`.
+
+## Settings (F8)
+
+Cursor up/down picks a line, left/right changes it, RETURN on CHIP PRESET starts it.
 Lines: chip preset (the `_Computer/Octophonic 64*.mgl` launchers; the one started becomes `boot=` in
-os.ini), my chip left/right (the `.CHP` files in `games/C64/My Chips`), then the core's options:
+os.ini), my chip left/right (the `.CHP` files in `games/C64/My Chips`), START IN (network / SD card / last used), then the core's options:
 Left/Right SIDs, My Chips, Octophonic, OctoSID FX, Split Screens, Turbo mode, Turbo speed.
 
 ## Same backend as the MiSTer menu
@@ -92,12 +136,17 @@ the next demo's own .reu goes in over it when it is run, the way the menu attach
 | FC | VERSION | read: 2 | |
 | FD | SEQ | write: the request's number, before CMD | reads |
 | FE | RSEQ | read: the number STATUS answers | writes it first in every reply |
+| FF | NET | read: b1-0 the network share (0 none set up, 1 waiting for it, 2 there, 3 set up but not there), b7 a screenshot is being copied out of video memory, b6 its PNG is being written | writes it whenever it changes (kept through a core reset) |
 
 Commands: `01` DIR (PETSCII text, 0-terminated), `02` CHDIR, `03` LOAD, `04` RUN, `05` INFO,
 `06` LIST (path 40 bytes, then 32-byte records: type, blocks, ext, name), `07` OPEN (entry LEN),
 `08` SETLIST (40-byte lines: label, value), `09` SETSTEP (line ARG, VALUE 1 or $FF), `0A` SETAPPLY
-(start the chosen chip preset), `0F` SHELL (SHELL.PRG to its load address).
-Errors: `$81` not found, `$82` not a folder, `$83` too big, `$84` can't read, `$85` can't run, `$8F` unknown.
+(start the chosen chip preset), `0B` NOSHARE (stop waiting for the network: the SD card), `0C` SHOT,
+`0D` APPEND, `0F` SHELL (SHELL.PRG to its load address).
+OPEN on a lone `.reu` answers VALUE 2, RESULT its size in 64 KB units, LEN the list entry of its `.prg`
+($FFFF none).
+Errors: `$81` not found, `$82` not a folder, `$83` too big, `$84` can't read, `$85` can't run,
+`$86` the network is not connected, `$8F` unknown.
 
 An answer whose RSEQ isn't the 6502's current SEQ (the 6502 gave up and asked something else) is
 dropped whole by the core, so a late answer never lands on a newer request; Main logs it.
@@ -111,7 +160,8 @@ after the reply: the 16 registers, then the 32 name bytes), `0x72` write (each w
 ```
 enabled=1
 boot=_Computer/Octophonic 64.mgl      ; or an .rbf; missing: the newest _Computer/.C64_Octophonic_*.rbf
-start=/media/fat/games/C64            ; missing: games/C64, else /media/fat/Octophonic
+startin=net                           ; net, sd or last (F8 START IN); missing: net if a share is set up, else sd
+start=/media/fat/games/00-NETWORK/C64 ; optional: the share's C64 folder, if Main can't find it
 ```
 
 Main starts the core once per power-on (`/tmp/octoos_booted`), so a menu reached with Win+F12 stays
@@ -121,5 +171,8 @@ a menu. With the OS active, plain F12 goes to the C64 and Win+F12 (or the Menu k
 
 `tools/octoos/test/romtest.cpp` runs the V1.1 ROM and the stock Commodore ROMs side by side on the
 same emulated C64 with a real 1541 and a test disk (`mkd64.py`), and a model of Main's mailbox (with
-its 40 ms answer time) serving a test folder. Every BASIC/editor/disk case must match stock screen
+its 40 ms answer time) serving a test folder, a network share that can be set to appear after a
+while, the drives level, and lone .reu files. Build the ROM with `tools/octoos/kernal/build.sh`; the
+start screen is also compared pixel by pixel with `boot_ref.idx`, and with no share set up there
+must be no network light. Every BASIC/editor/disk case must match stock screen
 and memory; the OS cases check the wedge, F1, the browser, the settings and the 3-second timeout.
