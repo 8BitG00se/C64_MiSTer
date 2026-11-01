@@ -8,3 +8,4 @@ python3 mkdemos.py folder
 [ -e folder/sub/big.reu ] || head -c 16777216 /dev/zero > folder/sub/big.reu
 mkdir -p "folder/sub/éé"
 cp folder/hello.prg netshare/net.prg 2>/dev/null || true
+mkdir -p "netshare/Octophonic Horizon build 10" "netshare/Octophonic Showcase Lanterns Edition build 12"

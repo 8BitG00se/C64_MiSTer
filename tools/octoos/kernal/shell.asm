@@ -36,9 +36,9 @@ STOP    = $FFE1
 CHROUT  = $FFD2
 AUTORUN = $02A8
 seq     = $02AB         ; the request number, shared with the ROM's commands
-ROWS    = 14
-TOP     = 8             ; the first list row (5 the path, 7 the column names)
-LBUF    = $CB00         ; Main writes the path (40) and the records (32 each) here (to $CCE8; the settings to $CD20)
+ROWS    = 13
+TOP     = 9             ; the first list row (5 the path, 7 the column names, 8 left blank)
+LBUF    = $CB00         ; Main writes the path (40) and the records (40 each) here (to $CD58; the settings to $CD20)
 REC     = LBUF + 40
 P       = $FB
 Q       = $FD
@@ -507,27 +507,29 @@ rowptr  clc
         rts
 
 ; record row (Q/P already at its line)
-drawrec lda row                 ; R = REC + row*32
-        asl
-        asl
-        asl
-        asl
-        asl
+drawrec lda row                 ; R = REC + row*40 (row*5*8; ROWS = 14, so row*5 < 256)
         sta rp
-        lda row
-        lsr
-        lsr
-        lsr
+        asl
+        asl
         clc
-        adc #>REC
+        adc rp                  ; row*5
+        sta rp
+        lda #0
         sta rp+1
+        asl rp                  ; *8
+        rol rp+1
+        asl rp
+        rol rp+1
+        asl rp
+        rol rp+1
         lda rp
         clc
         adc #<REC
         sta rp
-        bcc +
-        inc rp+1
-+       lda rp
+        lda rp+1
+        adc #>REC
+        sta rp+1
+        lda rp
         sta recb+1
         lda rp+1
         sta recb+2
@@ -546,14 +548,14 @@ drawrec lda row                 ; R = REC + row*32
 -       sta (Q),y
         dey
         bpl -
-        ldx #9                  ; the name: columns 1-23
+        ldx #9                  ; the name: columns 1-28 (Main cuts a long one in the middle)
         ldy #1
 -       jsr recb
         jsr scr
         sta (Q),y
         inx
         iny
-        cpy #24
+        cpy #29
         bne -
         ldx #6                  ; the type: columns 30-32 (DIR for folders)
         ldy #30

@@ -31,7 +31,7 @@ struct Mailbox
     // whose number isn't the 6502's current one
     int busy = 0; bool pending = false; uint8_t cap[16] = {}; std::string capName; int slowCmd = -1, slowTicks = 0, drops = 0;
     struct Line { std::string label; std::vector<std::string> ch; int v; };
-    std::vector<Line> lines = { { "CHIP PRESET", { "PLAIN", "WARM", "CLASSIC" }, 0 }, { "MY CHIP LEFT", { "MOS_6581_3184", "MOS_6581_5084" }, 0 }, { "MY CHIP RIGHT", { "CSG_8580R5_3591", "MOS_8580R5_4687" }, 0 },
+    std::vector<Line> lines = { { "CHIP PRESET", { "PLAIN", "WARM", "CLASSIC" }, 0 }, { "MY CHIP LEFT", { "MOS_6581_3184", "MOS_6581_5084" }, 0 }, { "MY CHIP RIGHT", { "CSG_8580R5_3591", "MOS_8580R5_4687" }, 0 }, { "START IN", { "SD CARD", "LAST USED", "NETWORK" }, 0 },
         { "LEFT SIDS 1357", { "6581", "8580" }, 0 }, { "RIGHT SIDS 2468", { "6581", "8580" }, 0 }, { "MY CHIPS", { "ON", "OFF" }, 0 }, { "OCTOPHONIC", { "8 SIDS", "4 SIDS", "OFF" }, 0 },
         { "OCTOSID FX", { "OFF", "CHORUS", "ECHO", "CHORUS+ECHO" }, 0 }, { "SPLIT SCREENS", { "OFF", "VGA C64+HDMI" }, 0 }, { "TURBO MODE", { "C128", "OFF", "SMART" }, 1 }, { "TURBO SPEED", { "2X", "3X", "4X" }, 0 } };
     bool mute = false; int presetSel = 0; std::string boot = "PLAIN"; int saves = 0;
@@ -122,17 +122,17 @@ struct Mailbox
             int count = mb[7] ? mb[7] : 17; int total = (int) v.size() + up(); std::vector<uint8_t> o;
             if (cwd == "*") { auto d = drives(); total = (int) d.size();
                 const char* pth = "DRIVES"; for (int i = 0; i < 40; ++i) o.push_back (i < 6 ? (uint8_t) pth[i] : ' ');
-                int w = 0; for (int i = len; i < total && w < count; ++i, ++w) { uint8_t rec[32]; std::memset (rec, ' ', 32); rec[0] = d[(size_t) i].dir == 2 ? 6 : 0;
+                int w = 0; for (int i = len; i < total && w < count; ++i, ++w) { uint8_t rec[40]; std::memset (rec, ' ', 40); rec[0] = d[(size_t) i].dir == 2 ? 6 : 0;
                     if (d[(size_t) i].dir == 2) { rec[3] = 'O'; rec[4] = 'F'; rec[5] = 'F'; } rec[6] = 'D'; rec[7] = 'R'; rec[8] = 'V';
-                    for (int k = 0; k < 23 && k < (int) d[(size_t) i].name.size(); ++k) rec[9 + k] = pet (d[(size_t) i].name[(size_t) k]); o.insert (o.end(), rec, rec + 32); }
+                    for (int k = 0; k < 23 && k < (int) d[(size_t) i].name.size(); ++k) rec[9 + k] = pet (d[(size_t) i].name[(size_t) k]); o.insert (o.end(), rec, rec + 40); }
                 ramw (addr ? addr : 0xCA00, o); reply (2, total, -1, w); return; }
             std::string path = cwd.substr (cwd.compare (0, top.size(), top) ? 0 : top.size()); if (cwd == netTop) path = "/NET"; else if (! netTop.empty() && ! cwd.compare (0, netTop.size(), netTop)) path = "/NET" + cwd.substr (netTop.size()); else if (path.empty()) path = "/"; if (path.compare (0, 4, "/NET")) path = "/TEST" + (path == "/" ? std::string() : path);
             if (path.size() > 40) path = "..." + path.substr (path.size() - 37);
             for (int i = 0; i < 40; ++i) o.push_back (i < (int) path.size() ? pet (path[(size_t) i]) : ' ');
             int w = 0;
             for (int i = len; i < total && w < count; ++i, ++w) {
-                uint8_t rec[32]; std::memset (rec, ' ', 32);
-                // as Main: type, size text (5: blocks under 1000, else K/M), ext (3), name (23)
+                uint8_t rec[40]; std::memset (rec, ' ', 40);
+                // as Main: type, size text (5: blocks under 1000, else K/M), ext (3), name (31; long ones cut in the middle to 28)
                 if (up() && i == 0) { rec[0] = 5; rec[6] = 'D'; rec[7] = 'I'; rec[8] = 'R'; const char* u = ".. (UP A FOLDER)"; for (int k = 0; u[k]; ++k) rec[9 + k] = pet (u[k]); }
                 else { const auto& e = v[(size_t) (i - up())];
                     rec[0] = (uint8_t) type_of (e);
@@ -141,8 +141,9 @@ struct Mailbox
                     char sz[8]; std::snprintf (sz, sizeof sz, "%5s", t); for (int k = 0; k < 5; ++k) rec[1 + k] = pet (sz[k]);
                     std::string x = e.dir ? "DIR" : ext_of (e.name); for (int k = 0; k < 3 && k < (int) x.size(); ++k) rec[6 + k] = pet (x[(size_t) k]);
                     std::string n = e.dir ? e.name : base_of (e.name); if (n.find_first_not_of (' ') == std::string::npos) n = "?";
-                    for (int k = 0; k < 23 && k < (int) n.size(); ++k) rec[9 + k] = pet (n[(size_t) k]); }
-                o.insert (o.end(), rec, rec + 32); }
+                    if (n.size() > 28) n = n.substr (0, 16) + ".." + n.substr (n.size() - 10);
+                    for (int k = 0; k < 31 && k < (int) n.size(); ++k) rec[9 + k] = pet (n[(size_t) k]); }
+                o.insert (o.end(), rec, rec + 40); }
             ramw (addr ? addr : 0xCA00, o); reply (2, total, -1, w);
         }
         else if (mb[0] == 7) {
@@ -345,8 +346,9 @@ static std::string browsercheck (Rig& r)
     if (row (5).substr (0, 5) != "/TEST") why += "path not on row 5: '" + row (5) + "'; ";
     if (row (6).find_first_not_of (' ') != std::string::npos) why += "row 6 not blank; ";
     if (row (7).substr (1, 4) != "NAME" || row (7).substr (30, 9) != "TYPE SIZE") why += "column names not on row 7; ";
-    for (int y = 8; y < 23; ++y) { std::string t = row (y); if (t.substr (30, 3) != "   " && t.substr (1, 23).find_first_not_of (' ') == std::string::npos) why += "a blank name on row " + std::to_string (y) + "; "; }
-    for (int y = 8; y < 23; ++y) if (row (y).find ("65535") != std::string::npos) why += "65535 on row " + std::to_string (y) + "; ";
+    if (row (8).find_first_not_of (' ') != std::string::npos) why += "row 8 not blank (the list touches the column names); ";
+    for (int y = 9; y < 22; ++y) { std::string t = row (y); if (t.substr (30, 3) != "   " && t.substr (1, 23).find_first_not_of (' ') == std::string::npos) why += "a blank name on row " + std::to_string (y) + "; "; }
+    for (int y = 9; y < 22; ++y) if (row (y).find ("65535") != std::string::npos) why += "65535 on row " + std::to_string (y) + "; ";
         const int W = r.m->getFramebufferWidth(); const auto* fb = r.m->getFramebuffer();
     if ((fb[0] & 15) != 6) why += "border not navy; ";
     if ((fb[(size_t) 260 * W + W / 2] & 15) != 6) why += "background not navy; ";
@@ -378,7 +380,7 @@ int main (int argc, char** argv)
             std::string w = browsercheck (oc); if (! has (o, "UP A FOLDER") && oc.box.cwd != oc.box.top) w += "no UP A FOLDER; "; return w; } },
         { "browser screen: in a folder - .. named, bar below it, 16M", OCTO, { "{F1}{WAIT1}", "{RET}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
             std::string w = browsercheck (oc); if (! has (o, ".. (UP A FOLDER)")) w += "no '.. (UP A FOLDER)'; "; if (! has (o, "  16M")) w += "16 MB .reu not shown as 16M; ";
-            auto* ram = oc.m->getBus().getRam(); if ((ram[0x400 + 9 * 40 + 1] & 0x80) == 0) w += "the bar is not on the first entry below ..; "; return w; } },
+            auto* ram = oc.m->getBus().getRam(); if ((ram[0x400 + 10 * 40 + 1] & 0x80) == 0) w += "the bar is not on the first entry below ..; "; return w; } },
         { "SHIFT+RUN/STOP shows LOAD and RUN in full", OCTO, { "{CLR}{SSTOP}{WAIT10}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
             return has (o, "LOAD\"*\",8") && has (o, "\nRUN") ? std::string() : std::string ("LOAD/RUN not spelt out"); } },
         { "boot screen: after F1, F7", OCTO, { "{F1}{WAIT1}", "{F7}{WAIT1}" }, [] (const Snap&, const Snap&, Rig&, Rig& oc) {
@@ -426,8 +428,8 @@ int main (int argc, char** argv)
           [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "\nKEPT") ? std::string() : std::string ("program lost"); } },
         { "browser: joystick down and fire", OCTO, { "{CLR}{F1}{WAIT1}", "{JDOWN}", "{JFIRE}{WAIT1}" },
           [] (const Snap&, const Snap&, Rig&, Rig& oc) { return oc.box.ran == 1 ? std::string() : std::string ("fire did not run"); } },
-        { "settings: F8, change left SIDs", OCTO, { "{CLR}{F1}{WAIT1}", "{F8}{WAIT1}", "{DOWN}{DOWN}{DOWN}{RIGHT}{WAIT1}" },
-          [] (const Snap&, const Snap& o, Rig&, Rig& oc) { return oc.box.lines[3].v == 1 && has (o, "LEFT SIDS 1357") && has (o, "8580") ? std::string() : std::string ("left SIDs not changed"); } },
+        { "settings: F8, change left SIDs", OCTO, { "{CLR}{F1}{WAIT1}", "{F8}{WAIT1}", "{DOWN}{DOWN}{DOWN}{DOWN}{RIGHT}{WAIT1}" },
+          [] (const Snap&, const Snap& o, Rig&, Rig& oc) { return oc.box.lines[4].v == 1 && has (o, "LEFT SIDS 1357") && has (o, "8580") ? std::string() : std::string ("left SIDs not changed"); } },
         { "settings: chip preset picked and started", OCTO, { "{CLR}{F1}{WAIT1}", "{F8}{WAIT1}", "{RIGHT}{WAIT1}", "{RET}{WAIT1}" },
           [] (const Snap&, const Snap&, Rig&, Rig& oc) { return oc.box.boot == "WARM" ? std::string() : "boot preset " + oc.box.boot; } },
         { "settings: F7 back to the files, then RUN a file", OCTO, { "{CLR}{F1}{WAIT1}", "{F8}{WAIT1}", "{F7}{WAIT1}", "{DOWN}{RET}{WAIT1}" },
@@ -480,13 +482,18 @@ int main (int argc, char** argv)
             return has (o, "NETWORK") && has (o, "OFF") && has (o, "NOT CONNECTED") ? std::string() : std::string ("NETWORK not shown as off / no message"); } },
         { "REU: RETURN on a .reu attaches it, back to the list, bar on its .prg", OCTO, { "{F1}{WAIT1}", "{RET}{WAIT1}", "{RET}{WAIT1}", "{DOWN}{RET}{WAIT2}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
             if (! has (o, "REU ATTACHED")) return std::string ("no REU ATTACHED"); if (oc.box.reuLoads != 1) return "reu loads " + std::to_string (oc.box.reuLoads);
-            auto* ram = oc.m->getBus().getRam(); std::string t; for (int c = 0; c < 40; ++c) t += (char) (ram[0x400 + 9 * 40 + c] & 0x7F);
-            if ((ram[0x400 + 9 * 40 + 1] & 0x80) == 0) return std::string ("the bar isn't on the .prg"); return std::string(); } },
+            auto* ram = oc.m->getBus().getRam();
+            if ((ram[0x400 + 10 * 40 + 1] & 0x80) == 0) return std::string ("the bar isn't on the .prg"); return std::string(); } },
         { "REU: then RETURN runs the demo without a second load", OCTO, { "{F1}{WAIT1}", "{RET}{WAIT1}", "{RET}{WAIT1}", "{DOWN}{RET}{WAIT2}", "{RET}{WAIT6}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
             if (oc.box.lastRun != "demoa.prg") return "ran " + oc.box.lastRun; if (oc.box.reuLoads != 1) return "reu loaded " + std::to_string (oc.box.reuLoads) + " times";
             return has (o, "DEMO A REU A") ? std::string() : std::string ("demo A didn't see its REU"); } },
         { "REU: a 16 MB .reu on its own doesn't hang", OCTO, { "{F1}{WAIT1}", "{RET}{WAIT1}", "{DOWN}{DOWN}{DOWN}{DOWN}{RET}{WAIT3}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
             return has (o, "REU ATTACHED (16M)") && ! has (o, "LOADING") ? std::string() : std::string ("no REU ATTACHED (16M)"); } },
+        { "browser: a long name keeps its build number", OCTO, { "{NETUP}{F1}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
+            return has (o, " OCTOPHONIC HORIZON BUILD 10 ") && has (o, " OCTOPHONIC SHOWC..N BUILD 12 ") ? std::string() : std::string ("long names cut wrong"); } },
+
+        { "settings: START IN", OCTO, { "{CLR}{F1}{WAIT1}", "{F8}{WAIT1}", "{DOWN}{DOWN}{DOWN}{RIGHT}{WAIT1}" },
+          [] (const Snap&, const Snap& o, Rig&, Rig& oc) { return oc.box.lines[3].v == 1 && has (o, "START IN") && has (o, "LAST USED") ? std::string() : std::string ("START IN not changed"); } },
     };
 
 

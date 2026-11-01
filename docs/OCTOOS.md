@@ -41,7 +41,8 @@ RETURN on a `.reu` attaches it (as the menu does, no reset), then the list comes
 `.prg` attaches its `.reu` first (same name, or the only one in the folder) unless that very file is
 attached already, so a 16 MB REU is never loaded twice. In each folder the `.prg` files come first
 after the folders. `..` shows as `.. (UP A FOLDER)`; sizes are blocks under 1000, else K or M; a
-name the C64 can't show comes out with `?`, never blank.
+name the C64 can't show comes out with `?`, never blank. Names use 28 columns; a longer one is cut in
+the middle (`OCTOPHONIC SHOWC..N BUILD 12`) so the build number at its end always shows.
 
 ## Drives and the network
 
@@ -142,7 +143,7 @@ the next demo's own .reu goes in over it when it is run, the way the menu attach
 | FF | NET | read: b1-0 the network share (0 none set up, 1 waiting for it, 2 there, 3 set up but not there), b7 a screenshot is being copied out of video memory, b6 its PNG is being written | writes it whenever it changes (kept through a core reset) |
 
 Commands: `01` DIR (PETSCII text, 0-terminated), `02` CHDIR, `03` LOAD, `04` RUN, `05` INFO,
-`06` LIST (path 40 bytes, then 32-byte records: type, blocks, ext, name), `07` OPEN (entry LEN),
+`06` LIST (path 40 bytes, then 40-byte records: type, size text (5), ext (3), name (31; Main cuts a long name in the middle to 28 so its end - a build number - shows)), `07` OPEN (entry LEN),
 `08` SETLIST (40-byte lines: label, value), `09` SETSTEP (line ARG, VALUE 1 or $FF), `0A` SETAPPLY
 (start the chosen chip preset), `0B` NOSHARE (stop waiting for the network: the SD card), `10` SHOT,
 `11` APPEND, `0F` SHELL (SHELL.PRG to its load address).

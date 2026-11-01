@@ -52,10 +52,10 @@ index 6991398..299637f 100644
  #endif
 diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
 new file mode 100644
-index 0000000..9a24627
+index 0000000..d88d1e5
 --- /dev/null
 +++ b/support/octo/octo.cpp
-@@ -0,0 +1,1391 @@
+@@ -0,0 +1,1400 @@
 +// OCTOPHONIC OS (milestone 1, build 2) - by Mong00se.
 +//
 +// With /media/fat/octophonic/os.ini on the card, the MiSTer starts straight into the Octophonic 64
@@ -74,7 +74,7 @@ index 0000000..9a24627
 +//   03 LOAD     file NAME into C64 RAM at its own load address (ARG b0: at ADDR), no reset
 +//   04 RUN      file NAME, as picking it in the menu (the / command)
 +//   05 INFO     a line of text about the OS at ADDR
-+//   06 LIST     for the browser: the path (40 bytes), then 32-byte records from entry LEN, VALUE of
++//   06 LIST     for the browser: the path (40 bytes), then 40-byte records from entry LEN, VALUE of
 +//               them; RESULT = entries in all, VALUE = how many were written
 +//   07 OPEN     entry LEN of the list, as picking it in the menu: a folder (VALUE $10), a disk into
 +//               drive 8 (VALUE 8), a program or cartridge loaded and run (VALUE 1, the core resets)
@@ -707,6 +707,15 @@ index 0000000..9a24627
 +	return n;
 +}
 +
++// a name cut to fit W columns from the middle, so its end - a build number - always shows:
++// "Octophonic Horizon build 10" in 22 -> "Octophonic Ho..build 10"
++static std::string fit_name(const std::string &n, size_t w)
++{
++	if (n.size() <= w) return n;
++	size_t tail = w >= 20 ? 10 : w / 2;
++	return n.substr(0, w - 2 - tail) + ".." + n.substr(n.size() - tail);
++}
++
 +static int type_of(const Entry &e)
 +{
 +	if (e.na) return 6;
@@ -882,7 +891,7 @@ index 0000000..9a24627
 +		const Entry &e = v[i];
 +		std::string sn = e.up ? ".." : shown_name(e);
 +		std::string type = (e.dir || e.up) ? "DIR" : ext_of(e.name);
-+		if (sn.size() > 26) sn = sn.substr(0, 26);
++		sn = fit_name(sn, 26);
 +		char q[40];
 +		snprintf(q, sizeof(q), "\"%s\"", sn.c_str());
 +		snprintf(line, sizeof(line), "%-5lld%-18s %.3s\n", blocks_of(e), q, type.c_str());
@@ -998,7 +1007,7 @@ index 0000000..9a24627
 +	for (int i = first; i < total && written < count; i++, written++)
 +	{
 +		const Entry &e = v[i];
-+		uint8_t rec[32];
++		uint8_t rec[40];                         // type, size (5), ext (3), name (31; 28 shown)
 +		memset(rec, ' ', sizeof(rec));
 +		char sz[8];
 +		if (!e.size.empty()) snprintf(sz, sizeof(sz), "%5s", e.size.c_str());
@@ -1007,9 +1016,9 @@ index 0000000..9a24627
 +		for (int k = 0; k < 5; k++) rec[1 + k] = to_pet(sz[k]);
 +		std::string ext = !strcmp(cwd, DRIVES) ? "DRV" : (e.dir || e.up) ? "DIR" : ext_of(e.name);
 +		for (int k = 0; k < 3 && k < (int)ext.size(); k++) rec[6 + k] = to_pet(ext[k]);
-+		std::string nm = shown_name(e);
-+		for (int k = 0; k < 23 && k < (int)nm.size(); k++) rec[9 + k] = to_pet(nm[k]);
-+		out.insert(out.end(), rec, rec + 32);
++		std::string nm = fit_name(shown_name(e), 28);
++		for (int k = 0; k < 31 && k < (int)nm.size(); k++) rec[9 + k] = to_pet(nm[k]);
++		out.insert(out.end(), rec, rec + 40);
 +	}
 +	ram_write(addr, out.data(), out.size());
 +	mb_reply(ST_DONE, total, -1, written);
