@@ -55,9 +55,14 @@ with `xml_load`, as picking it in the menu does.
 Main writes every request to `/media/fat/octophonic/os.log` (time, command, name, folder before and
 after, the reply, how many ms it took; boot and errors too). It rolls over to `os.log.1` at 64 KB.
 
-## Menu key
+## Menu key, and out of a demo
 
 Win+F12 (or the Menu key) opens the MiSTer menu; holding F12 for 2 seconds does too.
+
+CTRL+F12 gets out of anything that is running - a demo that ignores RUN/STOP+RESTORE too: Main does
+the menu's "Reset & Detach Cartridge" and the core starts again on the V1.1 start screen. The folder
+is kept, so F1 opens the browser where it was. The REU keeps its contents (as with the menu's reset):
+the next demo's own .reu goes in over it when it is run, the way the menu attaches a .reu.
 
 ## The pieces
 

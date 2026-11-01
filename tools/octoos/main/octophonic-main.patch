@@ -1,9 +1,9 @@
 diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
 new file mode 100644
-index 0000000..4d5bddc
+index 0000000..64c632d
 --- /dev/null
 +++ b/support/octo/octo.cpp
-@@ -0,0 +1,878 @@
+@@ -0,0 +1,914 @@
 +// OCTOPHONIC OS (milestone 1, build 2) - by Mong00se.
 +//
 +// With /media/fat/octophonic/os.ini on the card, the MiSTer starts straight into the Octophonic 64
@@ -65,6 +65,7 @@ index 0000000..4d5bddc
 +#define OS_LOG      OS_DIR "/os.log"
 +#define OS_SHELL    OS_DIR "/SHELL.PRG"
 +#define OS_FLAG     "/tmp/octoos_booted"
++#define OS_CWD      "/tmp/octoos_cwd"      // the folder, kept while Main restarts with a new core
 +#define OS_TOP      "/media/fat"
 +#define OS_EXTS     "PRGCRTREUD64G64T64D81"   // the core's own menu: F1 PRGCRTREU and S0 D64G64T64D81
 +#define CHIP_DIR    "games/C64/My Chips"
@@ -263,6 +264,19 @@ index 0000000..4d5bddc
 +		snprintf(cwd, sizeof(cwd), "Octophonic");
 +	}
 +	snprintf(os_start, sizeof(os_start), "%s", cwd);
++	// where the browser was before this core (re)started - a preset, or Main starting again
++	FILE *fc = fopen(OS_CWD, "r");
++	if (fc)
++	{
++		char was[1024] = {};
++		if (fgets(was, sizeof(was), fc))
++		{
++			was[strcspn(was, "\r\n")] = 0;
++			snprintf(full, sizeof(full), OS_TOP "/%s", was);
++			if (!was[0] || (!stat(full, &st) && S_ISDIR(st.st_mode))) snprintf(cwd, sizeof(cwd), "%s", was);
++		}
++		fclose(fc);
++	}
 +	os_log("core: OS active, folder /%s", cwd);
 +	printf("Octophonic OS: active, folder /%s\n", cwd);
 +}
@@ -412,6 +426,12 @@ index 0000000..4d5bddc
 +		}
 +	}
 +	return -1;
++}
++
++static void keep_cwd()
++{
++	FILE *f = fopen(OS_CWD, "w");
++	if (f) { fprintf(f, "%s\n", cwd); fclose(f); }
 +}
 +
 +static void go_up()
@@ -815,6 +835,20 @@ index 0000000..4d5bddc
 +	xml_load(full);                                  // as picking the launcher in the menu
 +}
 +
++// ------------------------------------------------------- CTRL+F12: out of a demo, to the start
++
++// a demo doesn't listen to the mailbox and often blocks RUN/STOP+RESTORE, so Main does it: the
++// menu's "Reset & Detach Cartridge" (R[17]) - the core starts again on the V1.1 start screen.
++// The folder is kept, so F1 opens the browser where it was; the REU keeps its contents, as it
++// does for the menu's reset.
++void octo_exit()
++{
++	if (!os_active) return;
++	os_log("CTRL+F12: reset to the start screen (folder /%s)", cwd);
++	user_io_status_set("[17]", 1);
++	user_io_status_set("[17]", 0);
++}
++
 +// ------------------------------------------------------------------------- F12 held: the menu
 +
 +void octo_f12(int press)
@@ -868,6 +902,8 @@ index 0000000..4d5bddc
 +	case 0x0F: cmd_shell(); break;
 +	default:   mb_reply(E_BADCMD, 0); break;
 +	}
++	if (strcmp(was, cwd)) keep_cwd();
++
 +	// was the answer taken? (the 6502 may have given up and asked something else meanwhile)
 +	// (not after RUN, OPEN or a preset: the core may already be restarting)
 +	int taken = 1;
@@ -884,10 +920,10 @@ index 0000000..4d5bddc
 +}
 diff --git a/support/octo/octo.h b/support/octo/octo.h
 new file mode 100644
-index 0000000..0f00e64
+index 0000000..0af768a
 --- /dev/null
 +++ b/support/octo/octo.h
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,21 @@
 +// OCTOPHONIC OS - the parts of Main that make a MiSTer boot straight into Octophonic 64 and
 +// answer the 6502's requests (list a folder, change folder, load, load-and-run).
 +// Everything here is switched off unless /media/fat/octophonic/os.ini exists.
@@ -903,12 +939,14 @@ index 0000000..0f00e64
 +void octo_poll();
 +// F12 pressed (1) or let go (0): held for 2 s, it opens the MiSTer menu
 +void octo_f12(int press);
++// CTRL+F12: reset the core to the V1.1 start screen (out of a running demo)
++void octo_exit();
 +// in user_io.cpp: let the core's F12 go and open the MiSTer menu
 +void user_io_octo_menu();
 +
 +#endif
 diff --git a/user_io.cpp b/user_io.cpp
-index 0717aa0..b64eb50 100644
+index 0717aa0..b5f2584 100644
 --- a/user_io.cpp
 +++ b/user_io.cpp
 @@ -42,6 +42,7 @@
@@ -953,7 +991,7 @@ index 0717aa0..b64eb50 100644
  	user_io_send_buttons(0);
  
  	mac_poll();   // Mac SCSI family: Toolbox slot announce + deferred CD work
-@@ -4438,9 +4443,16 @@ void user_io_osd_key_enable(char on)
+@@ -4438,9 +4443,21 @@ void user_io_osd_key_enable(char on)
  	input_switch(-1);
  }
  
@@ -966,6 +1004,11 @@ index 0717aa0..b64eb50 100644
  void user_io_kbd(uint16_t key, int press)
  {
  	register_activity();
++	if (key == KEY_F12 && octo_os_active() && (get_key_mod() & (LCTRL | RCTRL)) && !osd_is_visible)
++	{                                              // OCTOPHONIC OS: CTRL+F12 - out of a demo
++		if (press == 1) octo_exit();
++		return;
++	}
 +	if (key == KEY_F12) octo_f12(press);           // OCTOPHONIC OS: hold F12 for the menu
  
  	if(is_menu()) spi_uio_cmd(UIO_KEYBOARD); //ping the Menu core to wakeup

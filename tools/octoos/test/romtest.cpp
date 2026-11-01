@@ -35,7 +35,7 @@ struct Mailbox
         { "OCTOSID FX", { "OFF", "CHORUS", "ECHO", "CHORUS+ECHO" }, 0 }, { "SPLIT SCREENS", { "OFF", "VGA C64+HDMI" }, 0 }, { "TURBO MODE", { "C128", "OFF", "SMART" }, 1 }, { "TURBO SPEED", { "2X", "3X", "4X" }, 0 } };
     bool mute = false; int presetSel = 0; std::string boot = "PLAIN"; int saves = 0;
     std::string top, cwd, shell; uint8_t mb[16] = {}; std::string name; bool unlocked = false, stage = false; int ran = 0; std::string lastRun;
-    uint8_t* ram = nullptr;
+    uint8_t* ram = nullptr; C64Machine* m = nullptr; std::string loadedReu;
     void list (std::vector<Entry>& v)
     {
         v.clear(); DIR* d = opendir (cwd.c_str()); if (! d) return;
@@ -59,11 +59,26 @@ struct Mailbox
     int up() const { return cwd != top ? 1 : 0; }
     int type_of (const Entry& e) { if (e.dir) return 0; auto x = ext_of (e.name); for (auto& c : x) c = (char) tolower (c);
         if (x == "prg" || x.empty()) return 1; if (x == "d64" || x == "g64" || x == "d81") return 2; if (x == "crt") return 3; return 4; }
+    // a program, as Octophonic Main does it: the demo's .reu in first (same name, or the only one in
+    // the folder), then the menu's PRG load - the core resets (the mailbox with it) and runs it
     void run_entry (const Entry& e)
     {
         int t = type_of (e);
-        if (t == 2) reply (2, 0, -1, 8); else if (t == 1 || t == 3) { reply (2, 0, -1, 1); ran++; lastRun = e.name; } else reply (0x85, 0);
+        if (t == 2) { reply (2, 0, -1, 8); return; }
+        if (t != 1 && t != 3) { reply (0x85, 0); return; }
+        reply (2, 0, -1, 1); ran++; lastRun = e.name;
+        if (t != 1 || m == nullptr) return;
+        std::vector<Entry> v; list (v); std::string reu, only; int reus = 0;
+        for (auto& x : v) { if (x.dir) continue; auto ex = ext_of (x.name); for (auto& c : ex) c = (char) tolower (c); if (ex != "reu") continue;
+            ++reus; only = x.name; if (! strcasecmp (base_of (x.name).c_str(), base_of (e.name).c_str())) reu = x.name; }
+        if (reu.empty() && reus == 1) reu = only;
+        if (! reu.empty()) { auto d = rd (cwd + "/" + reu); m->loadReuImage (d.data(), d.size()); loadedReu = reu; }
+        auto p = rd (cwd + "/" + e.name);
+        coreReset();
+        m->loadProgramWhenReady (p.data(), p.size(), true);
     }
+    // the core's reset: the machine starts again, and the mailbox's registers go back to 0
+    void coreReset() { if (m) m->reset(); std::memset (mb, 0, 16); name.clear(); pending = false; busy = 0; unlocked = false; stage = false; }
     void serve()
     {
         std::string nm; for (char c : name) { unsigned char u = c; if (u >= 0xC1 && u <= 0xDA) u = u - 0xC1 + 'a'; nm += (char) u; }
@@ -184,7 +199,7 @@ static std::string text_of (const uint8_t* scr)
 
 struct Rig
 {
-    std::unique_ptr<C64Machine> own; C64Machine* m; Mailbox box; D64Image disk; std::vector<float> l, r;
+    std::unique_ptr<C64Machine> own; C64Machine* m; Mailbox box; D64Image disk; std::vector<float> l, r; bool octo = false;
     Rig (const Roms& roms, const std::vector<uint8_t>& driveRom, const std::vector<uint8_t>& d64, const std::string& folder, const std::string& shell)
         : l (480), r (480)
     {
@@ -195,8 +210,8 @@ struct Rig
         m->setDriveRom (driveRom.data(), driveRom.size());
         m->insertDiskInDrive (disk);
         m->reset();
-        box.ram = m->getBus().getRam(); box.top = box.cwd = folder; box.shell = shell;
-        if (roms.octo) box.attach (*m);
+        box.ram = m->getBus().getRam(); box.m = m; box.top = box.cwd = folder; box.shell = shell;
+        octo = roms.octo; if (roms.octo) box.attach (*m); else box.m = nullptr;
     }
     void run (double s) { const auto fa = m->getFrameCount(); while (m->getFrameCount() < fa + (uint64_t) (s * 50)) { m->renderStereo (l.data(), r.data(), 480); box.tick(); } }
     void key (int row, int col, bool shift, double hold = 0.1)
@@ -231,6 +246,7 @@ struct Rig
                 else if (k == "RESTORE") { m->setKeyDown (7, 7, true); run (0.05); m->getCpu().triggerNmi(); run (0.2); m->setKeyDown (7, 7, false); run (0.5); }
                 else if (k.rfind ("WAIT", 0) == 0) run (atof (k.c_str() + 4));
                 else if (k == "MUTE") box.mute = true;
+                else if (k == "EXIT") { if (box.m && octo) box.coreReset(); run (0.1); }   // Main's CTRL+F12: Reset & Detach Cartridge, the folder kept
                 else if (k.rfind ("SLOW", 0) == 0) { int c, sec; std::sscanf (k.c_str() + 4, "%x,%d", &c, &sec); box.slowCmd = c; box.slowTicks = sec * 100; }
                 else if (k == "JDOWN") { m->setJoystick (2, false, true, false, false, false); run (0.15); m->setJoystick (2, false, false, false, false, false); run (0.1); }
                 else if (k == "JFIRE") { m->setJoystick (2, false, false, false, false, true); run (0.15); m->setJoystick (2, false, false, false, false, false); run (0.1); }
@@ -335,6 +351,14 @@ int main (int argc, char** argv)
         { "browser times out, F2 after it gets its own answer", OCTO, { "{CLR}{SLOW6,25}{F1}{WAIT21}", "{F2}{WAIT8}" },
           [] (const Snap&, const Snap& o, Rig&, Rig& oc) { if (oc.box.drops != 1) return "drops " + std::to_string (oc.box.drops);
               return has (o, "HELLO") && ! has (o, "NO REPLY") ? std::string() : std::string ("no list after F2"); } },
+        { "demo A with its REU, CTRL+F12 out, F1, demo B with its REU", OCTO,
+          { "{CLR}@SUB/DEMOA\n", "/DEMOA\n{WAIT5}", "{EXIT}{WAIT4}", "{F1}{WAIT1}", "{F3}{WAIT1}", "{DOWN}{DOWN}{RET}{WAIT1}", "{DOWN}{RET}{WAIT6}" },
+          [] (const Snap&, const Snap& o, Rig&, Rig& oc) { if (oc.box.lastRun != "demob.prg") return "last run " + oc.box.lastRun;
+              return has (o, "DEMO B REU B") ? std::string() : std::string ("demo B didn't see its own REU"); } },
+        { "demo A runs with its own REU", OCTO, { "{CLR}@SUB/DEMOA\n", "/DEMOA\n{WAIT5}" },
+          [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "DEMO A REU A") ? std::string() : std::string ("demo A didn't see its REU"); } },
+        { "CTRL+F12 gets out to the start screen, folder kept", OCTO, { "{CLR}@SUB/DEMOA\n", "/DEMOA\n{WAIT5}", "{EXIT}{WAIT4}", "{F1}{WAIT1}" },
+          [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "OCTOPHONIC 64 V1.1") && has (o, "/TEST/SUB/DEMOA") ? std::string() : std::string ("not back in the demo's folder"); } },
     };
 
     int pass = 0, fail = 0;
