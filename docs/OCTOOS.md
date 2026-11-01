@@ -63,16 +63,19 @@ Any key, or 60 seconds, uses the SD card instead (`NO NETWORK - USING THE SD CAR
 
 ## Screenshots and reports (for the demos' self-tests)
 
-`0C` SHOT takes a screenshot with MiSTer's own code (the scaler's picture, as Win+PrtScn) and saves
+`10` SHOT takes a screenshot with MiSTer's own code (the scaler's picture, as Win+PrtScn) and saves
 it as `<share C64 folder>/Octophonic/Screenshots/NAME.png` (no share: `/media/fat/screenshots/
 Octophonic/NAME.png`). NAME may hold folders (`HORIZON/NIGHT-0351`); letters, digits, `- _ . /`.
 Main answers at once and does the rest in the background: the picture is copied out of video memory
 at the next vsync (NET bit 7 set from the request until that copy is done), then a worker thread
 writes the PNG (NET bit 6) and Main copies it to the share. At most one a second; a SHOT while one
-is under way is ignored. No message is put on the screen.
+is under way is ignored. No message is put on the screen. A demo can tell a screenshot is under way
+from **NET (`$D6FF`) bit 7** (the picture being copied out of video memory - the extra DDR3 reads
+happen then) and **bit 6** (the PNG being written - no extra video memory traffic); counter readings
+taken while bit 7 is set include the copy's DDR3 traffic.
 
-`0D` APPEND writes text for reports: VALUE `$FF` makes file ARG (0-3) the path NAME (under the same
-Screenshots folder; folders are made); any other VALUE puts NAME's text (up to 32 characters,
+`11` APPEND writes text for reports: VALUE `$FF` makes file ARG (0-3) the path NAME (under the same
+Screenshots folder; folders are made); any other VALUE puts NAME's text (up to 32 characters - the name buffer holds 32,
 PETSCII to ASCII) on the end of file ARG, with a new line unless VALUE bit 0 is set (a long line in
 pieces). Not logged (there can be many).
 
@@ -141,8 +144,8 @@ the next demo's own .reu goes in over it when it is run, the way the menu attach
 Commands: `01` DIR (PETSCII text, 0-terminated), `02` CHDIR, `03` LOAD, `04` RUN, `05` INFO,
 `06` LIST (path 40 bytes, then 32-byte records: type, blocks, ext, name), `07` OPEN (entry LEN),
 `08` SETLIST (40-byte lines: label, value), `09` SETSTEP (line ARG, VALUE 1 or $FF), `0A` SETAPPLY
-(start the chosen chip preset), `0B` NOSHARE (stop waiting for the network: the SD card), `0C` SHOT,
-`0D` APPEND, `0F` SHELL (SHELL.PRG to its load address).
+(start the chosen chip preset), `0B` NOSHARE (stop waiting for the network: the SD card), `10` SHOT,
+`11` APPEND, `0F` SHELL (SHELL.PRG to its load address).
 OPEN on a lone `.reu` answers VALUE 2, RESULT its size in 64 KB units, LEN the list entry of its `.prg`
 ($FFFF none).
 Errors: `$81` not found, `$82` not a folder, `$83` too big, `$84` can't read, `$85` can't run,

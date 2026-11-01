@@ -52,7 +52,7 @@ index 6991398..299637f 100644
  #endif
 diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
 new file mode 100644
-index 0000000..e248279
+index 0000000..9a24627
 --- /dev/null
 +++ b/support/octo/octo.cpp
 @@ -0,0 +1,1391 @@
@@ -83,11 +83,11 @@ index 0000000..e248279
 +//               except the chip preset, which only changes on SETAPPLY
 +//   0A SETAPPLY start the chosen chip preset (and keep it as the one the OS boots with)
 +//   0B NOSHARE  stop waiting for the network share: the SD card's folder
-+//   0C SHOT     a screenshot (MiSTer's own: the scaler's picture, as Win+PrtScn) saved as
++//   10 SHOT     a screenshot (MiSTer's own: the scaler's picture, as Win+PrtScn) saved as
 +//               <share>/C64/Octophonic/Screenshots/NAME.png (no share: /media/fat/screenshots/Octophonic)
 +//               - answered at once, saved in the background, at most one a second. NET b7 is set
 +//               while the picture is being copied out of video memory, b6 while the PNG is written
-+//   0D APPEND   VALUE $FF: file ARG (0-3) is NAME (a path under Screenshots, folders made as needed);
++//   11 APPEND   VALUE $FF: file ARG (0-3) is NAME (a path under Screenshots, folders made as needed);
 +//               otherwise NAME's text goes on the end of file ARG - VALUE b0 set: no new line yet
 +//               (a long line in several pieces)
 +//   0F SHELL    the browser (octophonic/SHELL.PRG) into RAM at its own load address
@@ -1425,8 +1425,8 @@ index 0000000..e248279
 +	case 0x0A: cmd_setapply(); break;
 +	case 0x0B: net_wait = 0; snprintf(cwd, sizeof(cwd), "%s", sd_root().c_str()); snprintf(os_start, sizeof(os_start), "%s", cwd);
 +	           os_log("network: not waiting - the SD card"); net_update(); mb_reply(ST_DONE, 0); break;
-+	case 0x0C: cmd_shot(name); break;
-+	case 0x0D: cmd_append(reg[R_ARG], reg[R_VALUE], name); break;
++	case 0x10: cmd_shot(name); break;
++	case 0x11: cmd_append(reg[R_ARG], reg[R_VALUE], name); break;
 +	case 0x0F: cmd_shell(); break;
 +	default:   mb_reply(E_BADCMD, 0); break;
 +	}
@@ -1442,7 +1442,7 @@ index 0000000..e248279
 +		mb_read(now, nn);
 +		taken = now[R_RSEQ] == cur_seq && now[R_SEQ] == cur_seq;
 +	}
-+	if (reg[R_CMD] == 0x0D && last_status == ST_DONE) return;   // APPEND: too many to log
++	if (reg[R_CMD] == 0x11 && last_status == ST_DONE) return;   // APPEND: too many to log
 +	os_log("cmd %02X seq %02X name '%s' addr %04X len %d folder /%s -> /%s status %02X, %lu ms%s",
 +		reg[R_CMD], cur_seq, name, addr, len, was, cwd, last_status & 0xFF, GetTimer(0) - t0,
 +		taken ? "" : " - too late, the C64 had moved on (reply dropped)");

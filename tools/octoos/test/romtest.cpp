@@ -167,8 +167,8 @@ struct Mailbox
         }
         else if (mb[0] == 10) { boot = lines[0].ch[(size_t) presetSel]; reply (2, 0, -1, 1); ran++; lastRun = "preset " + boot; }
         else if (mb[0] == 0x0B) { netWait = false; cwd = top; if (net == 1) net = 3; reply (2, 0); }
-        else if (mb[0] == 0x0C) { ++shots; lastShot = nm; reply (2, 0); }
-        else if (mb[0] == 0x0D) { if (mb[7] == 0xFF) appendFile[mb[6] & 3] = nm; else if (appendFile.count (mb[6] & 3)) { auto& f = appended[appendFile[mb[6] & 3]]; f += nm; if (! (mb[7] & 1)) f += "\n"; } reply (appendFile.count (mb[6] & 3) || mb[7] == 0xFF ? 2 : 0x81, 0); }
+        else if (mb[0] == 0x10) { ++shots; lastShot = nm; reply (2, 0); }
+        else if (mb[0] == 0x11) { if (mb[7] == 0xFF) appendFile[mb[6] & 3] = nm; else if (appendFile.count (mb[6] & 3)) { auto& f = appended[appendFile[mb[6] & 3]]; f += nm; if (! (mb[7] & 1)) f += "\n"; } reply (appendFile.count (mb[6] & 3) || mb[7] == 0xFF ? 2 : 0x81, 0); }
         else if (mb[0] == 0x0F) {
             auto d = rd (shell); if (d.size() < 3) { reply (0x81, 0); return; }
             uint16_t at = d[0] | d[1] << 8; ramw (at, std::vector<uint8_t> (d.begin() + 2, d.end())); reply (2, at);
