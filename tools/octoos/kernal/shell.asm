@@ -26,6 +26,7 @@ MB_RH   = MB+$B
 MB_VER  = MB+$C
 MB_SEQ  = MB+$D
 MB_RSEQ = MB+$E
+MB_NET  = MB+$F         ; the network share: 0 none set up, 1 waiting for it, 2 there, 3 not there
 SCR     = $0400
 COL     = $D800
 FRAME   = $F92F         ; the V1.1 start screen, without NEW (octo.asm)
@@ -35,9 +36,9 @@ STOP    = $FFE1
 CHROUT  = $FFD2
 AUTORUN = $02A8
 seq     = $02AB         ; the request number, shared with the ROM's commands
-ROWS    = 17
-TOP     = 6             ; the first list row
-LBUF    = $CA00         ; Main writes the path (40) and the records (32 each) here
+ROWS    = 14
+TOP     = 8             ; the first list row (5 the path, 7 the column names)
+LBUF    = $CB00         ; Main writes the path (40) and the records (32 each) here (to $CCE8; the settings to $CD20)
 REC     = LBUF + 40
 P       = $FB
 Q       = $FD
@@ -64,10 +65,23 @@ start   lda #0
         dex
         bpl -
         jsr fixed
+        jsr netwait             ; a share still connecting: wait for it (any key: the SD card)
+        jsr netlite
 reload  jsr dolist
         jsr drawall
         jsr hilite
-loop    jsr getkey
+        lda reumb               ; a .reu just attached: say so once the list is up
+        beq +
+        jsr reumsg
++       lda nonet               ; "no network" from the wait: say so once the list is up
+        beq loop
+        lda #0
+        sta nonet
+        ldx #m_nonet-msgs
+        jsr status
+loop    jsr netlite             ; the network light; when the share comes or goes, list again
+        bcs reload
+        jsr getkey
         beq loop
         cmp #17
         bne +
@@ -120,6 +134,8 @@ home    lda #0
         sta first
         sta first+1
         sta sel
+        lda #1                  ; a fresh folder: the bar on its first entry, not on ".."
+        sta skipup
         jmp reload
 
 upfold  lda #'.'
@@ -226,7 +242,10 @@ open    sta mountonly
         jmp home                ; a folder: its list
 +       cmp #8
         beq disk
-        ldx #m_load-msgs        ; a program or a cartridge: Main loads it and the C64 restarts
+        cmp #2
+        bne +
+        jmp reuin               ; a .reu on its own: attached, still in the browser
++       ldx #m_load-msgs        ; a program or a cartridge: Main loads it and the C64 restarts
         jsr status
 -       jsr STOP
         bne -
@@ -241,12 +260,12 @@ disk    jsr FRAME
         bne -
 +       lda mountonly
         bne +
-        ldx #7                  ; LOAD"*",8 then RUN, as SHIFT+RUN/STOP does
+        ldx #9                  ; LOAD"*",8 then RUN, as SHIFT+RUN/STOP does
 -       lda autold,x
         sta $0277,x
         dex
         bpl -
-        lda #8
+        lda #10
         sta $C6
         lda #1
         sta AUTORUN
@@ -288,6 +307,18 @@ dolist  lda #<LBUF
         sta first
         sta first+1
         jmp dolist
++       lda skipup
+        beq +
+        lda #0
+        sta skipup
+        lda REC                 ; ".." first and more after it: start below it
+        cmp #5
+        bne +
+        lda count
+        cmp #2
+        bcc +
+        lda #1
+        sta sel
 +       lda sel                 ; the bar stays on the list
         cmp count
         bcc +
@@ -315,11 +346,12 @@ call    sta lastcmd
         beq longl
         cmp #$0A
         bne +
-longl   ldx #m_load-msgs
-        bne long2
+longl   ldx #m_load-msgs    ; (a 16 MB .reu over the network can take a while)
+        ldy #60
+        bne long3
 long    ldx #m_scan-msgs
-long2   ldy #20
-        sty secs
+        ldy #20
+long3   sty secs
         jsr status              ; (status uses Y: secs is set first)
 +        lda #50
         sta jifs
@@ -370,13 +402,13 @@ err     cmp #$FE
         lsr
         lsr
         jsr hexd
-        sta SCR + 23*40 + 36
+        sta SCR + 22*40 + 36
         lda lastcmd
         and #$0F
         jsr hexd
-        sta SCR + 23*40 + 37
+        sta SCR + 22*40 + 37
         lda #$29
-        sta SCR + 23*40 + 38
+        sta SCR + 22*40 + 38
         rts
 +       ldx #m_err-msgs
         cmp #$81
@@ -388,6 +420,9 @@ err     cmp #$FE
 +       cmp #$85
         bne +
         ldx #m_cant-msgs
++       cmp #$86
+        bne +
+        ldx #m_nonc-msgs
 +       jmp status
 hexd    cmp #10                 ; a hex digit as a screen code
         bcc +
@@ -400,16 +435,16 @@ hexd    cmp #10                 ; a hex digit as a screen code
 status  ldy #0
 -       lda msgs,x
         beq +
-        sta SCR + 23*40,y
+        sta SCR + 22*40,y
         lda #7
-        sta COL + 23*40,y
+        sta COL + 22*40,y
         inx
         iny
         bne -
 +       lda #$20
 -       cpy #40
         beq +
-        sta SCR + 23*40,y
+        sta SCR + 22*40,y
         iny
         bne -
 +       rts
@@ -417,9 +452,9 @@ status  ldy #0
 ; the header line and the key help
 fixed   ldx #39
 -       lda hdr,x
-        sta SCR + 5*40,x
+        sta SCR + 7*40,x
         lda #15
-        sta COL + 5*40,x
+        sta COL + 7*40,x
         lda help,x
         sta SCR + 24*40,x
         lda #15
@@ -432,9 +467,9 @@ fixed   ldx #39
 drawall ldx #39
 -       lda LBUF,x
         jsr scr
-        sta SCR + 4*40,x
+        sta SCR + 5*40,x
         lda #3
-        sta COL + 4*40,x
+        sta COL + 5*40,x
         dex
         bpl -
         lda #0
@@ -511,30 +546,16 @@ drawrec lda row                 ; R = REC + row*32
 -       sta (Q),y
         dey
         bpl -
-        ldx #6                  ; the name: columns 1-26
+        ldx #9                  ; the name: columns 1-23
         ldy #1
 -       jsr recb
         jsr scr
         sta (Q),y
         inx
         iny
-        cpy #27
+        cpy #24
         bne -
-        lda rtype               ; the type: columns 30-32
-        beq +
-        cmp #5
-        bne ++
-+       ldy #30
-        lda #4                  ; DIR
-        sta (Q),y
-        iny
-        lda #9
-        sta (Q),y
-        iny
-        lda #18
-        sta (Q),y
-        rts
-++      ldx #3
+        ldx #6                  ; the type: columns 30-32 (DIR for folders)
         ldy #30
 -       jsr recb
         jsr scr
@@ -543,47 +564,15 @@ drawrec lda row                 ; R = REC + row*32
         iny
         cpy #33
         bne -
-        ldx #1                  ; the blocks, right-aligned in columns 34-38
-        jsr recb
-        sta num
-        inx
-        jsr recb
-        sta num+1
+        ldx #1                  ; the size (blocks, or K/M), as Main wrote it: columns 34-38
         ldy #34
-        ldx #0
-        stx lead
---      lda #0
-        sta dig
--       lda num
-        sec
-        sbc tenlo,x
-        pha
-        lda num+1
-        sbc tenhi,x
-        bcc +
-        sta num+1
-        pla
-        sta num
-        inc dig
-        bne -
-+       pla
-        lda dig
-        bne +
-        lda lead
-        bne +
-        cpx #4
-        beq +
-        lda #$20
-        bne ++
-+       lda #1
-        sta lead
-        lda dig
-        ora #$30
-++      sta (Q),y
-        iny
+-       jsr recb
+        jsr scr
+        sta (Q),y
         inx
-        cpx #5
-        bne --
+        iny
+        cpy #39
+        bne -
         rts
 recb    lda $FFFF,x             ; byte X of the record (the address is put in above)
         rts
@@ -681,11 +670,11 @@ settings
         sta sline
         ldx #39
 -       lda stitle,x            ; the title, the help
-        sta SCR + 4*40,x
-        lda #3
-        sta COL + 4*40,x
-        lda #$20
         sta SCR + 5*40,x
+        lda #3
+        sta COL + 5*40,x
+        lda #$20
+        sta SCR + 7*40,x
         lda shelp,x
         sta SCR + 24*40,x
         lda #15
@@ -846,20 +835,191 @@ hirow   jsr rowptr              ; the bar on settings line A
         bpl -
         rts
 
+; ------------------------------------------------------------------------------- the network
+; the light at the top right (row 3), as the start screen's: none set up - not shown, waiting or
+; not there - red, there - green. Carry set when it changed since last time
+netlite lda MB_NET
+        and #3
+        tax
+        lda #$51
+        sta SCR + 3*40 + 39
+        lda litecol,x
+        sta COL + 3*40 + 39
+        cpx lastnet
+        stx lastnet
+        clc
+        beq +
+        sec
++       rts
+
+; the share is set up but still connecting (Main is waiting to open it): PLEASE WAIT, until it is
+; there (Main has the folder on it by then), a key is pressed, or 60 seconds - then the SD card
+netwait lda MB_NET
+        and #3
+        cmp #1
+        bne nwdone
+        ldx #m_wait-msgs
+        jsr status
+        lda #60
+        sta secs
+        lda #50
+        sta jifs
+        lda $A2
+        sta lastj
+nwloop  jsr netlite
+        lda MB_NET
+        and #3
+        cmp #1
+        bne nwdone              ; there (or Main stopped waiting)
+        jsr GETIN
+        bne nwsd                ; a key: the SD card now
+        lda $A2
+        cmp lastj
+        beq nwloop
+        sta lastj
+        dec jifs
+        bne nwloop
+        lda #50
+        sta jifs
+        dec secs
+        bne nwloop
+        lda #1                  ; 60 seconds: the SD card, and say so
+        sta nonet
+nwsd    lda #$0B                ; NOSHARE: Main stops waiting, the SD card's folder
+        jsr call
+nwdone  rts
+
+; a .reu attached on its own: the bar onto its .prg (Main says where: LEN), the list again, and
+; REU ATTACHED (nnM) on the status line - RETURN then runs the demo without loading the .reu again
+reuin   lda MB_RL               ; RESULT: its size in 64 KB units (kept for REU ATTACHED)
+        sta reuu
+        lda MB_RH
+        sta reuu+1
+        lda #1
+        sta reumb
+        lda MB_LH
+        cmp #$FF
+        beq ++
+        sec                     ; on this page? then just the bar
+        lda MB_LL
+        sbc first
+        tax
+        lda MB_LH
+        sbc first+1
+        bne +
+        cpx #ROWS
+        bcs +
+        stx sel
+        jmp reload
++       lda MB_LL               ; else its page starts with it
+        sta first
+        lda MB_LH
+        sta first+1
+        lda #0
+        sta sel
+++      jmp reload
+
+reumsg  ldx #m_reu-msgs         ; REU ATTACHED (nnM), or (nnnK) under 1 MB
+        jsr status
+        ldy #14
+        lda reuu+1              ; 256 units and up: 16M and more
+        bne rmbig
+        lda reuu
+        cmp #16
+        bcs rmmeg
+        asl                     ; under 1 MB: units x 64 = K (64..960)
+        asl
+        asl
+        asl
+        asl
+        asl
+        sta tmp                 ; low byte of units x 64
+        lda reuu
+        lsr
+        lsr
+        sta tmp+1               ; high byte
+        jsr dec16
+        lda #$0B                ; K
+        bne rmend
+rmbig   lda #16                 ; 256 units: 16M (the largest REU there is)
+        sta tmp
+        lda #0
+        sta tmp+1
+        jsr dec16
+        lda #$0D
+        bne rmend
+rmmeg   lsr                     ; 1-15 MB: units / 16
+        lsr
+        lsr
+        lsr
+        sta tmp
+        lda #0
+        sta tmp+1
+        jsr dec16
+        lda #$0D                ; M
+rmend   sta SCR + 22*40,y
+        iny
+        lda #$29                ; )
+        sta SCR + 22*40,y
+        lda #0
+        sta reumb
+        rts
+
+; tmp/tmp+1 (0-999) in decimal at SCR + 22*40 + Y, no leading zeros; Y moves on
+dec16   ldx #0
+        stx dflag
+        ldx #2
+-       lda #$30
+        sta dch
+--      lda tmp
+        sec
+        sbc dlo,x
+        pha
+        lda tmp+1
+        sbc dhi,x
+        bcc +
+        sta tmp+1
+        pla
+        sta tmp
+        inc dch
+        bne --
++       pla
+        lda dch
+        cpx #0
+        beq ++
+        cmp #$30
+        bne ++
+        bit dflag
+        bpl +++
+++      sta SCR + 22*40,y
+        iny
+        lda #$80
+        sta dflag
++++     dex
+        bpl -
+        rts
+dlo     !byte 1, 10, 100
+dhi     !byte 0, 0, 0
+dch     !byte 0
+dflag   !byte 0
+reuu    !word 0
+
 rowlo   !for i, 0, 24 { !byte <(SCR + i*40) }
 rowhi   !for i, 0, 24 { !byte >(SCR + i*40) }
-tenlo   !byte <10000, <1000, <100, <10, <1
-tenhi   !byte >10000, >1000, >100, >10, >1
 colours !byte 7, 1, 13, 8, 12, 7, 12, 12
-autold  !byte $4C, $CF, $22, $2A, $22, $2C, $38, $0D     ; lO"*",8 RETURN
+autold  !byte $4C, $4F, $41, $44, $22, $2A, $22, $2C, $38, $0D   ; LOAD"*",8 RETURN, in full
 stitle  !scr "settings                                "
 shelp   !scr "up/down pick  left/right change  f7 back"
-hdr     !scr " name                         type blks "
+hdr     !scr " name                         type size "
 help    !scr "ret run f1/f5 page f3 up f7 ready f8 set"
 
 msgs
 m_none    !scr 0
 m_load    !scr "loading...", 0
+m_wait    !scr "please wait - connecting to network...", 0
+m_nonet   !scr "no network - using the sd card", 0
+m_nonc    !scr "?the network is not connected", 0
+m_reu     !scr "reu attached (", 0
 m_scan    !scr "scanning...", 0
 m_noreply !scr "?no reply from octophonic main (cmd   ", 0
 m_err     !scr "?os error", 0
@@ -876,16 +1036,18 @@ sel     !byte 0
 row     !byte 0
 rtype   !byte 0
 rp      !word 0
-num     !word 0
-dig     !byte 0
-lead    !byte 0
-tmp     !byte 0
+tmp     !byte 0, 0
 secs    !byte 0
 jifs    !byte 0
 bsave   !byte 0
 lastj   !byte 0
 lastcmd !byte 0
 mountonly !byte 0
+lastnet !byte $ff
+nonet   !byte 0
+reumb   !byte 0
+litecol !byte 6, 2, 5, 2
+skipup  !byte 1
 sline   !byte 0
 joyold  !byte 0
 joyt    !byte 0
