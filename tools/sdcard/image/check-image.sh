@@ -68,25 +68,32 @@ if [ -s "$C/menu.rbf.stock" ]; then okk "menu.rbf: the navy menu core (stock kep
 echo "-- nothing personal or DEV in what Octophonic added"
 # the files that are not byte-for-byte the official release's: compare 7-Zip's CRCs
 OFF=${OFFICIAL_7Z:-}
-"$Z" l -slt "$W/fat/release.7z" | awk '/^Path = /{p=substr($0,8)} /^CRC = /{print $3"\t"p}' | sort -k2 > "$W/ours.crc"
+"$Z" l -slt "$W/fat/release.7z" | awk '/^Path = /{p=substr($0,8)} /^CRC = /{print $3"\t"p}' | LC_ALL=C sort > "$W/ours.crc"
 if [ -n "$OFF" ] && [ -s "$OFF" ]; then
-    "$Z" l -slt "$OFF" | awk '/^Path = /{p=substr($0,8)} /^CRC = /{print $3"\t"p}' | sort -k2 > "$W/off.crc"
-    comm -23 "$W/ours.crc" "$W/off.crc" | cut -f2 > "$W/added.txt"
+    "$Z" l -slt "$OFF" | awk '/^Path = /{p=substr($0,8)} /^CRC = /{print $3"\t"p}' | LC_ALL=C sort > "$W/off.crc"
+    LC_ALL=C comm -23 "$W/ours.crc" "$W/off.crc" | cut -f2 | grep -v '^$' > "$W/added.txt"
 else
     awk -F'\t' '{print $2}' "$W/ours.crc" > "$W/added.txt"     # (no official list: check everything)
 fi
 echo "  files Octophonic added or changed: $(wc -l < "$W/added.txt")"
 sed 's/^/    /' "$W/added.txt"
-PATS='OCTOPHONIC SSH KEY|octophonic-key|ssh-rsa |ssh-ed25519 |BEGIN OPENSSH|authorized_keys|MiSTerBridge|SIDWeaver|C:\\|192\.168\.|SERVER=|cifs_mount|\\\\[A-Za-z0-9]'
+# in every file (binaries too): a key, a share, an address. In text files also PC paths (C:\, \\server)
+PATS='OCTOPHONIC SSH KEY|octophonic-key|ssh-rsa AAAA|ssh-ed25519 AAAA|BEGIN OPENSSH|MiSTerBridge|SIDWeaver|192\.168\.[0-9]|10\.0\.[0-9]+\.[0-9]|SERVER="?[A-Za-z0-9]'
+TPATS='C:\\|\\\\[A-Za-z0-9]|cifs_mount'
 HITS=0
 while IFS= read -r f; do
     [ -f "$W/card/$f" ] || continue
-    if grep -a -l -E "$PATS" "$W/card/$f" >/dev/null 2>&1; then
-        echo "    HIT in $f:"; grep -a -o -E ".{0,30}($PATS).{0,30}" "$W/card/$f" | head -3 | sed 's/^/      /'; HITS=1
+    if grep -a -q -E "$PATS" "$W/card/$f" 2>/dev/null || grep -I -q -E "$TPATS" "$W/card/$f" 2>/dev/null; then
+        echo "    HIT in $f:"; grep -a -o -E ".{0,30}($PATS).{0,30}" "$W/card/$f" | head -3 | sed 's/^/      /'
+        grep -I -o -E ".{0,30}($TPATS).{0,30}" "$W/card/$f" 2>/dev/null | head -3 | sed 's/^/      /'; HITS=1
     fi
 done < "$W/added.txt"
 [ "$HITS" = 0 ] && okk "no SSH key, share, IP address or PC path in any of them" || bad "personal strings found (above)"
-grep -qE '^[[:space:]]*(vga_scaler|forced_scandoubler)[[:space:]]*=[[:space:]]*0' "$INI" && bad "Neal's CRT video settings are in MiSTer.ini" || okk "no CRT video settings in MiSTer.ini (video is MiSTer's default)"
+# MiSTer.ini must be MiSTer's own example plus the bootcore lines and nothing else (so no one's video,
+# share or other settings can be in it)
+if diff <(grep -v -E 'bootcore' "$C/MiSTer_example.ini") <(grep -v -E 'bootcore' "$INI") > "$W/ini.diff"; then
+    okk "MiSTer.ini is MiSTer's own example + the bootcore lines, nothing else (video: MiSTer's defaults)"
+else bad "MiSTer.ini differs from MiSTer_example.ini beyond bootcore:"; cat "$W/ini.diff"; fi
 [ -e "$C/linux/octophonic-key.pub" ] && bad "the SSH key file is on the card" || okk "no linux/octophonic-key.pub"
 grep -q 'OCTOPHONIC SSH KEY' "$C/linux/user-startup.sh" 2>/dev/null && bad "the SSH block is in user-startup.sh" || okk "no SSH block in linux/user-startup.sh"
 find "$W/card" "$W/fat" -iname '*kernal*' -o -iname '*basic*.bin' -o -iname '*chargen*' -o -iname '*.rom' 2>/dev/null | grep -v -i 'mt32\|soundfont' | sed 's/^/  rom-like name: /'
