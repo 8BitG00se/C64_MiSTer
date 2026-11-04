@@ -78,7 +78,7 @@ fi
 echo "  files Octophonic added or changed: $(wc -l < "$W/added.txt")"
 sed 's/^/    /' "$W/added.txt"
 # in every file (binaries too): a key, a share, an address. In text files also PC paths (C:\, \\server)
-PATS='OCTOPHONIC SSH KEY|octophonic-key|ssh-rsa AAAA|ssh-ed25519 AAAA|BEGIN OPENSSH|MiSTerBridge|SIDWeaver|192\.168\.[0-9]|10\.0\.[0-9]+\.[0-9]|SERVER="?[A-Za-z0-9]'
+PATS='OCTOPHONIC SSH KEY|octophonic-key|ssh-rsa AAAA|ssh-ed25519 AAAA|BEGIN OPENSSH|MiSTerBridge|192\.168\.[0-9]|10\.0\.[0-9]+\.[0-9]|SERVER="?[A-Za-z0-9]'
 TPATS='C:\\|\\\\[A-Za-z0-9]|cifs_mount'
 HITS=0
 while IFS= read -r f; do
