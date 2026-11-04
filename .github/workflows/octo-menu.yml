@@ -1,0 +1,57 @@
+# OCTOPHONIC: the navy menu core - MiSTer's own Menu_MiSTer (at tools/octoos/menu/UPSTREAM) with
+# tools/octoos/menu/navy.sh on top: where Main has no picture up (from power-on until Main starts,
+# about 5 seconds), it paints the Octophonic navy instead of MiSTer's grey noise. The menu.rbf comes
+# out on the branch octo-menu-build, where the image builder (tools/sdcard/build-image.sh) and the
+# recipe step 090 pick it up.
+name: Build the navy menu core
+
+on:
+  push:
+    branches: [ octophonic-v1.1 ]
+    paths: [ 'tools/octoos/menu/**', '.github/workflows/octo-menu.yml' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  menu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make room for Quartus
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Menu_MiSTer, and the navy
+        run: |
+          git clone -q https://github.com/MiSTer-devel/Menu_MiSTer menu
+          cd menu
+          git checkout -q $(cat ../tools/octoos/menu/UPSTREAM)
+          sh ../tools/octoos/menu/navy.sh
+
+      - name: Compile with Quartus 17.0 Lite
+        continue-on-error: true
+        id: compile
+        run: |
+          cd menu
+          docker run --rm -v "$PWD":/build -w /build raetro/quartus:17.0 \
+            quartus_sh --flow compile menu.qpf
+
+      - name: Keep it
+        if: always()
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" menu/output_files 2>/dev/null || true
+          mkdir -p /tmp/out
+          cp menu/output_files/menu.rbf /tmp/out/ 2>/dev/null || true
+          cp menu/output_files/*.summary /tmp/out/ 2>/dev/null || true
+          echo "${{ steps.compile.outcome }} $(git rev-parse --short HEAD) $(date -u +%Y-%m-%dT%H:%MZ) upstream $(cat tools/octoos/menu/UPSTREAM)" > /tmp/out/result.txt
+          cd /tmp/out
+          git init -q
+          git checkout -q -b octo-menu-build
+          git add -A
+          git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Navy menu core: $(cat result.txt)"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" octo-menu-build
