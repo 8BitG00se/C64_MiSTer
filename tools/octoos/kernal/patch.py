@@ -28,14 +28,15 @@ free = {'h': (0xBF53, 0xBF70, [0xAA] * 30),      # BASIC: unused
         'e': (0xE422, 0xE446, [0xA5, 0x2B, 0xA4, 0x2C, 0x20, 0x08, 0xA4]),   # the banner routine
         'f': (0xE473, 0xE4AB, [0x93, 0x0D, 0x20, 0x20, 0x20, 0x20, 0x2A]),   # its text
         'g': (0xE4B7, 0xE4D2, [0xAA] * 28),      # KERNAL: unused
+        'n': (0xE4E0, 0xE4E9, [0x69, 0x02, 0xA4, 0x91, 0xC8]),               # the tape's wait after FOUND (E4EA-B: RS232's table)
         'd': (0xF0D8, 0xF105, b'\rPRESS PLAY ON TAP'),                       # the tape's messages
         'l': (0xF17C, 0xF1AC, [0x99, 0xF1, 0xB0, 0x16]),               # CHRIN from tape
         'm': (0xF1E8, 0xF1FB, [0xD0, 0x0E, 0x20, 0x64, 0xF8]),               # CHROUT to tape
         'k': (0xF2CB, 0xF2ED, [0x0F, 0xF0, 0x23, 0x20, 0xD0, 0xF7]),         # CLOSE of a tape file
         'i': (0xF38E, 0xF3D2, [0xB0, 0x03, 0x4C, 0x13, 0xF7, 0xA5, 0xB9]),   # OPEN of a tape file
-        'b': (0xF539, 0xF5AD, [0x20, 0xD0, 0xF7, 0xB0, 0x03]),               # the tape LOAD
+        'b': (0xF539, 0xF5A8, [0x20, 0xD0, 0xF7, 0xB0, 0x03]),               # the tape LOAD
         'c': (0xF65F, 0xF68D, [0x20, 0xD0, 0xF7, 0x90, 0x8D]),               # the tape SAVE
-        'a': (0xF92C, 0xFB96, [0xAE, 0x07, 0xDC, 0xA0, 0xFF])}                           # the tape room
+        'a': (0xF92C, 0xFB8D, [0xAE, 0x07, 0xDC, 0xA0, 0xFF])}                           # the tape room
 for k, (lo, hi, sig) in free.items():
     want(lo, sig, 'free room %s' % k)
     a, e = lab['seg_' + k], lab['seg_' + k + 'e']
@@ -80,9 +81,16 @@ for a, op, n, new in ((0xE55E, 0xA2, 0x18, [0xA6, R24]),       # CLR: LDX #24 - 
 want(0xE929, [0xA5, 0xF1, 0x09, 0x80, 0x85, 0xF1], 'the scroll: the last line link')
 put(0xE929, [0xB5, 0xD9, 0x09, 0x80, 0x95, 0xD9])               # LDA/STA $D9,X (X: the last row)
 
+# stock code inside the tape areas that the disk uses - never overwritten: the disk LOAD's end
+# (F52E BCC $F5A9: CLC, LDX $AE, LDY $AF, RTS) and the disk SAVE's start address (F617 JSR $FB8E).
+# (V1.1 builds up to start screen build 1 wrote over $FB8E: SAVE to disk then took its start address
+# from whatever $AD held.)
+stock = open('std.bin', 'rb').read()
+for lo, hi, why in ((0xF5A9, 0xF5AE, 'the disk LOAD\'s end'), (0xFB8E, 0xFB96, 'the disk SAVE\'s start address')):
+    assert d[at(lo):at(hi) + 1] == stock[at(lo):at(hi) + 1], 'overwritten: ' + why
 open('octo64.bin', 'wb').write(d)
 # the ROMs as files, for romtest and the emulator's own check
 out = sys.argv[1] if len(sys.argv) > 1 else '/tmp/kr11'
 os.makedirs(out, exist_ok=True)
 open(out + '/basic-901226-01.bin', 'wb').write(d[:8192]); open(out + '/kernal-901227-03.bin', 'wb').write(d[8192:])
-print('ok: tape room left %d, start screen %d bytes' % (0xFB97 - lab['seg_ae'], sum(lab['seg_' + k + 'e'] - lab['seg_' + k] for k in free)))
+print('ok: tape room left %d, start screen %d bytes' % (0xFB8E - lab['seg_ae'], sum(lab['seg_' + k + 'e'] - lab['seg_' + k] for k in free)))

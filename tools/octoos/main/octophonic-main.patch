@@ -52,10 +52,10 @@ index 6991398..299637f 100644
  #endif
 diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
 new file mode 100644
-index 0000000..4ccfd15
+index 0000000..981245a
 --- /dev/null
 +++ b/support/octo/octo.cpp
-@@ -0,0 +1,1415 @@
+@@ -0,0 +1,1416 @@
 +// OCTOPHONIC OS (milestone 1, build 2) - by Mong00se.
 +//
 +// With /media/fat/octophonic/os.ini on the card, the MiSTer starts straight into the Octophonic 64
@@ -93,8 +93,9 @@ index 0000000..4ccfd15
 +//   0F SHELL    the browser (octophonic/SHELL.PRG) into RAM at its own load address
 +//   12 MENU     out to the MiSTer's own menu (menu.rbf): answered, then the menu core is loaded
 +//               (C=+F1 at READY or in the browser; the 6502 offers it only when NET b5 is set)
-+// NET (the mailbox's $D6FF): b1-0 the network share, b7/b6 a screenshot, b5 always set - this Main
-+// is on a MiSTer (the Octophonic 64 Emulator's model of Main leaves it clear, so it offers no MENU)
++// NET (the mailbox's $D6FF): b1-0 the network share, b7/b6 a screenshot, b4 always set - Main serves
++// the OS (the start jingle asks for SHELL.PRG only then), b5 always set - this Main is on a MiSTer
++// (the Octophonic 64 Emulator's model of Main leaves b5 clear, so it offers no MENU)
 +//
 +// Every request is written to /media/fat/octophonic/os.log (what, where, the result, how long).
 +// Main sees the mailbox through hps_io's extension bus (rtl/octovic/octo_os.sv): 0x70 poll,
@@ -448,7 +449,7 @@ index 0000000..4ccfd15
 +
 +static void net_publish()
 +{
-+	int b = (net_state & 3) | shot_bits() | 0x20;   // b5: Main is on a MiSTer (the emulator's Main leaves it clear)
++	int b = (net_state & 3) | shot_bits() | 0x30;   // b4: Main serves the OS; b5: on a MiSTer (the emulator's Main leaves b5 clear)
 +	spi_uio_cmd_cont(UIO_OCTO_WRITE);
 +	spi_w((0x0F << 8) | b);
 +	DisableIO();
@@ -1415,7 +1416,7 @@ index 0000000..4ccfd15
 +	}
 +	if (!net_timer || CheckTimer(net_timer)) { net_timer = GetTimer(1000); net_update(); }
 +	shots_poll();
-+	if (((net_state & 3) | shot_bits() | 0x20) != net_sent) net_publish();   // NET b7/b6: a screenshot under way
++	if (((net_state & 3) | shot_bits() | 0x30) != net_sent) net_publish();   // NET b7/b6: a screenshot under way
 +	if (poll_timer && !CheckTimer(poll_timer)) return;
 +	poll_timer = GetTimer(4);
 +

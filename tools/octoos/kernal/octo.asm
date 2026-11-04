@@ -28,8 +28,10 @@
 ; The code sits where the core never runs (it has no tape, and device 1 can't be opened): the tape
 ; room $F92C-$FB96, the tape LOAD and SAVE bodies, OPEN / CHRIN / CHROUT / CLOSE's tape paths, the
 ; tape's messages, the old banner ($E422-$E446, $E473-$E4AB - the start screen prints BYTES FREE
-; itself), the KERNAL's unused $E4B7-$E4D2 and BASIC's $BF53-$BF70. octo.bin starts at $BF53;
-; patch.py copies each piece (seg_x to seg_xe) into the ROM.
+; itself), the tape's wait after FOUND, the KERNAL's unused $E4B7-$E4D2 and BASIC's $BF53-$BF70. octo.bin starts at $BF53;
+; patch.py copies each piece (seg_x to seg_xe) into the ROM, and checks the stock code inside the tape
+; areas that the disk still uses is left alone: $F5A9-$F5AE (the disk LOAD's end) and $FB8E-$FB96
+; (the disk SAVE's start address). refscan.py (run by build.sh) looks for any other.
 OCTST   = $02A7         ; 1: OctoVIC is drawing the start screen
 AUTORUN = $02A8         ; 1: SHIFT+RUN/STOP asked for LOAD"*",8 - RUN goes in after it
 TOPY    = $02B0         ; the top box: 0, scrolled up 8 a line, gone at -24
@@ -43,6 +45,7 @@ R23     = $BE
 PLOT    = $FFF0
 RUNKEYS = $FCCE         ; wedge2.asm, fixed
 SHIFTR2 = $F929         ; wedge.asm, fixed
+CALL2   = $FB9D         ; wedge2.asm, fixed: a request to Main
 VA0     = $D600
 VA1     = $D601
 VA2     = $D602
@@ -76,12 +79,14 @@ seg_he
         * = $E422
 seg_e
 ; the copper list (layout): line (under 128: from the box's top, 51 + TOPY; SCROLLY there less
-; TOPY), register, value
+; TOPY), register, value. KEY 3 only where the box is dark; the rules under the VIC's pixels (KEY 6)
 coptab  !byte 0,$06,3, 0,$2A,1, 0,$20,$19       ; the box: KEY 3; layer 0 on, bitmap row 1 on line 0
-        !byte 18,$06,6, 18,$2A,$EE, 19,$20,0    ; line 18: KEY 6, the rule (bitmap row 0); then off
-        !byte 241,$2A,$42, 241,$20,$19          ; line 190 (raster 241): the bottom rule, in front
-        !byte 241,$05,$0F                       ; of the VIC (row 23's letters never cut it)
-        !byte 242,$20,0, 242,$05,$0B, 242,$06,3 ; line 191: KEY 3 - the bar's dark
+        !byte 16,$06,6                          ; lines 16-17: KEY 6, the layer's dark (bitmap 17-18)
+        !byte 18,$2A,$EE, 19,$20,0              ; line 18: the rule (bitmap row 0); then off
+        !byte 243,$06,3                         ; line 192 (raster 243): KEY 3 - the bar's dark
+        !byte 250,$06,6, 250,$2A,$39, 250,$20,$19   ; line 199: the rule under the bar's letters
+        !byte 251,$20,0
+litecol !byte 6, 2, 5, 2                        ; the light: none, red, green, red
 seg_ee
 !if seg_ee > $E447 { !error "past the room at $E422" }
 
@@ -128,9 +133,16 @@ seg_ge
 ; ------------------------------ KERNAL $F0D8-$F105 (46 bytes: PRESS PLAY / RECORD & PLAY ON TAPE)
         * = $F0D8
 seg_d
-reut    !scr "16m", 0, "8m", 0, "4m", 0, "2m", 0, "1m", 0, "512k", 0, "256k", 0, "128k", 0, "no", 0
+reut    !scr "16m", 0, "2m", 0, "512k", 0, "no", 0, "?", 0   ; the sizes the core has (and VICE's others: ?)
 rsfx    !scr " reu", 0
-n38911  !scr "38911"
+n38911  !pet "38911", 0
+va      sty VA0                 ; VRAM address X:A:Y, a byte at a time
+        sta VA1
+        stx VA2
+        ldy #1
+        sty VINC
+        rts
+
 seg_de
 !if seg_de > $F106 { !error "past the room at $F0D8" }
 
@@ -140,7 +152,7 @@ seg_l
 bar1    !byte $86, $B1, $20, $02, $12, $0F, $17, $13, $05, $20, $86, $B3, $20, $0C, $0F, $01, $04, $20, $86, $B5
         !byte $20, $13, $09, $04, $13, $20, $86, $B7, $20, $04, $15, $01, $0C, $20, $86, $B8, $20, $13, $05, $14   ; F1 BROWSE F3 LOAD F5 SIDS F7 DUAL F8 SET (keys: bit 7)
 
-reuix   !byte 0, 4, 7, 10, 13, 16, 21, 26, 31  ; where each size's name starts in reut
+reuix   !byte 0, 15, 15, 4, 15, 7, 15, 15, 12   ; where each size's name starts in reut
 seg_le
 !if seg_le > $F1AD { !error "past the room at $F17C" }
 
@@ -222,30 +234,34 @@ offx    pla
 cinthk  jsr octoff
         jmp $E5A0
 
+seg_ie
+!if seg_ie > $F3D3 { !error "past the room at $F38E" }
+
+; ----------- KERNAL $E4E0-$E4E9 (10 bytes: the tape's wait after FOUND - only the tape called it)
+        * = $E4E0
+seg_n
 ; wait for the bottom border (raster line 256 on), A kept
 vbl     bit $D011
         bpl vbl
         rts
 
-seg_ie
-!if seg_ie > $F3D3 { !error "past the room at $F38E" }
+seg_ne
+!if seg_ne > $E4EA { !error "past the room at $E4E0" }
 
-; -------------------------------------------------- KERNAL $F539-$F5AD (117 bytes: the tape LOAD)
+; -------------- KERNAL $F539-$F5A8 (112 bytes: the tape LOAD; $F5A9-$F5AE is the disk LOAD's end)
         * = $F539
 seg_b
-; R, G, B: first the backdrop (navy), then the VIC's 0-15 (VICPAL): 0 1 as they are, O C T O V I C in 2 8 9 5 10 14 4, 3 the words
-; under the gradient (and SHELL.PRG's path), 6 the box, 7 the keys, 11 the border, 15 the labels;
-; 12 13 as they were (SHELL.PRG's grey, its disks' green). Then the main palette's 1-10: the eq
-; bars 1-8, the empty slot, the box.
+; R, G, B: the backdrop (navy); the VIC's 2-15 (VICPAL; 0 and 1 stay black and white) - O C T O V I C in 2 8 9 5
+; 10 14 4, 3 the words under the gradient (and SHELL.PRG's path), 6 the box, 7 the keys, 11 the
+; border, 15 the labels, 12 13 as they were (SHELL.PRG's grey, its disks' green) - also loaded as the
+; main palette's 2-15 (the eq's bars and the box), then main 16 the eq's pink bar, 17 an eq slot
 pdat    !byte 28,32,92
-        !byte 0,0,0, 255,255,255, 255,80,80, 120,220,255, 170,100,255, 120,230,90, 16,18,56
+        !byte 255,80,80, 120,220,255, 170,100,255, 120,230,90, 16,18,56
         !byte 255,200,60, 255,150,40, 255,230,60, 60,220,220, 20,22,70, 108,108,108, 154,210,132
         !byte 80,140,255, 200,205,255
-        !byte 255,80,80, 255,150,40, 255,230,60, 120,230,90, 60,220,220, 80,140,255
-        !byte 170,100,255, 255,90,200, 32,36,90, 16,18,56
-rainbow !byte 2, 8, 9, 5, 10, 14, 4
-ptab    !byte 2, 0, 3, 1, 0, 51, 0, 1, 81
-litecol !byte 6, 2, 5, 2               ; the light: none, red, green, red
+        !byte 255,90,200, 32,36,90
+rainbow !byte 2, 8, 9, 5, 10, 14, 4, 16 ; OCTOVIC's letters; the eq's bars (main palette)
+ptab    !byte 2, 0, 0, 3, 1, 2, 3, 45, 0, 2, 3, 51   ; select, first entry, pdat from, to
 rows    stx R25                 ; the editor's rows: X (24 or 25)
         dex
         stx R24
@@ -253,8 +269,23 @@ rows    stx R25                 ; the editor's rows: X (24 or 25)
         stx R23
         ldx #0
         rts
+; at a cold start (and after a core reset): the screen, then the start jingle - SHELL.PRG's
+; ($C003), loaded by Main as F1 loads the browser, only when Main serves the OS (NET b4) on OctoVIC;
+; missing or no Main: silence
+bootj   jsr frame
+        lda OCTST
+        beq bjx
+        lda $D6FF
+        and #$10
+        beq bjx
+        lda #$0F                ; SHELL
+        jsr CALL2
+        bne bjx
+        jsr $C003               ; its jingle: starts and returns (it plays from the IRQ)
+bjx     rts
+
 seg_be
-!if seg_be > $F5AE { !error "past the room at $F539" }
+!if seg_be > $F5A9 { !error "past the room at $F539" }
 
 ; --------------------------------------------------- KERNAL $F65F-$F68D (47 bytes: the tape SAVE)
         * = $F65F
@@ -286,24 +317,21 @@ rsend   rts
 seg_ce
 !if seg_ce > $F68E { !error "past the room at $F65F" }
 
-; ---------------------------------------------------------- the tape room $F92C-$FB96 (619 bytes)
+; -------------------------- the tape room $F92C-$FB8D (610 bytes; $FB8E-$FB96 is the disk SAVE's)
         * = $F92C
 seg_a
 newboot jmp boot                ; $F92C: BASIC's cold start (fixed: the KERNAL patch calls it)
         jmp frame               ; $F92F: the screen alone (fixed: SHELL.PRG calls it)
-boot    jsr frame               ; the screen, 38911 BASIC BYTES FREE on row 3 (the bytes free at a
-        ldx #4                  ; cold start: $0801-$9FFF, always), then BASIC's NEW (the program
-fbf     lda n38911,x            ; pointers $2B-$2E and $0801) as the banner routine it replaces
-        sta $0400 + 120,x       ; ($E422) did: as a JMP, last - NEW's CLR resets the stack and
-        lda #15                 ; keeps only one return address
-        sta $D800 + 120,x
-        dex
-        bpl fbf
-        sta $0286               ; (15, the labels' pale)
-        ldx #3
-        ldy #5
-        clc
-        jsr PLOT
+boot    jsr bootj               ; the screen (and the jingle), 38911 BASIC BYTES FREE on row 3 (the
+        ldx #3                  ; bytes free at a cold start: $0801-$9FFF, always), then BASIC's NEW
+        ldy #0                  ; (the program pointers $2B-$2E and $0801) as the banner routine it
+        clc                     ; replaces ($E422) did: as a JMP, last - NEW's CLR resets the stack
+        jsr PLOT                ; and keeps only one return address
+        lda #15
+        sta $0286
+        lda #<n38911
+        ldy #>n38911
+        jsr $AB1E
         lda #$60                ; " BASIC BYTES FREE"
         ldy #$E4
         jsr $AB1E
@@ -344,20 +372,21 @@ fz      sta $D627,y             ; the box stays up while this runs)
         bpl fz
         inx
         jsr prtext              ; the eq's cells
-        ldx #0                  ; the palettes (ptab: select, first entry, end in pdat): the
-        ldy #0                  ; backdrop, the VIC's 0-15, the main 1-10
+        ldy #0                  ; the palettes (ptab): the backdrop, the VIC's 2-15, the main 2-17
 fpal    lda ptab,y
         sta $D619
         lda ptab+1,y
         sta $D61A
+        ldx ptab+2,y
 fpl     jsr rgbv
         txa
-        cmp ptab+2,y
+        cmp ptab+3,y
         bne fpl
         iny
         iny
         iny
-        cpy #9
+        iny
+        cpy #12
         bne fpal
         lda #160                ; 160-239: the rules' gradient, cyan (120,220,255) to violet
         sta $D61A               ; (200,120,255), 4 pixels a step - and bitmap row 0 with it
@@ -396,8 +425,12 @@ fpr4    sta VDATA
 fpr0    sta VDATA
         dey
         bne fpr0
-        sty ROW                 ; bitmap rows 1-18: the words' gradient (line i of a text row:
-frw     lda ROW                 ; the rules' 160 + 10 i, the same colour)
+        sty ROW                 ; bitmap rows 1-16: the words' gradient (line i of a text row:
+frw     lda #6                  ; the rules' 160 + 10 i, the same colour); 17-18 the box's dark
+        ldx ROW
+        cpx #16
+        bcs frwv
+        txa
         and #7
         sta TMP
         asl
@@ -405,7 +438,7 @@ frw     lda ROW                 ; the rules' 160 + 10 i, the same colour)
         adc TMP
         asl
         adc #160
-        ldy #0
+frwv    ldy #0
         ldx #2
 frw0    sta VDATA
         iny
@@ -420,9 +453,7 @@ frw0    sta VDATA
         sta $D626
         lda #$0B
         sta $D605               ; on, the VIC's palette, KEY
-        jsr layout              ; the copper list (TOPY 0), then the copper on
-        lda #1
-        sta $D60E
+        jsr layout              ; the copper list (TOPY 0), the copper on
         jsr drawbar
         inc OCTST               ; 1 (left open while the start screen shows; RUN, SYS and LOAD shut it)
 ftail   jsr reutext
@@ -441,13 +472,6 @@ rgbv    lda pdat,x              ; R, G, B from pdat (X steps on 3)
         inx
         inx
         rts
-va      sty VA0                 ; VRAM address X:A:Y, a byte at a time
-        sta VA1
-        stx VA2
-        ldy #1
-        sty VINC
-        rts
-
 ; the words: the records from X in texts (X left on the end mark)
 prtext  ldy texts,x
         cpy #$FE
@@ -505,14 +529,16 @@ lyw     sta VDATA
         inx
         inx
         inx
-        cpx #36
+        cpx #33
         bne lyl
         lda #$FF                ; the end: line $FFFF
         sta VDATA
         sta VDATA
         lda BUFSEL
         jsr vbl                 ; switched to in the bottom border: the copper idles from a switch
-        sta $D611               ; to the next line 0, and never mid-picture (KEY would stay 3)
+        sta $D611               ; to the next line 0, and never mid-picture (KEY would stay 3);
+        lda #1                  ; the copper on (the same: in the border)
+        sta $D60E
         plp
 lyrts   rts
 
@@ -553,14 +579,14 @@ eqs     sta HT,x
         bpl eqenv
         inx
         stx ROW
-eqrow   lda ROW                 ; bitmap row 1 + ROW, x 0-47: bar k lit (k+1) or its slot (9),
-        asl                     ; then the box (10); row 8 the box
+eqrow   lda ROW                 ; bitmap row 1 + ROW, x 0-47: bar k lit (its colour) or its slot (17),
+        asl                     ; then the box (6); row 8 the box
         adc #2
         ldx #1
         ldy #0
         jsr va
         ldx #0
-eqbar   lda #10
+eqbar   lda #6
         ldy ROW
         cpy #7
         beq eqput
@@ -568,15 +594,14 @@ eqbar   lda #10
         clc
         adc ROW
         cmp #7
-        lda #9
+        lda #17
         bcc eqput
-        txa
-        adc #0
+        lda rainbow,x
 eqput   ldy #5
 eqw     sta VDATA
         dey
         bne eqw
-        lda #10
+        lda #6
         sta VDATA
         inx
         cpx #8
@@ -595,5 +620,5 @@ eqw     sta VDATA
 iout    rts
 
 seg_ae
-!if seg_ae > $FB97 { !error "past the room at $F92C" }
+!if seg_ae > $FB8E { !error "past the room at $F92C" }
 

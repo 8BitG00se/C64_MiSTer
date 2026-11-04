@@ -30,7 +30,8 @@ Nothing here is new to the MiSTer.
 +-- octophonic/                              Octophonic OS (Main's OS_DIR)
 |   +-- os.ini                               enabled=1, boot=, startin=, start= (docs/OCTOOS.md);
 |   |                                         without it Main is the stock Main
-|   +-- SHELL.PRG                            the browser (F1); built by tools/octoos/kernal/build.sh
+|   +-- SHELL.PRG                            the browser (F1) and the start jingle; built by
+|   |                                         tools/octoos/kernal/build.sh (missing: no browser, silence)
 |   +-- os.log, os.log.1                     Main's log (written by Main)
 |   +-- net.seen                             a network share has been seen (written by Main)
 |   +-- last.txt                             the last folder, for START IN: LAST USED (Main)

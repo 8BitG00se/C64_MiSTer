@@ -19,6 +19,22 @@ scrolls away with the text, a line at a time. CLR clears rows 0-23, and the box 
 RUN, SYS and LOAD switch the box and bar off and give back the stock 25-row editor; so do RUN/STOP+RESTORE and a reset.
 With no OctoVIC (a stock VIC) the words are plain and there is no bar.
 
+Nothing covers rows 0-23: the box is dark only behind rows 0-1, the rules run under the VIC's
+pixels, and the bar's dark box starts on row 24's first line (its rule on row 24's last). The
+recording checks compare every VIC pixel of rows 0-23 with the VIC's own picture.
+
+**The start jingle** (about 2 s) is in SHELL.PRG, not the ROM:
+- At a cold start (and after CTRL+F12) the ROM asks Main for SHELL.PRG, as F1 does, and calls its
+  `$C003`. It only does this when Main serves the OS (NET b4); with no Main, no os.ini or no
+  SHELL.PRG there is silence.
+- The music: C major pentatonic up an octave and back down, a third above it in the key on the next
+  SID, a soft C-G pad, ending on the C chord.
+- Melody and third use voice 3 of the 8 SIDs, so the eq shows them.
+- Every note has sustain 0 and dies away by itself.
+- The player runs from the IRQ in the tape buffer (`$033C`, unused on the core). It stops at once,
+  leaving the SIDs alone, when RUN, SYS or LOAD shut the start screen, or when the IRQ vector is no
+  longer its own. The browser stops it too.
+
 How it is drawn is described in `tools/octoos/kernal/octo.asm`:
 - OctoVIC's copper switches KEY between the page and the box.
 - A bitmap layer carries the words' gradient, the eq and the rules.
@@ -153,6 +169,11 @@ the next demo's own .reu goes in over it when it is run, the way the menu attach
     banner, and the stock ROMs' unused bytes. All of them are listed in octo.asm and checked by patch.py.
   - It calls `osinit`, which points BASIC's IMAIN (`$0302`) at the commands.
   - LOAD, SAVE and OPEN on device 1 give ?ILLEGAL DEVICE NUMBER, since the tape code is gone.
+  - Two bits of stock code inside the tape areas are still used by the disk and are left alone:
+    `$F5A9-$F5AE` (the disk LOAD's end) and `$FB8E-$FB96` (the disk SAVE's start address).
+    patch.py checks both, and `refscan.py` stops the build if any stock code calls into a piece.
+    (Up to start screen build 1, `$FB8E` was written over, so SAVE to disk took its start address
+    from whatever `$AC/$AD` held.)
   - `build.sh` makes the core's `.mif` and the emulator's `octo_rompatch.h` from the same source, then
     runs romtest.
 - **Octophonic Main** (`tools/octoos/main`: a patch on Main_MiSTer, built by
@@ -174,7 +195,7 @@ the next demo's own .reu goes in over it when it is run, the way the menu attach
 | FC | VERSION | read: 2 | |
 | FD | SEQ | write: the request's number, before CMD | reads |
 | FE | RSEQ | read: the number STATUS answers | writes it first in every reply |
-| FF | NET | read: b1-0 the network share (0 none set up, 1 waiting for it, 2 there, 3 set up but not there), b5 Main is on a MiSTer (so MENU is offered; the emulator's model leaves it clear), b7 a screenshot is being copied out of video memory, b6 its PNG is being written | writes it whenever it changes (kept through a core reset) |
+| FF | NET | read: b1-0 the network share (0 none set up, 1 waiting for it, 2 there, 3 set up but not there), b4 Main serves the OS (the start jingle is asked for only then), b5 Main is on a MiSTer (so MENU is offered; the emulator's model leaves it clear), b7 a screenshot is being copied out of video memory, b6 its PNG is being written | writes it whenever it changes (kept through a core reset) |
 
 Commands: `01` DIR (PETSCII text, 0-terminated), `02` CHDIR, `03` LOAD, `04` RUN, `05` INFO,
 `06` LIST (path 40 bytes, then 40-byte records: type, size text (5), ext (3), name (31; Main cuts a long name in the middle to 28 so its end - a build number - shows)), `07` OPEN (entry LEN),

@@ -214,7 +214,7 @@ struct Mailbox
         m.getBus().ioReadHook = [this] (uint16_t a, uint8_t& v) -> bool {
             if (! unlocked || a < 0xD600 || a >= 0xD700) return false;
             const uint8_t r = a & 0xFF;
-            if (r >= 0xF0) { const uint8_t i = r & 15; v = i == 0xC ? 2 : i == 8 ? (uint8_t) name.size() : i == 0xF ? (uint8_t) (net | (mister ? 0x20 : 0)) : mb[i]; return true; }
+            if (r >= 0xF0) { const uint8_t i = r & 15; v = i == 0xC ? 2 : i == 8 ? (uint8_t) name.size() : i == 0xF ? (uint8_t) (net | 0x10 | (mister ? 0x20 : 0)) : mb[i]; return true; }
             static const char tag[] = "CORE7   ";     // the core's name and build date (OctoVIC version 3)
             v = r == 0x1E ? 0x8C : r == 0x1F ? 3 : (r >= 0xB8 && r <= 0xBF) ? (uint8_t) tag[r - 0xB8]
               : r == 0xB4 ? 0x01 : r == 0xB5 ? 0x11 : r == 0xB6 ? 0x26 : 0; return true;
@@ -438,6 +438,8 @@ int main (int argc, char** argv)
         { "F3 F5 F7 at READY", SAME, { "{CLR}{F3}{F5}{F7}{F2}", "PRINT 1\n" }, nullptr },
         { "disk: LOAD\"$\" and LIST", SAME, { "{CLR}LOAD\"$\",8\n{WAIT8}", "LIST\n" }, [] (const Snap& s, const Snap& o, Rig&, Rig&) { return has (s, "BLOCKS FREE") && has (o, "BLOCKS FREE") ? std::string() : std::string ("missing BLOCKS FREE"); } },
         { "disk: LOAD, LIST, RUN, VERIFY", SAME, { "{CLR}LOAD\"HELLO\",8\n{WAIT8}", "LIST\n", "RUN\n", "VERIFY\"HELLO\",8\n{WAIT8}" }, [] (const Snap& s, const Snap& o, Rig&, Rig&) { return has (s, "\nOK") && has (o, "\nOK") ? std::string() : std::string ("missing OK"); } },
+        { "disk: SAVE with $AC/$AD not set beforehand (the disk SAVE's own $FB8E)", SAME, { "{CLR}10 PRINT 9\n", "POKE 172,0:POKE 173,0:SAVE\"U\",8\n{WAIT40}", "NEW\n", "LOAD\"U\",8\n{WAIT8}", "LIST\n" },
+          [] (const Snap& s, const Snap& o, Rig&, Rig&) { return has (s, "10 PRINT 9") && has (o, "10 PRINT 9") ? std::string() : std::string ("the program didn't come back"); } },
         { "disk: SAVE and LOAD back", SAME, { "{CLR}10 PRINT 9\n", "SAVE\"T\",8\n{WAIT40}", "NEW\n", "LOAD\"T\",8\n{WAIT8}", "LIST\n" }, nullptr },
         { "disk: OPEN PRINT# CLOSE, error channel", SAME, { "{CLR}10 OPEN 2,8,2,\"S,S,W\":PRINT#2,\"X\":CLOSE 2\n20 OPEN 1,8,15:INPUT#1,A,B$:CLOSE 1:PRINT A;B$\n", "RUN\n{WAIT12}" }, nullptr },
         { "disk: CMD", SAME, { "{CLR}10 REM CMD\n", "OPEN 4,8,4,\"C,S,W\":CMD 4:LIST\n{WAIT6}", "PRINT#4:CLOSE 4\n{WAIT6}", "PRINT \"DONE\"\n" }, nullptr },
@@ -585,7 +587,7 @@ int main (int argc, char** argv)
             if (c.mode == SAME && why.empty())
             {
                 if (ls.screen != lo.screen) why = "screen differs after step " + std::to_string (i + 1);
-                else if (ls.mem != lo.mem) { size_t k = 0; while (ls.mem[k] == lo.mem[k]) ++k; char b[80]; std::snprintf (b, sizeof b, "memory differs after step %zu at %s+%zu", i + 1, k < 14 ? "$2B" : "$0801", k < 14 ? k : k - 14); why = b; }
+                else if (ls.mem != lo.mem) { size_t k = 0; while (ls.mem[k] == lo.mem[k]) ++k; char b[120]; std::snprintf (b, sizeof b, "memory differs after step %zu at %s+%zu (stock $%02X, V1.1 $%02X)", i + 1, k < 14 ? "$2B" : "$0801", k < 14 ? k : k - 14, ls.mem[k], lo.mem[k]); why = b; }
             }
         }
         if (c.check && why.empty()) why = c.check (ls, lo, so, oc);

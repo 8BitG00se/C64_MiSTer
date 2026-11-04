@@ -44,7 +44,10 @@ P       = $FB
 Q       = $FD
 
         * = $C000
-start   lda #0
+        jmp start               ; $C000: the browser (the ROM's @@, F1)
+        jmp jingle              ; $C003: the start jingle (the ROM's cold start)
+start   jsr jstop               ; the jingle, if still playing, stopped (its player is in the tape buffer)
+        lda #0
         sta $C6                 ; the F1 that brought us here, and anything else typed
         sta first
         sta first+1
@@ -1122,3 +1125,186 @@ joyold  !byte 0
 joyt    !byte 0
 shellend
 !if shellend > LBUF { !error "the browser is too big" }
+
+; ------------------------------------------------------------------------- the start jingle
+; Called by the ROM at a cold start, once the screen is up (Main loads SHELL.PRG for it). About 2 s:
+; C major pentatonic up an octave and back down (C D E G A C, A G E D C), a third above it in the key
+; on the next SID each time, a soft C-G pad under it (SID 1 and 2, voice 1), ending on the C chord.
+; The scale moves over voice 3 of the 8 SIDs (melody left 1 3 5 7, its third right 2 4 6 8), so the
+; start screen's eq shows it. Every note has sustain 0: it dies away by itself whatever happens.
+; The player runs from the IRQ and lives in the tape buffer ($033C, unused on the core), where no
+; program loads: it stops at once (leaving the SIDs alone) when RUN, SYS or LOAD shut the start screen
+; (OCTST 0) or the IRQ vector is no longer its own.
+OCTSTA  = $02A7
+JP      = $033C
+jingle  sei
+        ldx #0
+-       lda jsrc,x
+        sta JP,x
+        inx
+        cpx #jend-jsrc
+        bne -
+        ldx #7
+-       lda jlo,x               ; each SID: voice 3 triangle, soft attack, decay 750 ms
+        sta jp1+1
+        lda jhi,x
+        sta jp1+2
+        ldy #$13
+        lda #$39
+        jsr jp1
+        iny
+        lda #$08
+        jsr jp1
+        ldy #$12
+        lda #$10
+        jsr jp1
+        dex
+        bpl -
+        cli
+        lda #1                  ; then the volume up a step a frame (a 6581 clicks at a jump in volume,
+                                ; and at a waveform chosen at full volume: chosen above, at 0)
+        sta jvol
+--      ldx #7
+---     lda jlo,x
+        sta jp1+1
+        lda jhi,x
+        sta jp1+2
+        ldy #$18
+        lda jvol
+        jsr jp1
+        ldy #0                  ; (the SIDs a step each 1.3 ms apart: eight small steps, not one)
+-       dey
+        bne -
+        dex
+        bpl ---
+        lda $A2
+-       cmp $A2
+        beq -
+        inc jvol
+        lda jvol
+        cmp #12
+        bne --
+        sei
+        ldx #1                  ; the pad: SID 1 and 2 voice 1, C3 and G3, slow attack, long decay
+-       lda jlo,x
+        sta jp1+1
+        lda jhi,x
+        sta jp1+2
+        ldy #0
+        lda padlo,x
+        jsr jp1
+        iny
+        lda padhi,x
+        jsr jp1
+        ldy #5
+        lda #$9B
+        jsr jp1
+        iny
+        lda #$08
+        jsr jp1
+        ldy #4
+        lda #$11
+        jsr jp1
+        dex
+        bpl -
+        lda #<JP
+        sta $0314
+        lda #>JP
+        sta $0315
+        cli
+        rts
+jp1     sta $FFFF,y
+        rts
+jstop   lda $0315               ; the browser starting: the jingle's IRQ out, if it is in
+        cmp #>JP
+        bne +
+        lda $0314
+        cmp #<JP
+        bne +
+        sei
+        lda #$31
+        sta $0314
+        lda #$EA
+        sta $0315
+        cli
++       rts
+jvol    !byte 0
+jlo     !byte $00, $20, $00, $20, $80, $A0, $80, $A0
+jhi     !byte $D4, $D4, $D5, $D5, $D4, $D4, $D5, $D5
+padlo   !byte <2227, <3338
+padhi   !byte >2227, >3338
+
+jsrc
+!pseudopc JP {
+jirq    lda OCTSTA              ; the start screen shut (a program): stop, the SIDs left alone
+        beq jout
+        dec jwait
+        bne jx
+        lda #7                  ; a step every 7 frames (0.14 s)
+        sta jwait
+        ldy jpos
+        lda jtab,y              ; a step: its third (high nibble) and the melody's note (low)
+        cmp #$FF
+        beq jout                ; the end (the notes die away by themselves: sustain 0)
+        inc jpos
+        pha
+        and #$0F
+        ldx jsid
+        jsr jnote
+        pla
+        lsr
+        lsr
+        lsr
+        lsr
+        inx
+        jsr jnote
+        inx
+        txa
+        and #7
+        sta jsid
+jx      jmp $EA31
+jout    lda $0315               ; the IRQ back to the KERNAL - only if it is still ours
+        cmp #>JP
+        bne jx
+        lda $0314
+        cmp #<JP
+        bne jx
+        lda #$31
+        sta $0314
+        lda #$EA
+        sta $0315
+        bne jx
+jnote   pha                     ; note A (jfreq) on voice 3 of SID X: the frequency, a new gate
+        lda jlo2,x
+        sta jw+1
+        lda jhi2,x
+        sta jw+2
+        pla
+        asl
+        tay
+        lda jfreq,y
+        pha
+        lda jfreq+1,y
+        ldy #$0F
+        jsr jw
+        pla
+        dey
+        jsr jw
+        ldy #$12
+        lda #$10
+        jsr jw
+        lda #$11
+jw      sta $FFFF,y
+        rts
+jwait   !byte 1
+jpos    !byte 0
+jsid    !byte 0
+jlo2    !byte $00, $20, $00, $20, $80, $A0, $80, $A0
+jhi2    !byte $D4, $D4, $D5, $D5, $D4, $D4, $D5, $D5
+; C4 D4 E4 F4 G4 A4 B4 C5 E5 (PAL: Hz x 17.0284)
+jfreq   !word 4455, 5001, 5613, 5947, 6675, 7493, 8410, 8910, 11226
+; up C D E G A C (their thirds E F G B C E), down A G E D, home C E then G C
+jtab    !byte $20, $31, $42, $64, $75, $87, $75, $64, $42, $31, $20, $74, $FF
+}
+jend
+!if jend - jsrc > 192 { !error "the jingle's player is bigger than the tape buffer" }

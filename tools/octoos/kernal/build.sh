@@ -24,6 +24,7 @@ acme -f plain -o octo.bin -l octo.lbl octo.asm
 acme -f plain -o wedge.bin -l wedge.lbl wedge.asm
 acme -f plain -o wedge2.bin -l wedge2.lbl wedge2.asm
 python3 patch.py "$T/roms"
+python3 refscan.py                                  # no piece over stock code something still calls
 cp "$V/C64/chargen-901225-01.bin" "$T/roms/"
 python3 mkmif.py "$R/rtl/roms/octo_C64.mif"
 P="$OCTO_EMU/src/vice/src/octophonic/octo_rompatch.h"
