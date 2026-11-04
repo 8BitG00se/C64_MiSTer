@@ -146,7 +146,8 @@ Commands: `01` DIR (PETSCII text, 0-terminated), `02` CHDIR, `03` LOAD, `04` RUN
 `06` LIST (path 40 bytes, then 40-byte records: type, size text (5), ext (3), name (31; Main cuts a long name in the middle to 28 so its end - a build number - shows)), `07` OPEN (entry LEN),
 `08` SETLIST (40-byte lines: label, value), `09` SETSTEP (line ARG, VALUE 1 or $FF), `0A` SETAPPLY
 (start the chosen chip preset), `0B` NOSHARE (stop waiting for the network: the SD card), `10` SHOT,
-`11` APPEND, `0F` SHELL (SHELL.PRG to its load address).
+`11` APPEND, `0F` SHELL (SHELL.PRG to its load address), `13` COMPILE, `14` COMPLOG, `15` GO (the
+OCTOCODE editor: see below). `12` is the MISTER menu command.
 OPEN on a lone `.reu` answers VALUE 2, RESULT its size in 64 KB units, LEN the list entry of its `.prg`
 ($FFFF none).
 Errors: `$81` not found, `$82` not a folder, `$83` too big, `$84` can't read, `$85` can't run,
@@ -158,6 +159,41 @@ dropped whole by the core, so a late answer never lands on a newer request; Main
 Main's side, on hps_io's EXT_BUS: `0x70` poll (reply `$6F00` + pending), `0x71` read (each word
 after the reply: the 16 registers, then the 32 name bytes), `0x72` write (each word
 `{register, value}`; STATUS last).
+
+## OCTOCODE: write code, press F1, it runs (`13`-`15`)
+
+OCTOCODE.PRG is a code editor on the C64 (6502, `tools/octoos/octocode`). The source is ACME assembler
+text, PETSCII in the upper/lower case set; Main saves it, assembles it with ACME and starts it.
+
+| Cmd | Name | 6502 gives | Main does | Answer |
+|---|---|---|---|---|
+| `13` | COMPILE | ADDR/LEN the source in C64 RAM (lines end with RETURN), NAME the file name (`HELLO.ASM`), ARG b0: the same bytes are also in OctoVIC's VRAM at `$FE0000` | writes `<name>.asm` (lower case, ASCII) in the folder of the disk in drive 8 (else its current folder), runs `acme -v1 -f cbm -o <name>.prg -Wno-label-indent --maxerrors 10 <name>.asm` there, and keeps its messages as a log | STATUS 2 at once; `$81` nothing to compile |
+| `14` | COMPLOG | ADDR where, LEN the first log line wanted, VALUE how many (0: 8) | those lines to ADDR, PETSCII, RETURN after each, 0 at the end (36 characters a line at most; a long message carries on, indented two) | VALUE 0 still compiling, 1 done and good, 2 done with errors; RESULT the first error's line (0 none); LEN the log's lines so far |
+| `15` | GO | (NAME still from COMPILE) | `<name>.prg` into C64 RAM at its own address, no reset | RESULT the load address, LEN the end; `$81` none, `$83` it would reach below `$0400` |
+
+The log's lines start with what they are, so the box can colour them: `Saved ...`, `ACME ...`,
+`Error line N: ...`, `Warning line N: ...`, `Made <name>.prg: N bytes, $0801-$0A92`, then `OK - compiled.`
+or `Not compiled. First error: line N`. PETSCII to ASCII: unshifted letters are lower case, shifted
+ones capitals, left arrow `_`, SHIFT+`+` `{`, SHIFT+`-` `}`; ASCII to PETSCII the other way.
+
+After GO answers, the 6502 starts the program itself: at `$0801` as RUN does (`$A533`, `$A659`,
+`$A7AE`, BASIC's pointers from LEN), anywhere else with a JMP to RESULT - after the KERNAL's own
+RUN/STOP+RESTORE set-up (`$FDA3` `$FD15` `$E518`), OctoVIC off and its page shut, the SIDs quiet.
+The launcher runs from `$0100-$01A0` (out of Main's reach: GO refuses anything below `$0400`).
+
+**Back to the editor.** Before GO, OCTOCODE copies itself and the source (`$0801` to the end of the
+text) into VRAM at `$FF0000` (`'O'`, its build, the pages, then the bytes) and points the NMI vector
+(`$0318`) at a handler in the tape buffer (`$0334`): RUN/STOP+RESTORE copies it all back and the
+editor carries on, code, cursor and file name as they were. If the program took the NMI vector,
+the tape buffer or the top of VRAM, RESTORE gives READY as on any C64; a reset, then LOAD"*",8 and
+RUN find the copy in VRAM (OctoVIC's VRAM survives a reset) and the code is back. F7 (EXIT) leaves a
+copy too. Programs have `$0400`-`$FFFF` and VRAM `$000000-$FDFFFF`.
+
+**On the MiSTer** (draft, `tools/octoos/main/octocode-compile.patch.draft`): Main can't read C64 RAM,
+so it takes the source from VRAM - DDR3 `$32FE0000`, through `shmem_map` - which is why the editor
+also writes it there (ARG b0) and waits for OctoVIC's write queue (STATUS b0) before asking. The log
+and the program go into C64 RAM with the raw download (index `$0A`) as LOAD's do. ACME is an ARM
+build in `/media/fat/octophonic/acme`, run in a thread so COMPLOG can say "still compiling".
 
 ## os.ini
 
