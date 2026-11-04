@@ -110,3 +110,55 @@ index c810072..ede003d 100644
 +int  octo_file_send(const char *path, unsigned char index, void (*progress)(uint32_t done, uint32_t total));
  
  #endif
+diff --git a/support/octo/octo_load.cpp b/support/octo/octo_load.cpp
+new file mode 100644
+index 0000000..6b23226
+--- /dev/null
++++ b/support/octo/octo_load.cpp
+@@ -0,0 +1,46 @@
++// OCTOPHONIC OS - loading a file into the core with no MiSTer OSD bar.
++//
++// MiSTer's own user_io_file_tx() always puts "Loading" and a grey bar on the OSD (ProgressMessage),
++// over the C64's picture. Octophonic Main sends the file itself instead: the very same transfer
++// (index, file type, download on, the bytes, download off - exactly as user_io_file_tx does it for
++// a .reu, which the core's c64.sv puts at $1000000 in its memory, the REU), with no OSD at all, and
++// tells the caller how far it has got so the 6502 can draw its own bar (docs/OCTOOS.md, VALUE 3).
++// It is only used while the Octophonic OS is active.
++
++#include <stdio.h>
++#include <string.h>
++#include <stdint.h>
++
++#include "../../user_io.h"
++#include "../../file_io.h"
++#include "octo.h"
++
++int octo_file_send(const char *path, unsigned char index, void (*progress)(uint32_t done, uint32_t total))
++{
++	fileTYPE f = {};
++	if (!FileOpen(&f, path)) return 0;
++	uint32_t total = (uint32_t)f.size;
++	printf("Octophonic OS: sending %s (%u bytes) to index 0x%02X, no OSD\n", path, total, index);
++
++	static uint8_t buf[65536];
++	user_io_set_index(index);
++	const char *ext = strrchr(f.name, '.');
++	user_io_file_info(ext ? ext : "");
++	user_io_set_download(1);
++
++	uint32_t done = 0;
++	int ok = 1;
++	if (progress) progress(0, total);
++	while (done < total)
++	{
++		uint32_t chunk = total - done;
++		if (chunk > sizeof(buf)) chunk = sizeof(buf);
++		if (FileReadAdv(&f, buf, chunk) != (int)chunk) { ok = 0; break; }
++		user_io_file_tx_data(buf, chunk);
++		done += chunk;
++		if (progress) progress(done, total);
++	}
++	FileClose(&f);
++	user_io_set_download(0);       // the end of the transfer, as user_io_file_tx ends it
++	return ok;
++}
