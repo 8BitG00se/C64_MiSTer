@@ -77,6 +77,7 @@ mkdir -p "$W/mrf/p1"
 "$Z" x -y -o"$W/mrf/p1" "$W/mrf/p1.fat" >/dev/null || die "could not open Mr. Fusion's data partition"
 [ -s "$W/mrf/p1/zImage" ] && [ -s "$W/mrf/p1/release.7z" ] || die "Mr. Fusion's partition is not as expected"
 echo "Mr. Fusion files: $(ls "$W/mrf/p1" | tr '\n' ' ')"
+rm -f "$W/mrf/p1.fat" "$W/mrf/p1/release.7z"       # (its own older release is replaced; RAM is short)
 
 SDI="$W/sdi"
 if [ ! -d "$SDI/.git" ]; then
@@ -88,16 +89,21 @@ REL=${MISTER_RELEASE:-$(git -C "$SDI" ls-tree --name-only HEAD | sed -n 's/^\(re
 [ -n "$REL" ] || die "no release_*.7z in SD-Installer-Win64_MiSTer"
 PARTS=$(git -C "$SDI" ls-tree --name-only HEAD | grep "^$REL\.7z" || true)
 [ -n "$PARTS" ] || die "$REL is not in SD-Installer-Win64_MiSTer"
-git -C "$SDI" sparse-checkout init --no-cone >/dev/null 2>&1 || true
-git -C "$SDI" sparse-checkout set $PARTS
-GIT_LFS_SKIP_SMUDGE=1 git -C "$SDI" checkout -q HEAD -- 2>/dev/null || GIT_LFS_SKIP_SMUDGE=1 git -C "$SDI" checkout -q
+# only this release's blobs are fetched (the clone has none: --filter=blob:none), straight to files
+mkdir -p "$W/relparts"
+for p in $PARTS; do
+    if [ ! -s "$W/relparts/$p" ]; then
+        git -C "$SDI" show "HEAD:$p" > "$W/relparts/$p.part" && mv -f "$W/relparts/$p.part" "$W/relparts/$p"
+    fi
+    [ -s "$W/relparts/$p" ] || die "could not fetch $p"
+done
 FIRST=$(echo "$PARTS" | head -1)
 echo "MiSTer release: $REL  ($(echo $PARTS | wc -w) part(s), SD-Installer-Win64_MiSTer $(git -C "$SDI" rev-parse --short HEAD))"
 
 # --------------------------------------------------------------------- 2. the card tree
 say "2. the release onto a fresh card"
 rm -rf "$W/rel"; mkdir -p "$W/rel"
-"$Z" x -y -o"$W/rel" "$SDI/$FIRST" >/dev/null || die "could not unpack $REL"
+"$Z" x -y -o"$W/rel" "$W/relparts/$FIRST" >/dev/null || die "could not unpack $REL"
 CARD="$W/rel/files"
 [ -s "$CARD/MiSTer" ] && [ -s "$CARD/menu.rbf" ] && [ -s "$CARD/linux/linux.img" ] || die "$REL has no files/MiSTer, menu.rbf, linux/linux.img"
 echo "card: $(du -sh "$CARD" | cut -f1), stock MiSTer $(md5sum < "$CARD/MiSTer" | cut -c1-8)"
@@ -182,7 +188,9 @@ printf 'Octophonic Fusion build %s\nMiSTer %s, Mr. Fusion %s, source %s\n' "$BUI
 say "4. Mr. Fusion's release.7z"
 rm -rf "$W/fat"; cp -r "$W/mrf/p1" "$W/fat"
 rm -f "$W/fat/release.7z"
-(cd "$W/rel" && "$Z" a -t7z -m0=LZMA2 -mx=9 -mf=off -mmt=on "$W/fat/release.7z" files >/dev/null) || die "could not pack release.7z"
+# LZMA2, 64 MB dictionary, two threads: within this machine's RAM, and Mr. Fusion's 7zr (p7zip
+# 16.02) unpacks it in well under 100 MB on the DE10-Nano. No BCJ filters (-mf=off).
+(cd "$W/rel" && "$Z" a -t7z -m0=LZMA2:d=64m -mx=7 -mf=off -mmt=2 "$W/fat/release.7z" files >/dev/null) || die "could not pack release.7z"
 "$Z" t "$W/fat/release.7z" >/dev/null || die "release.7z does not test good"
 echo "release.7z: $(stat -c %s "$W/fat/release.7z") bytes"
 python3 -I "$HERE/image/splash.py" "$W/fat/splash.png" 1920 1080
@@ -195,4 +203,4 @@ sed "s/@BUILD@/$BUILD/g; s/@REL@/$REL/g; s/@MRF@/$MRF/g" "$HERE/image/How to fla
 echo "$(stat -c %s "$IMG") bytes: $IMG"
 
 say "checking the image"
-OFFICIAL_7Z="$SDI/$FIRST" bash "$HERE/image/check-image.sh" "$IMG" "$Z" "$W/check"
+OFFICIAL_7Z="$W/relparts/$FIRST" bash "$HERE/image/check-image.sh" "$IMG" "$Z" "$W/check"
