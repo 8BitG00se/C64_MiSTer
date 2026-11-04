@@ -111,8 +111,9 @@ echo "card: $(du -sh "$CARD" | cut -f1), stock MiSTer $(md5sum < "$CARD/MiSTer" 
 # --------------------------------------------------------------------- 3. the payload
 say "3. the payload and the recipe"
 PAY="$W/payload"; rm -rf "$PAY"; mkdir -p "$PAY/_Computer"
-git -C "$REPO" fetch -q origin build-reports octoos-main-build octo-menu-build 2>/dev/null || \
-    git -C "$REPO" fetch -q origin build-reports octoos-main-build 2>/dev/null || true
+for b in build-reports octoos-main-build octo-menu-build; do
+    git -C "$REPO" fetch -q origin "+refs/heads/$b:refs/remotes/origin/$b" 2>/dev/null || echo "(no $b branch yet)"
+done
 HEADC=$(git -C "$REPO" rev-parse --short HEAD)
 
 # a built thing is used only if it was built from a commit whose source for it is the same as here
