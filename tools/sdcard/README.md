@@ -15,6 +15,9 @@ tools/sdcard/
     040-main.sh         Octophonic Main
     050-shell-prg.sh    octophonic/SHELL.PRG
     060-mister-ini.sh   makes sure a MiSTer.ini exists; sets no video
+    070-migrate-drop-octophonic-folder.sh   the old games/C64/Octophonic folders, if empty
+    080-bootcore.sh     MiSTer.ini: bootcore=Octophonic 64.mgl, every bootcore_timeout off
+    090-navy-menu-core.sh   menu.rbf: the navy menu core (no grey noise before the core starts)
     900-DEV-ssh-key.sh          Neal's ssh key + the startup hook
     910-DEV-mister-ini-crt.sh   Neal's JVC CRT video settings
     920-DEV-network-share.sh    reports his share; configures nothing
@@ -69,6 +72,7 @@ files/
   MiSTer
   SHELL.PRG
   _Computer/Octophonic 64.mgl     and the chip-preset launchers
+  menu.rbf                        the navy menu core (octo-menu-build), for step 090
   dev/octophonic-key.pub          DEV only
 ```
 
