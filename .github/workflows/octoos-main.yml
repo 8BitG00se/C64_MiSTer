@@ -1,5 +1,5 @@
 # OCTOPHONIC OS: builds Octophonic Main - MiSTer's Main_MiSTer with tools/octoos/main's patch on
-# top - with the same ARM compiler MiSTer itself uses. The program comes out on the branch
+# top (and octophonic-quiet-load.patch after it) - with the same ARM compiler MiSTer itself uses. The program comes out on the branch
 # octoos-main-build (MiSTer, MiSTer.elf and the build log), where it can be fetched with git.
 name: Build Octophonic Main
 
@@ -31,6 +31,8 @@ jobs:
           cd main
           git checkout -q $(cat ../tools/octoos/main/UPSTREAM)
           git apply ../tools/octoos/main/octophonic-main.patch
+          # build 6: .reu loads with no MiSTer OSD bar (the C64 draws its own), no OSD bar at all while the OS runs
+          git apply ../tools/octoos/main/octophonic-quiet-load.patch
 
       - name: Build
         run: |

@@ -1,0 +1,112 @@
+diff --git a/menu.cpp b/menu.cpp
+index 41a519c..f05dc31 100644
+--- a/menu.cpp
++++ b/menu.cpp
+@@ -64,6 +64,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ #include "recent.h"
+ #include "support.h"
+ #include "bootcore.h"
++#include "support/octo/octo.h"   // OCTOPHONIC OS
+ #include "ide.h"
+ #include "profiling.h"
+ #include "str_util.h"
+@@ -8826,6 +8827,7 @@ void ProgressMessage(const char* title, const char* text, int current, int max)
+ 		MenuHide();
+ 		return;
+ 	}
++	if (octo_os_active()) return;   // OCTOPHONIC OS: never the grey OSD bar over the C64 - it shows its own
+ 
+ 	int new_progress = (((uint64_t)current)*PROGRESS_MAX) / max;
+ 	if (progress != new_progress)
+diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
+index 981245a..db653d3 100644
+--- a/support/octo/octo.cpp
++++ b/support/octo/octo.cpp
+@@ -739,6 +739,36 @@ static void go_into(const std::string &name)
+ 	snprintf(cwd + l, sizeof(cwd) - l, "%s%s", l ? "/" : "", name.c_str());
+ }
+ 
++// A .reu goes into the REU with no MiSTer OSD bar (build 6): Main sends it itself (octo_load.cpp)
++// and, while the 6502 is still waiting on its request (STATUS stays 1, busy), keeps VALUE 3 and
++// RESULT = 64 KB blocks in so far, LEN = 64 KB blocks in all, up to date - SHELL.PRG draws its own
++// bar from them. STATUS is not written, so the request carries on; the answer comes at the end.
++static void reu_progress(uint32_t done, uint32_t total)
++{
++	uint32_t t = (total + 65535) >> 16;
++	uint32_t d = done >= total ? t : done >> 16;
++	spi_uio_cmd_cont(UIO_OCTO_WRITE);
++	spi_w((R_RSEQ << 8) | cur_seq);               // a request the 6502 gave up on gets none of it
++	spi_w((R_RESL << 8) | (d & 0xFF));
++	spi_w((R_RESH << 8) | ((d >> 8) & 0xFF));
++	spi_w((R_LENL << 8) | (t & 0xFF));
++	spi_w((R_LENH << 8) | ((t >> 8) & 0xFF));
++	spi_w((R_VALUE << 8) | 3);                    // VALUE 3: a .reu is going in (no STATUS: still busy)
++	DisableIO();
++}
++
++static void reu_load(const char *path)
++{
++	unsigned long t0 = GetTimer(0);
++	if (!octo_file_send(path, 0x81, reu_progress))
++	{
++		os_log("  REU %s could not be read whole - the MiSTer's own load instead", path);
++		c64_open_file(path, 0x81);
++	}
++	else os_log("  REU in, %lu ms, no OSD bar", GetTimer(0) - t0);
++	reu_in = path;
++}
++
+ // a file, exactly as picking it in the menu does it (the core's F1 PRGCRTREU and S0 entries)
+ static int run_path(const std::string &path, const std::vector<Entry> *folder)
+ {
+@@ -775,8 +805,7 @@ static int run_path(const std::string &path, const std::vector<Entry> *folder)
+ 		// a .reu on its own: attached as the menu does it (no reset, the C64 carries on), and the
+ 		// answer comes once it is in - VALUE 2, RESULT its size in 64 KB
+ 		os_log("  REU %s (index 0x81)", p);
+-		c64_open_file(p, 0x81);
+-		reu_in = path;
++		reu_load(p);                                // the C64 draws the bar meanwhile (VALUE 3)
+ 		struct stat st;
+ 		long kb64 = stat(p, &st) ? 0 : (long)((st.st_size + 65535) >> 16);
+ 		// LEN: where the .prg it goes with is in the list, for the bar ($FFFF none)
+@@ -792,14 +821,15 @@ static int run_path(const std::string &path, const std::vector<Entry> *folder)
+ 		mb_reply(ST_DONE, (int)kb64, at, 2);
+ 		return 1;
+ 	}
+-	mb_reply(ST_DONE, 0, -1, 1);                    // the core resets now: the reply goes first
++	// the demo's REU first, while the 6502 still waits and draws the bar (VALUE 3); then the answer,
++	// then the program (its load resets the core, so the answer has to go before it)
+ 	if (!reu.empty() && full_of(reu) == reu_in) os_log("  REU %s is in already", full_of(reu).c_str());
+ 	else if (!reu.empty())
+ 	{
+ 		os_log("  REU %s (index 0x81)", full_of(reu).c_str());
+-		c64_open_file(full_of(reu).c_str(), 0x81);
+-		reu_in = full_of(reu);
++		reu_load(full_of(reu).c_str());
+ 	}
++	mb_reply(ST_DONE, 0, -1, 1);                    // the core resets now: the reply goes first
+ 	os_log("  load %s (index 0x%02X)", p, idx);
+ 	user_io_store_filename(p);
+ 	c64_open_file(p, idx);
+diff --git a/support/octo/octo.h b/support/octo/octo.h
+index c810072..ede003d 100644
+--- a/support/octo/octo.h
++++ b/support/octo/octo.h
+@@ -4,6 +4,8 @@
+ #ifndef OCTO_H
+ #define OCTO_H
+ 
++#include <stdint.h>
++
+ // before the menu core does anything: start Octophonic instead (does not return if it does)
+ void octo_os_boot(const char *core_path);
+ // after a core is loaded: is this Octophonic, running as the OS?
+@@ -19,5 +21,8 @@ void octo_exit();
+ void octo_manual_shot();
+ // in user_io.cpp: let the core's F12 go and open the MiSTer menu
+ void user_io_octo_menu();
++// a file into the core with no MiSTer OSD bar (octo_load.cpp); progress(bytes done, bytes in all)
++// after each piece. 0 if it could not be read whole
++int  octo_file_send(const char *path, unsigned char index, void (*progress)(uint32_t done, uint32_t total));
+ 
+ #endif

@@ -206,6 +206,32 @@ OCTOCODE editor: see below), `12` MENU (answered, then Main loads `menu.rbf`, Mi
 Main starts the Octophonic core only once per power-on, so the menu stays a menu).
 OPEN on a lone `.reu` answers VALUE 2, RESULT its size in 64 KB units, LEN the list entry of its `.prg`
 ($FFFF none).
+
+**A `.reu` goes in with no MiSTer OSD bar (build 6, Octophonic Main `octophonic-quiet-load.patch`).**
+When an OPEN (`07`) or RUN (`04`) has a `.reu` to put in the REU - a lone `.reu`, or a demo's `.prg`
+with its `.reu` beside it (the one of the same name, else the only one in the folder), unless that
+`.reu` is in already - Main sends it into the core itself (index `$81`, as the menu's F1 entry does,
+but without MiSTer's `ProgressMessage`), and **while the request is still busy (STATUS stays 1)** it
+keeps writing, after every 64 KB:
+
+| Reg | Main writes (no STATUS: the request carries on) |
+|---|---|
+| FE RSEQ | the request's number first, as in every reply (a request the 6502 gave up on gets none of it) |
+| F7 VALUE | `3` - a `.reu` is going in |
+| FA/FB RESULT | the 64 KB blocks in so far (0 at the start, then up to LEN) |
+| F4/F5 LEN | the 64 KB blocks in all (256 for 16 MB) |
+
+Then the answer as before: a lone `.reu` STATUS 2, VALUE 2, RESULT its size in 64 KB, LEN its `.prg`'s
+entry; a demo STATUS 2, VALUE 1 - and only after that answer the `.prg`, whose load resets the core.
+(Before build 6 a demo's answer came first and the `.reu` went in after it, under MiSTer's grey bar.)
+The 6502 sets VALUE to 0 before an OPEN, so a 3 is always Main's. SHELL.PRG draws the bar on the
+status line (`reu` in yellow, 32 cells: in white, still to come light blue, from RESULT*32/LEN) and
+starts its 60-second wait again whenever RESULT moves. The ROM's `/NAME` (RUN) has no room for a bar:
+it just waits (20 s); its answer comes once the `.reu` is in.
+While the OS is active, Main also never draws MiSTer's OSD "Loading" bar for anything else (a `.prg`,
+a `.crt`, a chip file a preset loads): `ProgressMessage` returns at once.
+**The emulator's model of Main** should do the same: for those OPENs, write VALUE 3, RESULT and LEN
+a few times while "loading" (busy), then answer.
 Errors: `$81` not found, `$82` not a folder, `$83` too big, `$84` can't read, `$85` can't run,
 `$86` the network is not connected, `$8F` unknown.
 
