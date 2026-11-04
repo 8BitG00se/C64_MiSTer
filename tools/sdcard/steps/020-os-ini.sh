@@ -5,6 +5,10 @@
 # whenever a share is set up, and waits for it (Neal's os.log showed a 24-59 second stall on
 # every boot). A release card must never do that, so startin=sd is written.
 #
+# start= is /media/fat/games/C64, the top of the SD card library. The tree under it
+# (Demos, Games, SIDs, My Chips, Disks) belongs to step 010 and docs/SDCARD.md, which the
+# emulator session owns - this step must not assume any particular folder below games/C64.
+#
 # It is careful with a card that already has an os.ini:
 #   - no os.ini           -> writes the canonical one
 #   - os.ini with startin= -> left completely alone (someone chose that on purpose)
@@ -26,8 +30,8 @@ boot=_Computer/Octophonic 64.mgl
 ; where the browser starts. sd = the SD card, always, with no waiting for a network.
 ; net = a network share. last = wherever you were last.
 startin=sd
-; the folder @ starts in - the Octophonic library on the SD card
-start=/media/fat/games/C64/Octophonic
+; the folder @ starts in - the C64 library on the SD card
+start=/media/fat/games/C64
 OSINI
 }
 
