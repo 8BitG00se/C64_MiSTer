@@ -61,7 +61,8 @@ put(0xFB97, w2)
 
 # the hooks: CINT (reset, RUN/STOP+RESTORE) the 25-row editor and OctoVIC off; the IRQ the eq and
 # the light; CLR and the scroll the top box
-want(0xE518, [0x20, 0xA0, 0xE5], 'CINT'); put(0xE518, jsr('cinthk'))
+wl = {l.split('=')[0].strip(): int(l.split('=')[1].split(';')[0].strip().lstrip('$'), 16) for l in open('wedge.lbl') if '=' in l}
+want(0xE518, [0x20, 0xA0, 0xE5], 'CINT'); put(0xE518, [0x20, wl['cinthk'] & 255, wl['cinthk'] >> 8])   # (wedge.asm)
 want(0xEA31, [0x20, 0xEA, 0xFF], 'the IRQ'); put(0xEA31, jsr('irqhk'))
 want(0xE86E, [0x20, 0x44, 0xE5], 'CLR'); put(0xE86E, jsr('clrhk'))
 want(0xE8F6, [0xA2, 0xFF, 0xC6, 0xD6, 0xC6, 0xC9, 0xCE, 0xA5, 0x02], 'the scroll')

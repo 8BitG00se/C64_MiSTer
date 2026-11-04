@@ -1,4 +1,4 @@
-# Octophonic OS (milestone 1, build 3)
+# Octophonic OS (milestone 1, build 3; F keys and the SD tree: build 6)
 
 The MiSTer starts straight into Octophonic 64, and the SD card is used from the READY prompt.
 Nothing changes for a MiSTer without `/media/fat/octophonic/os.ini`.
@@ -31,9 +31,20 @@ recording checks compare every VIC pixel of rows 0-23 with the VIC's own picture
   SID, a soft C-G pad, ending on the C chord.
 - Melody and third use voice 3 of the 8 SIDs, so the eq shows them.
 - Every note has sustain 0 and dies away by itself.
+- Build 6: about 9 dB louder (peak about -6 dBFS, was -15): volume 15, every note on voices 2 and 3
+  of its SID with the oscillators reset together (TEST) so they add in phase, the pad on SIDs 1-6.
+  At its end it lets go of every gate (the release rates are the decay rates, so nothing is cut
+  short), so a BASIC POKE that gates a voice afterwards sounds and the eq shows it.
 - The player runs from the IRQ in the tape buffer (`$033C`, unused on the core). It stops at once,
   leaving the SIDs alone, when RUN, SYS or LOAD shut the start screen, or when the IRQ vector is no
   longer its own. The browser stops it too.
+
+**The eq shows any voice** (build 6): while OctoVIC's CTRL (`$D605`) holds `$0B` - the value only the
+start screen writes; its octoff writes 0 at RUN, SYS, LOAD and CINT - a read of a SID's ENV3 (`$1C`)
+gives the loudest of that SID's three envelopes, not voice 3's alone (the core:
+`rtl/fpga64_sid_iec.vhd` and `rtl/sid/sid_top.sv`, `eq_any`; the emulator: `coresid.c`). So POKEing a
+tone on voice 1 from BASIC moves the bar. Every program gets the real ENV3 (unless it writes `$0B`
+to CTRL itself). No ROM byte is used.
 
 How it is drawn is described in `tools/octoos/kernal/octo.asm`:
 - OctoVIC's copper switches KEY between the page and the box.
@@ -49,30 +60,45 @@ How it is drawn is described in `tools/octoos/kernal/octo.asm`:
 | `@/NAME` | the same, from the start folder; `@/` alone goes back to it; `@A/B` goes two down |
 | `/NAME` | load and run NAME (.prg, or a .crt); a .d64/.g64/.d81 goes into drive 8 |
 | `@!` | out to the MiSTer's own menu (MENU, `12`) |
-| F1 | the browser |
+| F1 BROWSE | the browser at the drives: SD CARD and NETWORK (always, build 6) |
+| F3 LOAD | the browser in the folder you were last in: RETURN loads and runs - a `.prg`, `.crt` or `.t64` through Main (the core resets), a `.d64`/`.g64`/`.d81` into drive 8, then `LOAD"*",8,1` and RUN; a `.reu` is attached (then RETURN on its `.prg`) |
+| F5 SIDS | the settings, the bar on the SID lines (MY CHIP LEFT) |
+| F7 DUAL | the settings, the bar on SPLIT SCREENS |
+| F8 SET | the settings (F7 there goes straight back to READY) |
 | C=+F1 | the MiSTer's own menu (other cores, MiSTer's settings): types `@!`, only on a MiSTer (NET b5); the emulator ignores it |
 
-F3, F5, F7 and F8 are shown on the bar but are not wired yet: they do nothing at READY, as on a stock C64.
+The F keys need nothing new from Main: F1 is `02` CHDIR `*`, F3's RETURN is `07` OPEN (VALUE 8: a
+disk went into drive 8 - SHELL.PRG then types `LOAD"*",8,1` on the screen, RETURN on it, and the ROM's
+AUTORUN types RUN after the load; VALUE 1: the core resets into the `.prg`/`.crt`; VALUE 2: a `.reu`
+attached), F5/F7/F8 are `08` SETLIST and `09` SETSTEP. (The emulator's Main model autostarts a
+`.t64`; the real Main mounts it in drive 8, VALUE 8.)
+
+The ROM types `@@` and a letter on a clear screen (`B` F1, `C` F3, `D` F5, `A` F7, `E` F8; SHIFT+F1/F3/F5
+as F1/F3/F5); the wedge loads SHELL.PRG, which finds the letter still in the input buffer at `$0202`.
+F1 works at any READY; F3, F5, F7 and F8 only while the start screen (and its bar) is up - after a
+program has run, READY's F keys are a stock C64's again.
 
 Names match whole, then without the extension, then by their start (`/HOR` finds `horizon.prg`).
 
 Every request carries a number (SEQ) and waits up to 20 seconds for the answer with that number,
 the border flickering while Main works (a folder on a network share can take a while); then
-`?NO REPLY FROM OCTOPHONIC MAIN (CMD nn)`. In the browser, folder scans and loads show SCANNING... or
+`?NO MAIN REPLY (CMD nn)` (build 6; shorter, for the ROM's room). In the browser, folder scans and loads show SCANNING... or
 LOADING... and also wait 20 s; the settings wait 3 s.
 
 ## F1: the browser
 
-F1 at READY (the editor waiting for a line, direct mode) clears the screen and types `@@`, which
-loads `SHELL.PRG` from `/media/fat/octophonic` to `$C000` and runs it. F-keys and cursor keys only:
+F1 at READY (the editor waiting for a line, direct mode) clears the screen and types `@@B`, which
+loads `SHELL.PRG` from `/media/fat/octophonic` to `$C000` and runs it; it opens at the drives
+(CHDIR `*`). F-keys and cursor keys only:
 
 | Key | Does |
 |---|---|
 | cursor up/down, joystick 2 | move the bar |
 | RETURN, fire | a folder: into it; a program or cartridge: load and run; a disk: into drive 8, then LOAD"*",8 and RUN |
 | SHIFT+RETURN | a disk: into drive 8 only |
+| F1 | the drives (SD CARD / NETWORK) |
 | F3, DEL, cursor left, joystick left | up a folder |
-| F1 / F5 | page up / down |
+| F5 / F6 | page down / up |
 | F2 | the start folder |
 | HOME | the top of the folder |
 | F8 | settings |
@@ -89,12 +115,15 @@ the middle (`OCTOPHONIC SHOWC..N BUILD 12`) so the build number at its end alway
 
 ## Drives and the network
 
-The top of the browser is the drives: **SD CARD** (`games/C64` on the card), **NETWORK** (the C64
-folder of a network share) and **USB n** (`games/C64` on a stick). F3 from the top of a drive goes
-up to them. NETWORK shows `OFF` while the share isn't connected (RETURN on it says so).
+The top of the browser is the drives: **SD CARD** (`games/C64` on the card: Demos, Games, Apps,
+Code, Music, SIDs, Pictures, My Chips, Disks, Screenshots, Saves - docs/SDCARD.md), **NETWORK** (the
+C64 folder of a network share) and **USB n** (`games/C64` on a stick). F1 opens the browser there;
+F3 from the top of a drive goes up to them. NETWORK is always listed but only opens while a share
+is there: `OFF` while one that is set up isn't connected, `NONE` with none set up (RETURN on it
+says `?THE NETWORK IS NOT CONNECTED`).
 
 At power-on Main decides where to start (F8: START IN - NETWORK, SD CARD or LAST USED, saved as
-`startin=` in os.ini; without it: the network if this MiSTer has a share set up, else the SD card).
+`startin=` in os.ini; without it: the SD card, and Main never waits for a network - build 6).
 A share is "set up" if one is mounted (cifs/smb/nfs in /proc/mounts), has been seen before on this
 MiSTer, or MiSTer's cifs script has a SERVER. Both ways of mounting work: over `/media/fat/games`
 (then `games/C64` is the share) and in a folder of its own (`games/00-NETWORK/C64`,
@@ -102,15 +131,15 @@ MiSTer, or MiSTer's cifs script has a SERVER. Both ways of mounting work: over `
 
 While a share that is set up is still connecting, the start screen's network light is red. It is the
 ball at row 0, column 38, coloured by the IRQ, and it is also shown in the browser. It turns green once
-the share is there, and is not lit at all without a share, and F1 shows
+the share is there, and is not lit at all without a share. With `startin=net`, F3 shows
 `PLEASE WAIT - CONNECTING TO NETWORK...` and opens the share's C64 folder the moment it mounts.
 Any key, or 60 seconds, uses the SD card instead (`NO NETWORK - USING THE SD CARD`).
 
 ## Screenshots and reports (for the demos' self-tests)
 
 `10` SHOT takes a screenshot with MiSTer's own code (the scaler's picture, as Win+PrtScn) and saves
-it as `<share C64 folder>/Octophonic/Screenshots/NAME.png` (no share: `/media/fat/screenshots/
-Octophonic/NAME.png`). NAME may hold folders (`HORIZON/NIGHT-0351`); letters, digits, `- _ . /`.
+it as `<share C64 folder>/Octophonic/Screenshots/NAME.png` (no share: `/media/fat/games/C64/
+Screenshots/NAME.png`). NAME may hold folders (`HORIZON/NIGHT-0351`); letters, digits, `- _ . /`.
 Main answers at once and does the rest in the background: the picture is copied out of video memory
 at the next vsync (NET bit 7 set from the request until that copy is done), then a worker thread
 writes the PNG (NET bit 6) and Main copies it to the share. At most one a second; a SHOT while one
@@ -168,6 +197,11 @@ the next demo's own .reu goes in over it when it is run, the way the menu attach
     runs. These are the tape's LOAD, SAVE, OPEN, CHRIN, CHROUT and CLOSE paths and its messages, the old
     banner, and the stock ROMs' unused bytes. All of them are listed in octo.asm and checked by patch.py.
   - It calls `osinit`, which points BASIC's IMAIN (`$0302`) at the commands.
+  - ROM room left (build 6): 27 bytes, all in small gaps (f 2, d 3, m 3, k 5, b 4, c 4, tape room 3,
+    wedge 1, wedge2 2). Build 6 took 11: the F keys (keyhk +14, with its ?NO MAIN REPLY message 15
+    shorter, @'s page prompt just MORE, RUN's text moved to $E4E6, the hex digit and CINT's hook
+    moved into wedge.asm), octoff's
+    eq-cell clean-up (+12) and the cells printed after the copper is on (+1).
   - LOAD, SAVE and OPEN on device 1 give ?ILLEGAL DEVICE NUMBER, since the tape code is gone.
   - Two bits of stock code inside the tape areas are still used by the disk and are left alone:
     `$F5A9-$F5AE` (the disk LOAD's end) and `$FB8E-$FB96` (the disk SAVE's start address).
@@ -197,7 +231,7 @@ the next demo's own .reu goes in over it when it is run, the way the menu attach
 | FE | RSEQ | read: the number STATUS answers | writes it first in every reply |
 | FF | NET | read: b1-0 the network share (0 none set up, 1 waiting for it, 2 there, 3 set up but not there), b4 Main serves the OS (the start jingle is asked for only then), b5 Main is on a MiSTer (so MENU is offered; the emulator's model leaves it clear), b7 a screenshot is being copied out of video memory, b6 its PNG is being written | writes it whenever it changes (kept through a core reset) |
 
-Commands: `01` DIR (PETSCII text, 0-terminated), `02` CHDIR, `03` LOAD, `04` RUN, `05` INFO,
+Commands: `01` DIR (PETSCII text, 0-terminated), `02` CHDIR (NAME `*`: the drives), `03` LOAD, `04` RUN, `05` INFO,
 `06` LIST (path 40 bytes, then 40-byte records: type, size text (5), ext (3), name (31; Main cuts a long name in the middle to 28 so its end - a build number - shows)), `07` OPEN (entry LEN),
 `08` SETLIST (40-byte lines: label, value), `09` SETSTEP (line ARG, VALUE 1 or $FF), `0A` SETAPPLY
 (start the chosen chip preset), `0B` NOSHARE (stop waiting for the network: the SD card), `10` SHOT,
@@ -242,7 +276,19 @@ Main's side, on hps_io's EXT_BUS: `0x70` poll (reply `$6F00` + pending), `0x71` 
 after the reply: the 16 registers, then the 32 name bytes), `0x72` write (each word
 `{register, value}`; STATUS last).
 
-## OCTOCODE: write code, press F1, it runs (`13`-`15`)
+## OCTOCODE: write code, press F2, it runs (`13`-`15`)
+
+Build 2 of the editor (build 6 of the emulator) has the one key map: **F1 BROWSE** (the editor and its
+code go into VRAM, then the browser at the drives; RUN brings it back), **F2 COMPILE**, F3 LOAD,
+F5 SAVE, F7 READY, SHIFT+RETURN deletes a line, F4 a new line, F6/F8 page up/down. Its bar is in the
+start screen's style: `F1Browse F2Compile F3Load F5Save F7Ready`, keys yellow. OCTOCODE.PRG goes in
+the SD card's `Apps` folder, so the browser starts it at once.
+
+**The target.** A comment line `; target stock` anywhere in the source makes the file a stock C64
+program: COMPILE's log says `Target: STOCK C64`, warns about each line that names an Octophonic-only
+address (OctoVIC `$D600-$D6FF`, `$D03F`; a second SID `$D420-$D7FF`; the REU `$DF00-$DF0A`), and GO
+runs it on a stock machine - one SID, no REU, OctoVIC can't be opened - until RUN/STOP+RESTORE
+brings the editor back (the emulator; `stock.asm` is the example). Without it: `Target: OCTOPHONIC 64`.
 
 OCTOCODE.PRG is a code editor on the C64 (6502, `tools/octoos/octocode`). The source is ACME assembler
 text, PETSCII in the upper/lower case set; Main saves it, assembles it with ACME and starts it.
@@ -282,7 +328,7 @@ build in `/media/fat/octophonic/acme`, run in a thread so COMPLOG can say "still
 ```
 enabled=1
 boot=_Computer/Octophonic 64.mgl      ; or an .rbf; missing: the newest _Computer/.C64_Octophonic_*.rbf
-startin=net                           ; net, sd or last (F8 START IN); missing: net if a share is set up, else sd
+startin=sd                            ; net, sd or last (F8 START IN); missing: sd
 start=/media/fat/games/00-NETWORK/C64 ; optional: the share's C64 folder, if Main can't find it
 ```
 

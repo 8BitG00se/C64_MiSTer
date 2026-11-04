@@ -55,7 +55,7 @@ new file mode 100644
 index 0000000..981245a
 --- /dev/null
 +++ b/support/octo/octo.cpp
-@@ -0,0 +1,1416 @@
+@@ -0,0 +1,1425 @@
 +// OCTOPHONIC OS (milestone 1, build 2) - by Mong00se.
 +//
 +// With /media/fat/octophonic/os.ini on the card, the MiSTer starts straight into the Octophonic 64
@@ -84,7 +84,7 @@ index 0000000..981245a
 +//   0A SETAPPLY start the chosen chip preset (and keep it as the one the OS boots with)
 +//   0B NOSHARE  stop waiting for the network share: the SD card's folder
 +//   10 SHOT     a screenshot (MiSTer's own: the scaler's picture, as Win+PrtScn) saved as
-+//               <share>/C64/Octophonic/Screenshots/NAME.png (no share: /media/fat/screenshots/Octophonic)
++//               <share>/C64/Octophonic/Screenshots/NAME.png (no share: /media/fat/games/C64/Screenshots)
 +//               - answered at once, saved in the background, at most one a second. NET b7 is set
 +//               while the picture is being copied out of video memory, b6 while the PNG is written
 +//   11 APPEND   VALUE $FF: file ARG (0-3) is NAME (a path under Screenshots, folders made as needed);
@@ -152,7 +152,7 @@ index 0000000..981245a
 +static int  os_enabled = 0;
 +static char os_boot[512] = "_Computer/Octophonic 64.mgl";
 +static char os_start[512] = "";
-+static char os_startin[16] = "";           // "net", "sd", "last" ("": network if there is one, else SD)
++static char os_startin[16] = "";           // "net", "sd", "last" ("": the SD card)
 +static int  os_active = 0;
 +static char cwd[1024];                   // the folder, relative to /media/fat ("" is the top)
 +static unsigned long poll_timer = 0;
@@ -492,14 +492,15 @@ index 0000000..981245a
 +	if ((w >> 8) != OCTO_MAGIC) { os_log("core: no mailbox (poll %04X) - the OS is off for this core", w); return; }
 +	os_active = 1;
 +
-+	// where to start: os.ini's startin= (network, SD card, the last folder); without it the
-+	// network when this MiSTer has a share, else the SD card. start= is the share's folder, if set.
++	// where to start: os.ini's startin= (network, SD card, the last folder); without it the SD
++	// card, always - Main never waits for a network unless os.ini asks for one (startin=net).
++	// start= is the share's folder, if set.
 +	if (os_start[0] && !strncmp(os_start, OS_TOP "/games/C64", strlen(OS_TOP "/games/C64")) && !os_start[strlen(OS_TOP "/games/C64")])
 +		os_start[0] = 0;                                     // build 1/2's default: not a choice
 +	net_conf = net_configured();
 +	std::string nr = net_find();
 +	if (!nr.empty()) snprintf(net_root, sizeof(net_root), "%s", nr.c_str());
-+	const char *mode = os_startin[0] ? os_startin : (net_conf ? "net" : "sd");
++	const char *mode = os_startin[0] ? os_startin : "sd";
 +	snprintf(cwd, sizeof(cwd), "%s", sd_root().c_str());
 +	net_wait = 0;
 +	struct stat st;
@@ -624,7 +625,9 @@ index 0000000..981245a
 +	{
 +		Entry sd = { "SD CARD", 1, 0, sd_root(), 0, "" };
 +		v.push_back(sd);
-+		if (net_conf) v.push_back({ "NETWORK", 1, 0, net_root, net_state != 2, net_state == 2 ? "" : "  OFF" });
++		// NETWORK is always offered, so the choice is always SD CARD / NETWORK; it can only be
++		// opened while a share that is set up is there (NONE: none set up on this MiSTer)
++		v.push_back({ "NETWORK", 1, 0, net_root, !net_conf || net_state != 2, !net_conf ? " NONE" : net_state == 2 ? "" : "  OFF" });
 +		for (int n = 0; n < 4; n++)
 +		{
 +			char u[64], nm[16];
@@ -919,6 +922,12 @@ index 0000000..981245a
 +{
 +	char keep[sizeof(cwd)];
 +	snprintf(keep, sizeof(keep), "%s", cwd);
++	if (!strcmp(name, DRIVES))                               // "*": the drives (F1 opens the browser there)
++	{
++		snprintf(cwd, sizeof(cwd), DRIVES);
++		mb_reply(ST_DONE, 0);
++		return;
++	}
 +	if (name[0] == '/' || !name[0])
 +	{
 +		snprintf(cwd, sizeof(cwd), "%s", os_start);
@@ -1094,7 +1103,7 @@ index 0000000..981245a
 +static int startin_now()
 +{
 +	for (int i = 0; i < 3; i++) if (!strcasecmp(os_startin, startins[i])) return i;
-+	return net_conf ? 0 : 1;
++	return 1;                                               // none set: the SD card
 +}
 +
 +static std::vector<std::string> presets;   // the Octophonic launchers in _Computer
@@ -1290,7 +1299,7 @@ index 0000000..981245a
 +static std::string report_dir()
 +{
 +	if (net_state == 2 && net_root[0]) return std::string(OS_TOP "/") + net_root + "/Octophonic/Screenshots";
-+	return std::string(OS_TOP "/screenshots/Octophonic");
++	return std::string(OS_TOP "/games/C64/Screenshots");          // (build 6: the SD tree's Screenshots)
 +}
 +
 +static void make_dirs(const std::string &path)        // mkdir -p of the folder part

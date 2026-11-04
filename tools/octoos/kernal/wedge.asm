@@ -33,6 +33,7 @@ SETKEY  = $FB97         ; wedge2.asm: F1 at READY, the no-reply message
 NOREPLY = $FB9A
 CALL2   = $FB9D
 SHELLAT = $C000         ; where SHELL.PRG goes
+OCTOFF  = $F38E         ; octo.asm: OctoVIC off, the 25-row editor (fixed)
 AUTORUN = $02A8
 
         * = $F72C
@@ -70,14 +71,14 @@ ours    jsr open
         cmp #$21                ; @!: out to the MiSTer's own menu (Main loads it; C=+F1 types it)
         bne +
         lda #$12                ; MENU
-        jsr call
+        jsr CALL2
         jmp ready
 +
         lda BUF,x               ; @ alone: the directory
         beq dodir
         jsr name                ; (a leading / means from the start folder: Main does that)
         lda #$02                ; CHDIR
-        jsr call
+        jsr CALL2
         beq dodir
         jmp error
 dodir   lda #0
@@ -92,7 +93,7 @@ page    lda #<DIRTXT
         lda #20
         sta MB_VAL
         lda #$01                ; DIR: a page of text
-        jsr call
+        jsr CALL2
         bne error
         ldy #0
 -       lda $01                 ; the text is under the BASIC ROM: bank it out for one read
@@ -123,13 +124,13 @@ page    lda #<DIRTXT
         jmp page                ; LEN already holds where the next page starts
 
 doshell lda #$0F                ; SHELL: the browser into RAM
-        jsr call
+        jsr CALL2
         bne error
         jmp SHELLAT
 
 dorun   jsr name
         lda #$04                ; RUN
-        jsr call
+        jsr CALL2
         bne error
         ldx #msg_load-msgs
         lda MB_VAL
@@ -159,8 +160,8 @@ error   cmp #$FE                ; no reply in 3 seconds
 +       jsr print
         jmp ready
 
-; the command in A: wait for Main (RUN/STOP gives up, 20 s at most); Z set when it's done
-call    jmp CALL2               ; wedge2.asm: the sequence number, the wait, the border
+; (the requests: jsr CALL2, wedge2.asm - the sequence number, the wait, the border; RUN/STOP gives
+; up, 20 s at most; Z set when it's done)
 
 ; the name from BUF,x to the end of the line, without quotes
 name    sta MB_NCLR
@@ -208,7 +209,7 @@ print   lda msgs,x
 
 msgs
 msg_nobox !pet 13, "?no os", 13, 0
-msg_more  !pet 18, "more", 146, " (stop ends)", 0
+msg_more  !pet 18, "more", 146, 0             ; (any key: the next page; RUN/STOP ends it)
 msg_load  !pet 13, "loading", 13, 0
 msg_disk  !pet 13, "in drive 8", 13, 0
 msg_err   !pet 13, "?os error", 13, 0
@@ -231,6 +232,16 @@ shiftr2 sei
         ldx #1
         rts
 ldtxt   !byte $4C, $4F, $41, $44, $22, $2A, $22, $2C, $38, $0D   ; LOAD"*",8 RETURN
+; a hex digit (A 0-15) printed - wedge2.asm's no-reply message (here since build 6, for the room)
+hex     cmp #10
+        bcc +
+        adc #6
++       adc #$30
+        jmp CHROUT
+; CINT (reset, RUN/STOP+RESTORE, a cartridge's start): OctoVIC off, the editor's 25 rows, then
+; the KERNAL's own (moved here from octo.asm in build 6, for the room octoff needed)
+cinthk  jsr OCTOFF
+        jmp $E5A0
 wedgeend
 !if wedgeend > $F929 { !error "past the tape room" }
         * = $F929

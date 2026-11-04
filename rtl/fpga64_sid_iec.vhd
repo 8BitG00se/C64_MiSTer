@@ -301,6 +301,7 @@ signal cs_octo      : std_logic;
 signal cs_sid_s     : std_logic;
 -- OctoSID FX: SID 1 spread over SIDs 2-4 (the menu, or OctoVIC's register $C0)
 signal sidfx_reg    : std_logic_vector(1 downto 0);
+signal eq_any       : std_logic := '0';   -- OCTOPHONIC (build 6): the start screen is up - ENV3 reads any voice
 signal sidfx_mode   : std_logic_vector(1 downto 0);
 signal fx_we        : std_logic;
 signal fx_tgt       : std_logic_vector(1 downto 0);
@@ -412,7 +413,8 @@ component sid_top
 		tbl_acc       : out std_logic_vector(11 downto 0);
 		chip_ql       : in  std_logic_vector(31 downto 0);
 		chip_qr       : in  std_logic_vector(31 downto 0);
-		chip_on       : in  std_logic_vector(1 downto 0)
+		chip_on       : in  std_logic_vector(1 downto 0);
+		eq_any        : in  std_logic := '0'
   );
 end component;
 
@@ -823,6 +825,20 @@ begin
 end process;
 sidfx_mode <= (sid_fx_osd or sidfx_reg) when sid_quad = '1' else "00";
 
+-- OCTOPHONIC (build 6): the start screen is up while OctoVIC's CTRL ($D605) holds $0B, the value
+-- the start screen writes (octo.asm's frame); its octoff writes 0 at RUN, SYS, LOAD and CINT. Then
+-- each SID's ENV3 reads the loudest of its three envelopes (sid_top.sv), so the eq shows any voice
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		if reset = '1' then
+			eq_any <= '0';
+		elsif pulseWr_io = '1' and cs_octo = '1' and cpuAddr(7 downto 0) = x"05" then
+			if cpuDo = x"0B" then eq_any <= '1'; else eq_any <= '0'; end if;
+		end if;
+	end if;
+end process;
+
 fx : sid_fx
 port map (
 	clk      => clk32,
@@ -1162,7 +1178,8 @@ port map (
 	tbl_acc => tacc1,
 	chip_ql => cql1,
 	chip_qr => cqr1,
-	chip_on => chip_on
+	chip_on => chip_on,
+	eq_any  => eq_any
 );
 
 -- OCTOPHONIC: SIDs 3 and 4 - a second pair, the same as the first (its own
@@ -1204,7 +1221,8 @@ port map (
 	tbl_acc => tacc2,
 	chip_ql => cql2,
 	chip_qr => cqr2,
-	chip_on => chip_on
+	chip_on => chip_on,
+	eq_any  => eq_any
 );
 
 -- OCTOPHONIC: SIDs 5 and 6 ($D480, $D4A0)
@@ -1246,7 +1264,8 @@ port map (
 	tbl_acc => tacc3,
 	chip_ql => cql3,
 	chip_qr => cqr3,
-	chip_on => chip_on
+	chip_on => chip_on,
+	eq_any  => eq_any
 );
 
 -- OCTOPHONIC: SIDs 7 and 8 ($D580, $D5A0)
@@ -1288,7 +1307,8 @@ port map (
 	tbl_acc => tacc4,
 	chip_ql => cql4,
 	chip_qr => cqr4,
-	chip_on => chip_on
+	chip_on => chip_on,
+	eq_any  => eq_any
 );
 
 -- OCTOPHONIC: the chip personalities, shared by all four pairs (pairs 3 and 4 a clock behind)

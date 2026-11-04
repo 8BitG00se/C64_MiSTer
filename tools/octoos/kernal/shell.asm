@@ -1,9 +1,15 @@
-; OCTOPHONIC OS 1 - the browser (SHELL.PRG). F1 at READY loads it to $C000 and runs it.
+; OCTOPHONIC OS 1 - the browser (SHELL.PRG). The F keys at READY load it to $C000 and run it: the
+; ROM types @@ and a letter (wedge2.asm), still in the input buffer at $0202 when we start, and the
+; letter says what for:
+;   F1 "B" BROWSE  the drives: SD CARD / NETWORK         F3 "C" LOAD  the folder you were last in
+;   F5 "D" SIDS    the settings, on the SID lines        F7 "A" DUAL  the settings, on SPLIT SCREENS
+;   F8 "E" SET     the settings                          (F2/F4/F6 as F1/F3/F5; @@ typed: as F1)
 ; By Mong00se.
 ;   cursor up/down (or joystick port 2)  move          RETURN (or fire)  run / into a folder
-;   F1 / F5   page up / down                            SHIFT+RETURN      a disk: just put it in
+;   F5 / F6   page down / up                            SHIFT+RETURN      a disk: just put it in
 ;   F3, DEL or left arrow (joystick left)  up a folder  F2                the start folder
-;   HOME      the top                                   F7 or RUN/STOP    back to READY
+;   F1        the drives (SD CARD / NETWORK)            F7 or RUN/STOP    back to READY
+;   HOME      the top
 ;   F8        settings: chip preset, my chips, SID models, Octophonic, FX, split screens, turbo
 ;             (cursor up/down to pick, left/right to change, RETURN starts a chip preset)
 ; The 6502 is only the front end: the list, the folders and every load are Octophonic Main's,
@@ -46,7 +52,9 @@ Q       = $FD
         * = $C000
         jmp start               ; $C000: the browser (the ROM's @@, F1)
         jmp jingle              ; $C003: the start jingle (the ROM's cold start)
-start   jsr jstop               ; the jingle, if still playing, stopped (its player is in the tape buffer)
+start   lda $0202               ; the letter after @@: what the browser is opened for (0: @@ alone)
+        sta mode
+        jsr jstop               ; the jingle, if still playing, stopped (its player is in the tape buffer)
         lda #0
         sta $C6                 ; the F1 that brought us here, and anything else typed
         sta first
@@ -63,8 +71,29 @@ start   jsr jstop               ; the jingle, if still playing, stopped (its pla
         jmp READY
 +       jsr FRAME               ; the start screen's top box (the eq, the title, the network light)
         jsr fixed
-        jsr netwait             ; a share still connecting: wait for it (any key: the SD card)
         jsr netlite
+        lda mode                ; what for: F1 the drives, F3 the last folder, F5/F7/F8 the settings
+        beq mbrowse
+        sec
+        sbc #$41
+        cmp #4
+        beq mset                ; "E" F8
+        and #3
+        beq mdual               ; "A" F7
+        cmp #2
+        beq mload               ; "C" F3
+        bcs msids               ; "D" F5
+mbrowse jmp drives              ; "B" F1
+mdual   lda #2                  ; the settings, the bar on SPLIT SCREENS
+        !byte $2C
+msids   lda #1                  ; the settings, the bar on the first SID line (MY CHIP LEFT)
+        !byte $2C
+mset    lda #0
+        sta sfind
+        lda #1                  ; F7 there goes back to READY, not to the files
+        sta setonly
+        jmp settings
+mload   jsr netwait             ; a share still connecting: wait for it (any key: the SD card)
 reload  jsr dolist
         jsr drawall
         jsr hilite
@@ -90,7 +119,10 @@ loop    jsr netlite             ; when the share comes or goes, list again
         bne +
         jsr up
         jmp loop
-+       cmp #133                ; F1
++       cmp #133                ; F1: the drives
+        bne +
+        jmp drives
++       cmp #139                ; F6: page up
         bne +
         jmp pageup
 +       cmp #135                ; F5
@@ -147,6 +179,10 @@ home    lda #0
         sta skipup
         jmp reload
 
+drives  lda #'*'                 ; the drives (SD CARD / NETWORK): CHDIR "*"
+        sta MB_NCLR
+        sta MB_NAME
+        bne chdir
 upfold  lda #'.'
         sta MB_NCLR
         sta MB_NAME
@@ -269,15 +305,22 @@ disk    jsr FRAME
         bne -
 +       lda mountonly
         bne +
-        ldx #9                  ; LOAD"*",8 then RUN, as SHIFT+RUN/STOP does
--       lda autold,x
-        sta $0277,x
-        dex
-        bpl -
-        lda #10
+        ldx #0                  ; LOAD"*",8,1 typed on the screen (too long for the keyboard buffer),
+-       lda autold,x            ; then RETURN on it, and RUN after the load (AUTORUN, as SHIFT+RUN/STOP)
+        beq ++
+        jsr CHROUT
+        inx
+        bne -
+++      lda #$0D                ; a new line, then the keys: cursor up onto it, RETURN
+        jsr CHROUT
+        sta $0278
+        lda #$91
+        sta $0277
+        lda #2
         sta $C6
         lda #1
         sta AUTORUN
+        jmp $A480               ; BASIC's main loop, without READY. (the line is read at once)
 +       jmp READY
 
 ; LIST: a page of the folder into LBUF
@@ -776,7 +819,10 @@ sreload lda #<LBUF
         beq sdraw
 +       lda MB_RL
         sta count
-        lda #m_none-msgs
+        lda sfind               ; opened for a line (F5 SIDS, F7 DUAL): the bar onto it, once
+        beq +
+        jsr findln
++       lda #m_none-msgs
         tax
         jsr status
 sdraw   lda #0
@@ -847,7 +893,10 @@ sloop   jsr getkey
         cmp #3
         beq sback
         jmp sloop
-sback   jsr fixed
+sback   lda setonly         ; opened from READY (F5, F7, F8): back to READY
+        beq +
+        jmp quit
++       jsr fixed
         jmp reload
 
 sstep   sta MB_VAL
@@ -907,6 +956,47 @@ sline40 lda row
         cpx #39
         bne -
         rts
+
+; the settings line whose label starts with ftab's 4 letters for sfind (1 SIDS, 2 DUAL) -> sline
+findln  sec
+        sbc #1
+        asl
+        asl
+        sta tmp+1               ; the 4 letters' place in ftab
+        lda #0
+        sta sfind
+        lda #<LBUF
+        sta Q
+        lda #>LBUF
+        sta Q+1
+        ldx #0
+fl1     ldy #3
+fl2     lda (Q),y
+        sta tmp
+        tya
+        clc
+        adc tmp+1
+        sty rp
+        tay
+        lda ftab,y
+        ldy rp
+        cmp tmp
+        bne flnext
+        dey
+        bpl fl2
+        stx sline
+        rts
+flnext  clc
+        lda Q
+        adc #40
+        sta Q
+        bcc +
+        inc Q+1
++       inx
+        cpx count
+        bcc fl1
+        rts
+ftab    !pet "my c", "spli"     ; (PETSCII capitals, $41-$5A, as Main writes the labels)
 
 hirow   jsr rowptr              ; the bar on settings line A
         ldy #39
@@ -1107,7 +1197,7 @@ reuu    !word 0
 rowlo   !for i, 0, 24 { !byte <(SCR + i*40) }
 rowhi   !for i, 0, 24 { !byte >(SCR + i*40) }
 colours !byte 7, 1, 13, 3, 12, 7, 12, 12   ; folders yellow, .prg white, disks light green, .crt sky blue, others grey
-autold  !byte $4C, $4F, $41, $44, $22, $2A, $22, $2C, $38, $0D   ; LOAD"*",8 RETURN, in full
+autold  !byte $4C, $4F, $41, $44, $22, $2A, $22, $2C, $38, $2C, $31, 0   ; LOAD"*",8,1 in full (build 6: ,1)
 ; the core's name ($D6B8-$D6BF) and build date ($D6B4-$D6B6, BCD) on the settings title row:
 ; "core mem3     01.11.26" - from OctoVIC itself, so it is always the core really running
 corenm  ldx #4
@@ -1150,7 +1240,7 @@ t_core  !scr "core "
 stitle  !scr "settings                                "
 shelp   !scr "up/down pick  left/right change  f7 back"
 hdr     !scr " name                         type size "
-help    !scr "ret run f1/f5 page f3 up f7 ready f8 set"
+help    !scr "f1 drives f3 up f5/6 page f7 back f8 set"
 help2   !scr "c=+f1 mister menu (the mister's own)    "
 
 msgs
@@ -1192,6 +1282,14 @@ skipup  !byte 1
 sline   !byte 0
 joyold  !byte 0
 joyt    !byte 0
+mode    !byte 0
+sfind   !byte 0
+setonly !byte 0
+; the jingle's tune (read by its player from here: SHELL.PRG stays in RAM while it plays)
+; C4 D4 E4 F4 G4 A4 B4 C5 E5 (PAL: Hz x 17.0284)
+jfreq   !word 4455, 5001, 5613, 5947, 6675, 7493, 8410, 8910, 11226
+; up C D E G A C (their thirds E F G B C E), down A G E D, home C E then G C; $FF the end
+jtab    !byte $20, $31, $42, $64, $75, $87, $75, $64, $42, $31, $20, $74, $FF
 shellend
 !if shellend > LBUF { !error "the browser is too big" }
 
@@ -1206,6 +1304,8 @@ shellend
 ; (OCTST 0) or the IRQ vector is no longer its own.
 OCTSTA  = $02A7
 JP      = $033C
+JVOL    = 15            ; the SIDs' volume (build 5: 11, -15.2 dBFS; build 6: 15 and every note
+                        ; on two voices in phase - about -6 dBFS, the eq and the tune as before)
 jingle  sei
         ldx #0
 -       lda jsrc,x
@@ -1221,11 +1321,17 @@ jingle  sei
         ldy #$13
         lda #$39
         jsr jp1
+        ldy #$0C                ; voice 2 the same: it doubles voice 3 (build 6: louder, in phase)
+        jsr jp1
         iny
-        lda #$08
+        lda #$09                ; sustain 0, release 9 = the decay (the end lets go of the gates)
+        jsr jp1
+        ldy #$14
         jsr jp1
         ldy #$12
         lda #$10
+        jsr jp1
+        ldy #$0B
         jsr jp1
         dex
         bpl -
@@ -1251,10 +1357,11 @@ jingle  sei
         beq -
         inc jvol
         lda jvol
-        cmp #12
+        cmp #JVOL+1
         bne --
         sei
-        ldx #1                  ; the pad: SID 1 and 2 voice 1, C3 and G3, slow attack, long decay
+        ldx #5                  ; the pad: SID 1-6 voice 1 (1 3 5 C3, 2 4 6 G3: three of each, in
+                                ; phase - build 6, louder), slow attack, long decay
 -       lda jlo,x
         sta jp1+1
         lda jhi,x
@@ -1269,9 +1376,11 @@ jingle  sei
         lda #$9B
         jsr jp1
         iny
-        lda #$08
+        lda #$0B                ; sustain 0, release B = the decay
         jsr jp1
         ldy #4
+        lda #$08                ; TEST: the two copies' oscillators start together
+        jsr jp1
         lda #$11
         jsr jp1
         dex
@@ -1300,8 +1409,8 @@ jstop   lda $0315               ; the browser starting: the jingle's IRQ out, if
 jvol    !byte 0
 jlo     !byte $00, $20, $00, $20, $80, $A0, $80, $A0
 jhi     !byte $D4, $D4, $D5, $D5, $D4, $D4, $D5, $D5
-padlo   !byte <2227, <3338
-padhi   !byte >2227, >3338
+padlo   !byte <2227, <3338, <2227, <3338, <2227, <3338
+padhi   !byte >2227, >3338, >2227, >3338, >2227, >3338
 
 jsrc
 !pseudopc JP {
@@ -1313,8 +1422,9 @@ jirq    lda OCTSTA              ; the start screen shut (a program): stop, the S
         sta jwait
         ldy jpos
         lda jtab,y              ; a step: its third (high nibble) and the melody's note (low)
-        cmp #$FF
-        beq jout                ; the end (the notes die away by themselves: sustain 0)
+        cmp #$FF                ; the end: every gate off - so a POKE that gates a voice at READY
+        beq jfin                ; sounds (build 6; the release rates are the decay rates, so the
+                                ; last notes and the pad still die away as before)
         inc jpos
         pha
         and #$0F
@@ -1332,6 +1442,17 @@ jirq    lda OCTSTA              ; the start screen shut (a program): stop, the S
         and #7
         sta jsid
 jx      jmp $EA31
+jfin    ldx #7                  ; voices 1-3 of the 8 SIDs: triangle, gate off
+-       jsr jaddr
+        lda #$10
+        ldy #$04
+        jsr jw
+        ldy #$0B
+        jsr jw
+        ldy #$12
+        jsr jw
+        dex
+        bpl -
 jout    lda $0315               ; the IRQ back to the KERNAL - only if it is still ours
         cmp #>JP
         bne jx
@@ -1343,12 +1464,9 @@ jout    lda $0315               ; the IRQ back to the KERNAL - only if it is sti
         lda #$EA
         sta $0315
         bne jx
-jnote   pha                     ; note A (jfreq) on voice 3 of SID X: the frequency, a new gate
-        lda jlo2,x
-        sta jw+1
-        lda jhi2,x
-        sta jw+2
-        pla
+jnote   pha                     ; note A (jfreq) on voices 3 and 2 of SID X: the frequency, both
+        jsr jaddr               ; oscillators reset together (TEST) so they stay in phase - twice
+        pla                     ; the level with no beating - then a new gate.
         asl
         tay
         lda jfreq,y
@@ -1356,24 +1474,40 @@ jnote   pha                     ; note A (jfreq) on voice 3 of SID X: the freque
         lda jfreq+1,y
         ldy #$0F
         jsr jw
+        ldy #$08
+        jsr jw
         pla
-        dey
+        ldy #$0E
+        jsr jw
+        ldy #$07
+        jsr jw
+        lda #$18                ; TEST + triangle, gate off
+        ldy #$12
+        jsr jw
+        ldy #$0B
+        jsr jw
+        lda #$11                ; triangle, gate on
         jsr jw
         ldy #$12
-        lda #$10
-        jsr jw
-        lda #$11
 jw      sta $FFFF,y
+        rts
+jaddr   txa                     ; jw at SID X: $D400 + (X&1)*$20 + (X&4)*$20 + (X&2)*$80
+        and #5
+        asl
+        asl
+        asl
+        asl
+        asl
+        sta jw+1
+        txa
+        lsr
+        and #1
+        ora #$D4
+        sta jw+2
         rts
 jwait   !byte 1
 jpos    !byte 0
 jsid    !byte 0
-jlo2    !byte $00, $20, $00, $20, $80, $A0, $80, $A0
-jhi2    !byte $D4, $D4, $D5, $D5, $D4, $D4, $D5, $D5
-; C4 D4 E4 F4 G4 A4 B4 C5 E5 (PAL: Hz x 17.0284)
-jfreq   !word 4455, 5001, 5613, 5947, 6675, 7493, 8410, 8910, 11226
-; up C D E G A C (their thirds E F G B C E), down A G E D, home C E then G C
-jtab    !byte $20, $31, $42, $64, $75, $87, $75, $64, $42, $31, $20, $74, $FF
 }
 jend
 !if jend - jsrc > 192 { !error "the jingle's player is bigger than the tape buffer" }

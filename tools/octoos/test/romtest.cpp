@@ -65,7 +65,9 @@ struct Mailbox
     void reply (int st, int res, int len = -1, int val = -1) { mb[0xA] = res & 255; mb[0xB] = res >> 8; if (len >= 0) { mb[4] = len & 255; mb[5] = len >> 8; } if (val >= 0) mb[7] = val; mb[1] = st; }
     int up() const { return cwd != "*" ? 1 : 0; }
     void goUp() { if (cwd == "*") return; if (cwd == top || cwd == netTop) cwd = "*"; else cwd = cwd.substr (0, cwd.rfind ('/')); }
-    std::vector<Entry> drives() { std::vector<Entry> d = { { "SD CARD", 1, 0 } }; if (net) d.push_back ({ "NETWORK", net == 2 ? 1 : 2, 0 }); return d; }
+    // build 6: NETWORK is always on the drives level; only a share that is there opens (OFF: set up, not
+    // there; NONE: none set up)
+    std::vector<Entry> drives() { return { { "SD CARD", 1, 0 }, { "NETWORK", net == 2 ? 1 : 2, 0 } }; }
     int type_of (const Entry& e) { if (e.dir) return 0; auto x = ext_of (e.name); for (auto& c : x) c = (char) tolower (c);
         if (x == "prg" || x.empty()) return 1; if (x == "d64" || x == "g64" || x == "d81") return 2; if (x == "crt") return 3; return 4; }
     // a program, as Octophonic Main does it: the demo's .reu in first (same name, or the only one in
@@ -113,6 +115,7 @@ struct Mailbox
         }
         else if (mb[0] == 2) {
             std::string keep = cwd; size_t p = 0;
+            if (nm == "*") { cwd = "*"; reply (2, 0); return; }                 // the drives (F1, build 6)
             if (nm.empty() || nm[0] == '/') { cwd = top; while (p < nm.size() && nm[p] == '/') ++p; }
             while (p < nm.size()) { size_t q = nm.find ('/', p); std::string part = nm.substr (p, q == std::string::npos ? std::string::npos : q - p); p = q == std::string::npos ? nm.size() : q + 1;
                 if (part.empty()) continue; if (part == "..") { goUp(); continue; }
@@ -125,7 +128,7 @@ struct Mailbox
             if (cwd == "*") { auto d = drives(); total = (int) d.size();
                 const char* pth = "DRIVES"; for (int i = 0; i < 40; ++i) o.push_back (i < 6 ? (uint8_t) pth[i] : ' ');
                 int w = 0; for (int i = len; i < total && w < count; ++i, ++w) { uint8_t rec[40]; std::memset (rec, ' ', 40); rec[0] = d[(size_t) i].dir == 2 ? 6 : 0;
-                    if (d[(size_t) i].dir == 2) { rec[3] = 'O'; rec[4] = 'F'; rec[5] = 'F'; } rec[6] = 'D'; rec[7] = 'R'; rec[8] = 'V';
+                    if (d[(size_t) i].dir == 2) { const char* z = net ? "  OFF" : " NONE"; for (int k = 0; k < 5; ++k) rec[1 + k] = (uint8_t) z[k]; } rec[6] = 'D'; rec[7] = 'R'; rec[8] = 'V';
                     for (int k = 0; k < 23 && k < (int) d[(size_t) i].name.size(); ++k) rec[9 + k] = pet (d[(size_t) i].name[(size_t) k]); o.insert (o.end(), rec, rec + 40); }
                 ramw (addr ? addr : 0xCA00, o); reply (2, total, -1, w); return; }
             std::string path = cwd.substr (cwd.compare (0, top.size(), top) ? 0 : top.size()); if (cwd == netTop) path = "/NET"; else if (! netTop.empty() && ! cwd.compare (0, netTop.size(), netTop)) path = "/NET" + cwd.substr (netTop.size()); else if (path.empty()) path = "/"; if (path.compare (0, 4, "/NET")) path = "/TEST" + (path == "/" ? std::string() : path);
@@ -277,7 +280,7 @@ struct Rig
                 else if (k == "DEL") key (0, 0, false); else if (k == "INST") key (0, 0, true);
                 else if (k == "RET") key (0, 1, false); else if (k == "SRET") key (0, 1, true);
                 else if (k == "F1") key (0, 4, false); else if (k == "F3") key (0, 5, false); else if (k == "F5") key (0, 6, false); else if (k == "F7") key (0, 3, false);
-                else if (k == "F2") key (0, 4, true); else if (k == "F8") key (0, 3, true);
+                else if (k == "F2") key (0, 4, true); else if (k == "F8") key (0, 3, true); else if (k == "F6") key (0, 6, true);
                 else if (k == "F1LONG") key (0, 4, false, 1.5);
                 else if (k == "CF1") { m->setKeyDown (7, 5, true); run (0.05); key (0, 4, false); m->setKeyDown (7, 5, false); run (0.1); }
                 else if (k == "CHOLD") { m->setKeyDown (7, 5, true); run (0.3); }
@@ -288,7 +291,7 @@ struct Rig
                 else if (k.rfind ("WAIT", 0) == 0) run (atof (k.c_str() + 4));
                 else if (k == "MUTE") box.mute = true;
                 else if (k == "EXIT") { if (box.m && octo) box.coreReset(); run (0.1); }   // Main's CTRL+F12: Reset & Detach Cartridge, the folder kept
-                else if (k == "NETUP") { box.net = 2; box.cwd = box.netTop; }
+                else if (k == "NETUP") box.net = 2;                       // (build 6: Main starts on the SD card even so)
                 else if (k.rfind ("NETWAIT", 0) == 0) { box.net = 1; box.netWait = true; box.netAt = atoi (k.c_str() + 7) * 100; }
                 else if (k.rfind ("SLOW", 0) == 0) { int c, sec; std::sscanf (k.c_str() + 4, "%x,%d", &c, &sec); box.slowCmd = c; box.slowTicks = sec * 100; }
                 else if (k == "JDOWN") { m->setJoystick (2, false, true, false, false, false); run (0.15); m->setJoystick (2, false, false, false, false, false); run (0.1); }
@@ -346,7 +349,7 @@ static std::string bootcheck (Rig& r)
     for (int c = 0; c < 7; ++c) if ((r.m->getBus().readColour (53 + c) & 15) != rb[c]) { why += "OCTOVIC not in the rainbow; "; break; }
     for (int c = 0; c < 6; ++c) if ((ram[0x400 + c] & 0xFF) != 0xA0 || (r.m->getBus().readColour (c) & 15) != 3) { why += "the eq's cells; "; break; }
     if (r.octo) {
-        if ((ram[0x400 + 38] & 0x7F) != 0x51) why += "no light's ball at row 0, column 38; ";
+        if (ram[0x400 + 38] != 0xA0) why += "no light's square at row 0, column 38; ";
         const int lc = r.m->getBus().readColour (38) & 15, want = r.box.net == 0 ? 6 : r.box.net == 2 ? 5 : 2;
         if (lc != want) why += "the light's colour " + std::to_string (lc) + " (want " + std::to_string (want) + "); ";
         why += barcheck (r);
@@ -376,7 +379,7 @@ static std::string browsercheck (Rig& r)
     if (row (0).substr (13, 13) != "OCTOPHONIC 64") why += "title; ";
     if (row (1).substr (13, 11) != "OCTOVIC 256") why += "OCTOVIC 256 not on row 1; ";
     if (row (4).find_first_not_of (' ') != std::string::npos) why += "row 4 not blank (crowded under the box); ";
-    if (row (24).substr (0, 7) != "RET RUN") why += "the browser's help not on row 24; ";
+    if (row (24).substr (0, 9) != "F1 DRIVES") why += "the browser's help not on row 24; ";
     if (row (5).substr (0, 5) != "/TEST") why += "path not on row 5: '" + row (5) + "'; ";
     if (row (6).find_first_not_of (' ') != std::string::npos) why += "row 6 not blank; ";
     if (row (7).substr (1, 4) != "NAME" || row (7).substr (30, 9) != "TYPE SIZE") why += "column names not on row 7; ";
@@ -410,9 +413,9 @@ int main (int argc, char** argv)
     std::vector<Case> cases = {
         { "boot screen: cold start", OCTO, { "{WAIT1}" }, [] (const Snap&, const Snap&, Rig&, Rig& oc) { return bootcheck (oc); } },
         { "boot screen: after CTRL+F12", OCTO, { "10 PRINT 1\n", "/HELLO\n{WAIT5}", "{EXIT}{WAIT4}" }, [] (const Snap&, const Snap&, Rig&, Rig& oc) { return bootcheck (oc); } },
-        { "browser screen: layout, names, sizes, colours", OCTO, { "{F1}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
+        { "browser screen: layout, names, sizes, colours", OCTO, { "{F1}{WAIT1}", "{RET}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
             std::string w = browsercheck (oc); if (! has (o, "UP A FOLDER") && oc.box.cwd != oc.box.top) w += "no UP A FOLDER; "; return w; } },
-        { "browser screen: in a folder - .. named, bar below it, 16M", OCTO, { "{F1}{WAIT1}", "{RET}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
+        { "browser screen: in a folder - .. named, bar below it, 16M", OCTO, { "{F1}{WAIT1}", "{RET}{WAIT1}", "{RET}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
             std::string w = browsercheck (oc); if (! has (o, ".. (UP A FOLDER)")) w += "no '.. (UP A FOLDER)'; "; if (! has (o, "  16M")) w += "16 MB .reu not shown as 16M; ";
             auto* ram = oc.m->getBus().getRam(); if ((ram[0x400 + 10 * 40 + 1] & 0x80) == 0) w += "the bar is not on the first entry below ..; "; return w; } },
         { "SHIFT+RUN/STOP shows LOAD and RUN in full", OCTO, { "{CLR}{SSTOP}{WAIT10}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
@@ -453,78 +456,93 @@ int main (int argc, char** argv)
           [] (const Snap&, const Snap& o, Rig&, Rig& oc) { if (oc.box.ran != 1) return std::string ("V1.1: /HELLO did not run"); if (! has (o, "\nHI")) return std::string ("HELLO did not print HI"); return std::string(); } },
         { "a BASIC line still works after @", OCTO, { "{CLR}@\n", "10 PRINT \"AFTER\"\n", "RUN\n" },
           [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "\nAFTER") ? std::string() : std::string ("no AFTER"); } },
-        { "F1 opens the browser", OCTO, { "{CLR}{F1}{WAIT1}" },
-          [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "TYPE SIZE") && has (o, "HELLO") ? std::string() : std::string ("no browser"); } },
-        { "browser: down, RETURN runs", OCTO, { "{CLR}{F1}{WAIT1}", "{DOWN}", "{RET}{WAIT1}" },
+        { "F1 opens the browser at the drives: SD CARD, NETWORK", OCTO, { "{CLR}{F1}{WAIT1}" },
+          [] (const Snap&, const Snap& o, Rig&, Rig& oc) { return has (o, "TYPE SIZE") && has (o, "SD CARD") && has (o, "NETWORK") && oc.box.cwd == "*" ? std::string() : std::string ("no drives"); } },
+        { "F1, RETURN: SD CARD opens the card", OCTO, { "{CLR}{F1}{WAIT1}", "{RET}{WAIT1}" },
+          [] (const Snap&, const Snap& o, Rig&, Rig& oc) { return has (o, "HELLO") && oc.box.cwd == oc.box.top ? std::string() : "drive SD went to " + oc.box.cwd; } },
+        { "F3 at READY: the browser in the last folder", OCTO, { "{CLR}@SUB\n", "{F3}{WAIT1}" },
+          [] (const Snap&, const Snap& o, Rig&, Rig& oc) { return has (o, "/TEST/SUB") && has (o, "TYPE SIZE") ? std::string() : std::string ("F3 not in the last folder"); } },
+        { "F5 at READY: the settings, the bar on MY CHIP LEFT", OCTO, { "{CLR}{F5}{WAIT1}" },
+          [] (const Snap&, const Snap& o, Rig&, Rig& oc) { auto* ram = oc.m->getBus().getRam();
+            return has (o, "MY CHIP LEFT") && (ram[0x400 + 10 * 40 + 1] & 0x80) ? std::string() : std::string ("not on MY CHIP LEFT"); } },
+        { "F7 at READY: the settings, the bar on SPLIT SCREENS", OCTO, { "{CLR}{F7}{WAIT1}" },
+          [] (const Snap&, const Snap& o, Rig&, Rig& oc) { auto* ram = oc.m->getBus().getRam();
+            return has (o, "SPLIT SCREENS") && (ram[0x400 + 18 * 40 + 1] & 0x80) ? std::string() : std::string ("not on SPLIT SCREENS"); } },
+        { "F8 at READY: the settings; F7 back to READY", OCTO, { "{CLR}10 PRINT \"KEPT\"\n", "{F8}{WAIT1}", "{F7}{WAIT1}", "RUN\n" },
+          [] (const Snap&, const Snap& o, Rig&, Rig& oc) { auto* ram = oc.m->getBus().getRam();
+            return has (o, "\nKEPT") && (ram[0x400 + 9 * 40 + 1] & 0x80) == 0 ? std::string() : std::string ("not back at READY"); } },
+        { "browser: down, RETURN runs", OCTO, { "{CLR}{F1}{WAIT1}", "{RET}{WAIT1}", "{DOWN}", "{RET}{WAIT1}" },
           [] (const Snap&, const Snap& o, Rig&, Rig& oc) { return oc.box.ran == 1 && oc.box.lastRun == "hello.prg" ? std::string() : "browser ran '" + oc.box.lastRun + "'"; } },
-        { "browser: into a folder and back up", OCTO, { "{CLR}{F1}{WAIT1}", "{RET}{WAIT1}", "{F3}{WAIT1}" },
+        { "browser: into a folder and back up", OCTO, { "{CLR}{F1}{WAIT1}", "{RET}{WAIT1}", "{RET}{WAIT1}", "{F3}{WAIT1}" },
           [] (const Snap&, const Snap& o, Rig&, Rig& oc) { return oc.box.cwd == oc.box.top && has (o, "HELLO") ? std::string() : std::string ("not back at the top"); } },
         { "browser: F7 back to READY, BASIC intact", OCTO, { "{CLR}10 PRINT \"KEPT\"\n", "{F1}{WAIT1}", "{F7}{WAIT1}", "RUN\n" },
           [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "\nKEPT") ? std::string() : std::string ("program lost"); } },
-        { "browser: joystick down and fire", OCTO, { "{CLR}{F1}{WAIT1}", "{JDOWN}", "{JFIRE}{WAIT1}" },
+        { "browser: joystick down and fire", OCTO, { "{CLR}{F1}{WAIT1}", "{RET}{WAIT1}", "{JDOWN}", "{JFIRE}{WAIT1}" },
           [] (const Snap&, const Snap&, Rig&, Rig& oc) { return oc.box.ran == 1 ? std::string() : std::string ("fire did not run"); } },
         { "settings: F8, change left SIDs", OCTO, { "{CLR}{F1}{WAIT1}", "{F8}{WAIT1}", "{DOWN}{DOWN}{DOWN}{DOWN}{RIGHT}{WAIT1}" },
           [] (const Snap&, const Snap& o, Rig&, Rig& oc) { return oc.box.lines[4].v == 1 && has (o, "LEFT SIDS 1357") && has (o, "8580") ? std::string() : std::string ("left SIDs not changed"); } },
         { "settings: chip preset picked and started", OCTO, { "{CLR}{F1}{WAIT1}", "{F8}{WAIT1}", "{RIGHT}{WAIT1}", "{RET}{WAIT1}" },
           [] (const Snap&, const Snap&, Rig&, Rig& oc) { return oc.box.boot == "WARM" ? std::string() : "boot preset " + oc.box.boot; } },
-        { "settings: F7 back to the files, then RUN a file", OCTO, { "{CLR}{F1}{WAIT1}", "{F8}{WAIT1}", "{F7}{WAIT1}", "{DOWN}{RET}{WAIT1}" },
+        { "settings: F7 back to the files, then RUN a file", OCTO, { "{CLR}{F1}{WAIT1}", "{RET}{WAIT1}", "{F8}{WAIT1}", "{F7}{WAIT1}", "{DOWN}{RET}{WAIT1}" },
           [] (const Snap&, const Snap&, Rig&, Rig& oc) { return oc.box.lastRun == "hello.prg" ? std::string() : "ran '" + oc.box.lastRun + "'"; } },
-        { "browser: a disk goes in and loads", OCTO, { "{CLR}{F1}{WAIT1}", "{DOWN}{DOWN}{RET}{WAIT12}" },
+        { "browser: a disk goes in and loads", OCTO, { "{CLR}{F1}{WAIT1}", "{RET}{WAIT1}", "{DOWN}{DOWN}{RET}{WAIT12}" },
           [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "DISK IN DRIVE 8") && has (o, "\nHI") ? std::string() : std::string ("disk not loaded"); } },
-        { "browser: F2 start folder, HOME, page keys", OCTO, { "{CLR}{F1}{WAIT1}", "{RET}{WAIT1}", "{F2}{WAIT1}", "{F5}{F1}{HOME}{WAIT1}" },
+        { "browser: F2 start folder, HOME, page keys", OCTO, { "{CLR}{F1}{WAIT1}", "{RET}{WAIT1}", "{RET}{WAIT1}", "{F2}{WAIT1}", "{F5}{F6}{HOME}{WAIT1}" },
           [] (const Snap&, const Snap& o, Rig&, Rig& oc) { return oc.box.cwd == oc.box.top && has (o, "ZDISK") ? std::string() : std::string ("not at the start folder"); } },
         { "no reply at all: the 20 s message", OCTO, { "{CLR}{MUTE}@\n{WAIT22}" },
-          [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "NO REPLY FROM OCTOPHONIC MAIN (CMD 01)") ? std::string() : std::string ("no timeout message"); } },
+          [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "NO MAIN REPLY (CMD 01)") ? std::string() : std::string ("no timeout message"); } },
         { "slow network: a 7 s @ is still answered", OCTO, { "{CLR}{SLOW1,7}@\n{WAIT9}" },
           [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "ENTRIES") && ! has (o, "NO REPLY") ? std::string() : std::string ("slow DIR not answered"); } },
-        { "slow network: the browser says SCANNING", OCTO, { "{CLR}{SLOW6,7}{F1}{WAIT3}" },
+        { "slow network: the browser says SCANNING", OCTO, { "{CLR}{SLOW6,7}{F3}{WAIT3}" },
           [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "SCANNING...") ? std::string() : std::string ("no SCANNING"); } },
-        { "slow network: the browser list after 7 s", OCTO, { "{CLR}{SLOW6,7}{F1}{WAIT9}" },
+        { "slow network: the browser list after 7 s", OCTO, { "{CLR}{SLOW6,7}{F3}{WAIT9}" },
           [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "HELLO") && ! has (o, "SCANNING") ? std::string() : std::string ("no list"); } },
         { "@ times out, @SUB after it gets its own answer", OCTO, { "{CLR}{SLOW1,25}@\n{WAIT21}", "@SUB\n{WAIT8}" },
           [] (const Snap&, const Snap& o, Rig&, Rig& oc) { if (! has (o, "(CMD 01)")) return std::string ("no timeout"); if (oc.box.drops != 1) return "drops " + std::to_string (oc.box.drops);
               return has (o, "INNER") ? std::string() : std::string ("SUB not listed"); } },
-        { "browser times out, F2 after it gets its own answer", OCTO, { "{CLR}{SLOW6,25}{F1}{WAIT21}", "{F2}{WAIT8}" },
+        { "browser times out, F2 after it gets its own answer", OCTO, { "{CLR}{SLOW6,25}{F3}{WAIT21}", "{F2}{WAIT8}" },
           [] (const Snap&, const Snap& o, Rig&, Rig& oc) { if (oc.box.drops != 1) return "drops " + std::to_string (oc.box.drops);
               return has (o, "HELLO") && ! has (o, "NO REPLY") ? std::string() : std::string ("no list after F2"); } },
         { "demo A with its REU, CTRL+F12 out, F1, demo B with its REU", OCTO,
-          { "{CLR}@SUB/DEMOA\n", "/DEMOA\n{WAIT5}", "{EXIT}{WAIT4}", "{F1}{WAIT1}", "{F3}{WAIT1}", "{DOWN}{RET}{WAIT1}", "{RET}{WAIT6}" },
+          { "{CLR}@SUB/DEMOA\n", "/DEMOA\n{WAIT5}", "{EXIT}{WAIT4}", "{F3}{WAIT1}", "{F3}{WAIT1}", "{DOWN}{RET}{WAIT1}", "{RET}{WAIT6}" },
           [] (const Snap&, const Snap& o, Rig&, Rig& oc) { if (oc.box.lastRun != "demob.prg") return "last run " + oc.box.lastRun;
               return has (o, "DEMO B REU B") ? std::string() : std::string ("demo B didn't see its own REU"); } },
         { "demo A runs with its own REU", OCTO, { "{CLR}@SUB/DEMOA\n", "/DEMOA\n{WAIT5}" },
           [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "DEMO A REU A") ? std::string() : std::string ("demo A didn't see its REU"); } },
-        { "CTRL+F12 gets out to the start screen, folder kept", OCTO, { "{CLR}@SUB/DEMOA\n", "/DEMOA\n{WAIT5}", "{EXIT}{WAIT4}", "{F1}{WAIT1}" },
+        { "CTRL+F12 gets out to the start screen, folder kept (F3)", OCTO, { "{CLR}@SUB/DEMOA\n", "/DEMOA\n{WAIT5}", "{EXIT}{WAIT4}", "{F3}{WAIT1}" },
           [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "OCTOPHONIC 64") && has (o, "/TEST/SUB/DEMOA") ? std::string() : std::string ("not back in the demo's folder"); } },
-        { "network: none set up - no light, browser on the SD card", OCTO, { "{WAIT1}", "{F1}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
+        { "network: none set up - no light, F3 on the SD card", OCTO, { "{WAIT1}", "{F3}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
             return has (o, "/TEST") && ! has (o, "PLEASE WAIT") && oc.box.net == 0 ? std::string() : std::string ("not straight to the SD card"); } },
+        { "network: none set up - NETWORK NONE on the drives, not opened", OCTO, { "{WAIT1}", "{F1}{WAIT1}", "{DOWN}{RET}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
+            return has (o, "NETWORK") && has (o, "NONE") && has (o, "NOT CONNECTED") && oc.box.cwd == "*" ? std::string() : std::string ("NETWORK not NONE / opened"); } },
         { "network: waiting - red light on the start screen", OCTO, { "{NETWAIT30}{WAIT1}" }, [] (const Snap&, const Snap&, Rig&, Rig& oc) {
-            auto* ram = oc.m->getBus().getRam(); return (ram[0x400 + 38] & 0x7F) == 0x51 && (oc.m->getBus().readColour (38) & 15) == 2 ? std::string() : std::string ("no red light at row 0, column 38"); } },
+            auto* ram = oc.m->getBus().getRam(); return ram[0x400 + 38] == 0xA0 && (oc.m->getBus().readColour (38) & 15) == 2 ? std::string() : std::string ("no red light at row 0, column 38"); } },
         { "network: there - green light", OCTO, { "{NETUP}{WAIT1}" }, [] (const Snap&, const Snap&, Rig&, Rig& oc) {
-            auto* ram = oc.m->getBus().getRam(); return (ram[0x400 + 38] & 0x7F) == 0x51 && (oc.m->getBus().readColour (38) & 15) == 5 ? std::string() : std::string ("no green light"); } },
-        { "network: F1 while connecting says PLEASE WAIT", OCTO, { "{NETWAIT8}{F1}{WAIT2}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
+            auto* ram = oc.m->getBus().getRam(); return ram[0x400 + 38] == 0xA0 && (oc.m->getBus().readColour (38) & 15) == 5 ? std::string() : std::string ("no green light"); } },
+        { "network: F3 while connecting says PLEASE WAIT", OCTO, { "{NETWAIT8}{F3}{WAIT2}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
             return has (o, "PLEASE WAIT - CONNECTING TO NETWORK...") ? std::string() : std::string ("no PLEASE WAIT"); } },
-        { "network: the share opens by itself when it connects", OCTO, { "{NETWAIT8}{F1}{WAIT2}", "{WAIT9}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
+        { "network: the share opens by itself when it connects", OCTO, { "{NETWAIT8}{F3}{WAIT2}", "{WAIT9}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
             return has (o, "/NET") && has (o, "NET") && ! has (o, "PLEASE WAIT") ? std::string() : std::string ("the share's folder didn't open"); } },
-        { "network: any key while waiting - the SD card", OCTO, { "{NETWAIT40}{F1}{WAIT2}", "{RET}{WAIT2}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
+        { "network: any key while waiting - the SD card", OCTO, { "{NETWAIT40}{F3}{WAIT2}", "{RET}{WAIT2}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
             return has (o, "/TEST") && has (o, "HELLO") && oc.box.cwd == oc.box.top ? std::string() : std::string ("not on the SD card after a key"); } },
-        { "network: already up - the browser opens the share", OCTO, { "{NETUP}{F1}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
+        { "network: up - NETWORK on the drives opens the share", OCTO, { "{NETUP}{F1}{WAIT1}", "{DOWN}{RET}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
             return has (o, "/NET") && ! has (o, "PLEASE WAIT") ? std::string() : std::string ("not on the share"); } },
-        { "drives: up from the top - SD CARD and NETWORK", OCTO, { "{NETUP}{F1}{WAIT1}", "{F3}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
+        { "drives: up from the top - SD CARD and NETWORK", OCTO, { "{NETUP}{F1}{WAIT1}", "{RET}{WAIT1}", "{F3}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
             return has (o, "SD CARD") && has (o, "NETWORK") && oc.box.cwd == "*" ? std::string() : std::string ("no drives level"); } },
-        { "drives: SD CARD opens the card", OCTO, { "{NETUP}{F1}{WAIT1}", "{F3}{WAIT1}", "{HOME}{RET}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
+        { "drives: SD CARD opens the card", OCTO, { "{NETUP}{F1}{WAIT1}", "{HOME}{RET}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
             return oc.box.cwd == oc.box.top && has (o, "HELLO") ? std::string() : "drive SD went to " + oc.box.cwd; } },
-        { "drives: NETWORK off while not connected", OCTO, { "{NETWAIT90}{F1}{WAIT2}", "{RET}{WAIT2}", "{F3}{WAIT1}", "{DOWN}{RET}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
+        { "drives: NETWORK off while not connected", OCTO, { "{NETWAIT90}{F1}{WAIT2}", "{DOWN}{RET}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
             return has (o, "NETWORK") && has (o, "OFF") && has (o, "NOT CONNECTED") ? std::string() : std::string ("NETWORK not shown as off / no message"); } },
-        { "REU: RETURN on a .reu attaches it, back to the list, bar on its .prg", OCTO, { "{F1}{WAIT1}", "{RET}{WAIT1}", "{RET}{WAIT1}", "{DOWN}{RET}{WAIT2}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
+        { "REU: RETURN on a .reu attaches it, back to the list, bar on its .prg", OCTO, { "{F1}{WAIT1}", "{RET}{WAIT1}", "{RET}{WAIT1}", "{RET}{WAIT1}", "{DOWN}{RET}{WAIT2}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
             if (! has (o, "REU ATTACHED")) return std::string ("no REU ATTACHED"); if (oc.box.reuLoads != 1) return "reu loads " + std::to_string (oc.box.reuLoads);
             auto* ram = oc.m->getBus().getRam();
             if ((ram[0x400 + 10 * 40 + 1] & 0x80) == 0) return std::string ("the bar isn't on the .prg"); return std::string(); } },
-        { "REU: then RETURN runs the demo without a second load", OCTO, { "{F1}{WAIT1}", "{RET}{WAIT1}", "{RET}{WAIT1}", "{DOWN}{RET}{WAIT2}", "{RET}{WAIT6}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
+        { "REU: then RETURN runs the demo without a second load", OCTO, { "{F1}{WAIT1}", "{RET}{WAIT1}", "{RET}{WAIT1}", "{RET}{WAIT1}", "{DOWN}{RET}{WAIT2}", "{RET}{WAIT6}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
             if (oc.box.lastRun != "demoa.prg") return "ran " + oc.box.lastRun; if (oc.box.reuLoads != 1) return "reu loaded " + std::to_string (oc.box.reuLoads) + " times";
             return has (o, "DEMO A REU A") ? std::string() : std::string ("demo A didn't see its REU"); } },
-        { "REU: a 16 MB .reu on its own doesn't hang", OCTO, { "{F1}{WAIT1}", "{RET}{WAIT1}", "{DOWN}{DOWN}{DOWN}{DOWN}{RET}{WAIT3}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
+        { "REU: a 16 MB .reu on its own doesn't hang", OCTO, { "{F1}{WAIT1}", "{RET}{WAIT1}", "{RET}{WAIT1}", "{DOWN}{DOWN}{DOWN}{DOWN}{RET}{WAIT3}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
             return has (o, "REU ATTACHED (16M)") && ! has (o, "LOADING") ? std::string() : std::string ("no REU ATTACHED (16M)"); } },
-        { "browser: a long name keeps its build number", OCTO, { "{NETUP}{F1}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
+        { "browser: a long name keeps its build number", OCTO, { "{NETUP}{F1}{WAIT1}", "{DOWN}{RET}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
             return has (o, " OCTOPHONIC HORIZON BUILD 10 ") && has (o, " OCTOPHONIC SHOWC..N BUILD 12 ") ? std::string() : std::string ("long names cut wrong"); } },
 
         // the start screen's own editor: rows 0-23, the bar on 24 never touched; the top box scrolls away
@@ -565,7 +583,7 @@ int main (int argc, char** argv)
         { "browser on a MiSTer: C=+F1 sends MENU; without one F1 pages", OCTO, { "{MISTER}{F1}{WAIT1}", "{CF1}{WAIT1}" },
           [] (const Snap&, const Snap&, Rig&, Rig& oc) { return oc.box.menus == 1 ? std::string() : std::string ("MENU not sent from the browser"); } },
         { "browser without a MiSTer: C= held, the help as it is", OCTO, { "{F1}{WAIT1}", "{CHOLD}" },
-          [] (const Snap&, const Snap&, Rig&, Rig& oc) { return rowtext (oc, 24).substr (0, 7) == "RET RUN" ? std::string() : std::string ("row 24: '" + rowtext (oc, 24) + "'"); } },
+          [] (const Snap&, const Snap&, Rig&, Rig& oc) { return rowtext (oc, 24).substr (0, 9) == "F1 DRIVES" ? std::string() : std::string ("row 24: '" + rowtext (oc, 24) + "'"); } },
 
         { "settings: START IN", OCTO, { "{CLR}{F1}{WAIT1}", "{F8}{WAIT1}", "{DOWN}{DOWN}{DOWN}{RIGHT}{WAIT1}" },
           [] (const Snap&, const Snap& o, Rig&, Rig& oc) { return oc.box.lines[3].v == 1 && has (o, "START IN") && has (o, "LAST USED") ? std::string() : std::string ("START IN not changed"); } },

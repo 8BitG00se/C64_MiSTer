@@ -3,7 +3,7 @@
 ; scrolling message and a note.
 ;
 ; Change something below, then press
-; F1: it is compiled and run at once.
+; F2: it is compiled and run at once.
 ; RUN/STOP+RESTORE comes back here.
 ; You can't break anything - try it!
 

@@ -105,8 +105,8 @@ texts   !byte 13
         !scr "octovic", 0
         !byte 61
         !scr "256", 0, $FE
-        !byte 0, $A0, $A0, $A0, $A0, $A0, $A0, 0
-        !byte 38, $51, 0, $FF                   ; the network light (the IRQ colours it)
+texteq  !byte 0, $A0, $A0, $A0, $A0, $A0, $A0, 0     ; (printed once the copper is on: no cyan flash)
+        !byte 38, $A0, 0, $FF                   ; the network light, a square (the IRQ colours it)
 seg_fe
 !if seg_fe > $E4AC { !error "past the room at $E473" }
 
@@ -217,10 +217,15 @@ octoff  php
         sta $D605
         sta $D60E
         sta $D03F
-        lda #$20                ; the bar's row becomes an ordinary one
-        ldx #39
-offb    sta $0400 + 960,x
-        dex
+        lda #$20                ; the bar's row becomes an ordinary one, and the eq's 6 cells (colour 3
+        ldx #39                 ; reverse spaces: cyan blocks without OctoVIC) go, if the box is
+offb    sta $0400 + 960,x       ; still at the top (scrolled away, they went with it)
+        cpx #7
+        bcs offc
+        ldy TOPY
+        bne offc
+        sta $0400,x
+offc    dex
         bpl offb
         lda $F1
         ora #$80
@@ -229,10 +234,8 @@ offx    pla
         plp
         rts
 
-; CINT (reset, RUN/STOP+RESTORE, a cartridge's start): OctoVIC off, the editor's 25 rows, then
-; the KERNAL's own
-cinthk  jsr octoff
-        jmp $E5A0
+; (CINT's hook, cinthk, is in wedge.asm since build 6: it calls octoff, fixed at $F38E)
+!if octoff != $F38E { !error "octoff moved: wedge.asm's OCTOFF" }
 
 seg_ie
 !if seg_ie > $F3D3 { !error "past the room at $F38E" }
@@ -244,6 +247,8 @@ seg_n
 vbl     bit $D011
         bpl vbl
         rts
+runtxt  !byte $52, $55, $4E, $0D        ; RUN RETURN (wedge2.asm's runkeys: fixed at $E4E6)
+!if runtxt != $E4E6 { !error "runtxt moved: wedge2.asm's RUNTXT" }
 
 seg_ne
 !if seg_ne > $E4EA { !error "past the room at $E4E0" }
@@ -370,8 +375,6 @@ fon     lda #0                  ; OctoVIC from a clean start: no sprites, $D627-
 fz      sta $D627,y             ; the box stays up while this runs)
         dey
         bpl fz
-        inx
-        jsr prtext              ; the eq's cells
         ldy #0                  ; the palettes (ptab): the backdrop, the VIC's 2-15, the main 2-17
 fpal    lda ptab,y
         sta $D619
@@ -456,6 +459,8 @@ frw0    sta VDATA
         jsr layout              ; the copper list (TOPY 0), the copper on
         jsr drawbar
         inc OCTST               ; 1 (left open while the start screen shows; RUN, SYS and LOAD shut it)
+        ldx #texteq-texts       ; the eq's cells and the light, now that the copper keys them (before,
+        jsr prtext              ; they showed as cyan blocks for the ~5 frames the bitmap took)
 ftail   jsr reutext
         jsr $F72C               ; the @ and / commands, F1 (wedge.asm)
         ldx #4                  ; READY. comes on row 5

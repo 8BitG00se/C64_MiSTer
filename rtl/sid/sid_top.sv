@@ -44,10 +44,23 @@ module sid_top
 	output [11:0] tbl_acc,
 	input  [31:0] chip_ql,
 	input  [31:0] chip_qr,
-	input   [1:0] chip_on
+	input   [1:0] chip_on,
+
+	// OCTOPHONIC (build 6): '1' while the start screen is up (OctoVIC CTRL = $0B, the start screen's;
+	// fpga64_sid_iec.vhd) - ENV3 ($1C) then reads the loudest of the SID's three envelopes, so the
+	// start screen's eq shows any voice; '0' (every program): the real voice 3 envelope
+	input         eq_any
 );
 
 localparam N = DUAL ? 2 : 1;
+
+function [7:0] env_max(input [7:0] a, input [7:0] b, input [7:0] c);
+	reg [7:0] m;
+	begin
+		m = a > b ? a : b;
+		env_max = m > c ? m : c;
+	end
+endfunction
 
 // Internal Signals
 reg  [15:0] Voice_1_Freq[N];
@@ -74,6 +87,8 @@ reg   [7:0] Filter_Mode_Vol[N];
 
 wire  [7:0] Misc_Osc3[N];
 wire  [7:0] Misc_Env3[N];
+wire  [7:0] Misc_Env1[N];
+wire  [7:0] Misc_Env2[N];
 
 wire [21:0] voice_1[N];
 wire [21:0] voice_2[N];
@@ -112,6 +127,7 @@ generate
 			.osc_msb_in(voice_3_PA_MSB[i]),
 			.osc_msb_out(voice_1_PA_MSB[i]),
 			.voice_out(voice_1[i]),
+			.env_out(Misc_Env1[i]),
 			._st_out(_st_out[i*3+0]),
 			.p_t_out(p_t_out[i*3+0]),
 			.ps__out(ps__out[i*3+0]),
@@ -133,6 +149,7 @@ generate
 			.osc_msb_in(voice_1_PA_MSB[i]),
 			.osc_msb_out(voice_2_PA_MSB[i]),
 			.voice_out(voice_2[i]),
+			.env_out(Misc_Env2[i]),
 			._st_out(_st_out[i*3+1]),
 			.p_t_out(p_t_out[i*3+1]),
 			.ps__out(ps__out[i*3+1]),
@@ -223,7 +240,7 @@ generate
 						5'h19: bus_data[i] = i ? pot_x_r : pot_x_l;
 						5'h1a: bus_data[i] = i ? pot_y_r : pot_y_l;
 						5'h1b: bus_data[i] = Misc_Osc3[i];
-						5'h1c: bus_data[i] = Misc_Env3[i];
+						5'h1c: bus_data[i] = !eq_any ? Misc_Env3[i] : env_max(Misc_Env1[i], Misc_Env2[i], Misc_Env3[i]);
 					endcase
 				end
 			end

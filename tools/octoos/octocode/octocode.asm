@@ -1,11 +1,12 @@
 ; OCTOCODE - the Octophonic 64's own code editor (OCTOCODE.PRG). By Mong00se.
 ; Original project by Mong00se - Octophonic 64 and OctoVIC by Mong00se (github.com/8BitG00se). GPL v3 or later.
 ;
-; Write ACME source on the C64, press F1: Octophonic Main saves it, assembles it with ACME and runs
+; Write ACME source on the C64, press F2: Octophonic Main saves it, assembles it with ACME and runs
 ; it. RUN/STOP+RESTORE brings you back with your code as you left it.
 ;
-;   F1 COMPILE (and run)   F3 LOAD   F5 SAVE   F7 EXIT (to READY; RUN comes back)
-;   F2 delete the line     F4 a new line above the cursor     F6 / F8 page up / down
+;   F1 BROWSE (the browser at the drives; RUN brings the editor back)   F2 COMPILE (and run)
+;   F3 LOAD   F5 SAVE   F7 READY (RUN comes back)   (build 6: one key map - F1 is BROWSE everywhere)
+;   SHIFT+RETURN delete the line   F4 a new line above the cursor   F6 / F8 page up / down
 ;   cursor keys; RETURN splits the line (the new one keeps the indent); DEL (at a line's start:
 ;   joins it to the one above); INST a space; HOME the top; CLR (SHIFT+HOME) the end
 ;
@@ -18,7 +19,7 @@
 !to "octocode.prg", cbm
 !cpu 6502
 
-BUILD   = 1
+BUILD   = 2
 MB      = $D6F0
 MB_CMD  = MB
 MB_ST   = MB+1
@@ -129,7 +130,9 @@ resume  cld
 resume2 ldx #<m_hello
         ldy #>m_hello
         jsr status
-edit    jsr fixline
+edit    lda #0                  ; (F1's flag, in a copy brought back from VRAM)
+        sta browse
+        jsr fixline
         jsr drawall
 
 ; ============================================================================ the keys
@@ -138,7 +141,10 @@ loop    lda topy                ; (where the screen was, for vredraw)
         lda topy+1
         sta otop+1
         jsr getkey
-        cmp #133                ; F1
+        cmp #133                ; F1: BROWSE
+        bne +
+        jmp k_browse
++       cmp #137                ; F2: COMPILE
         bne +
         jmp compile
 +       cmp #134                ; F3
@@ -150,9 +156,6 @@ loop    lda topy                ; (where the screen was, for vredraw)
 +       cmp #136                ; F7
         bne +
         jmp k_exit
-+       cmp #137                ; F2
-        bne +
-        jmp k_delln
 +       cmp #138                ; F4
         bne +
         jmp k_insln
@@ -179,9 +182,9 @@ loop    lda topy                ; (where the screen was, for vredraw)
 +       cmp #13
         bne +
         jmp k_return
-+       cmp #141
++       cmp #141                ; SHIFT+RETURN: the line out
         bne +
-        jmp k_return
+        jmp k_delln
 +       cmp #20
         bne +
         jmp k_del
@@ -532,7 +535,7 @@ full2   ldx #<m_full
         jsr status
         jmp loop
 
-; F2: the line out
+; SHIFT+RETURN: the line out
 k_delln jsr commit
         lda nlines+1
         bne +
@@ -2186,6 +2189,20 @@ k_save  jsr commit
 +       jsr drawall
         jmp loop
 
+; F1: BROWSE - the editor and its code into VRAM (as F7), then the browser at the drives (the ROM's
+; @@B, as F1 at READY types it). RUN brings the editor back from VRAM: the browser's $C000-$CFFF may
+; have been under the code, so the copy is used, not the RAM
+k_browse
+        lda octo
+        bne +
+        ldx #<m_nomain
+        ldy #>m_nomain
+        jsr status
+        jmp loop
++       lda #0
+        sta alive
+        lda #1
+        sta browse
 k_exit  jsr commit
         lda octo                ; a copy in VRAM, for LOAD and RUN later
         beq +
@@ -2208,13 +2225,25 @@ k_exit  jsr commit
         sta $32
         lda #$93
         jsr CHROUT
-        ldx #0
+        lda browse
+        beq +
+        ldx #4                  ; F1: CLR @@B RETURN - the browser at the drives
+-       lda kbrowse,x
+        sta $0277,x
+        dex
+        bpl -
+        lda #5
+        sta $C6
+        jmp READYV
++       ldx #0
 -       lda m_bye,x
         beq +
         jsr CHROUT
         inx
         bne -
 +       jmp READYV
+kbrowse !byte $93, $40, $40, $42, $0D
+browse  !byte 0
 
 ; a file name on the status row after the prompt at X/Y (fname, changed by typing).
 ; RETURN: C clear; RUN/STOP: C set
@@ -2556,13 +2585,15 @@ lntx    !scr "Line "
 boxttl  !scr " Compiling ", 0
 fdef    !pet "hello.asm"
 fdefl   = * - fdef
-keybar  !scr "F1 Compile  F3 Load  F5 Save  F7 Exit   "
-keycol  !byte 1,1,15,15,15,15,15,15,15,15,15,15,1,1,15,15,15,15,15,15,15,1,1,15,15,15,15,15,15,15,1,1,15,15,15,15,15,15,15,15
+; the key bar, in the start screen's style: the keys yellow, their words pale
+keybar  !scr "F1Browse F2Compile F3Load F5Save F7Ready"
+keycol  !byte 7,7,15,15,15,15,15,15,15, 7,7,15,15,15,15,15,15,15,15, 7,7,15,15,15,15,15, 7,7,15,15,15,15,15, 7,7,15,15,15,15,15
+!if * - keycol != 40 { !error "keycol" }
 m_bye   !pet "octocode: your code is kept.", 13, "run takes you back to it.", 13, 0
-m_hello !scr "Welcome back. F1 compiles and runs it.", 0
-m_back  !scr "Back! Change something, then F1 again.", 0
+m_hello !scr "Welcome back. F2 compiles and runs it.", 0
+m_back  !scr "Back! Change something, then F2 again.", 0
 m_loading !scr "Loading from the disk...", 0
-m_loaded !scr "Change something, then F1 to run it!", 0
+m_loaded !scr "Change something, then F2 to run it!", 0
 m_cut   !scr "Loaded - some long lines were cut.", 0
 m_full  !scr "No room for more.", 0
 m_long  !scr "That line would be too long.", 0
