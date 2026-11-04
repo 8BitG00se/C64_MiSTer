@@ -4,13 +4,15 @@ One folder tree for both machines. On the MiSTer it is the SD card, `/media/fat`
 Emulator has the same tree as its `SD card` folder, next to the emulator. A file put where the MiSTer
 has it is where the emulator finds it.
 
-The tree is made only of the paths that are already in use:
+Every folder outside `games/C64` is one that something already uses:
 - Octophonic Main: `tools/octoos/main/octophonic-main.patch`, which has `OS_DIR`, `OS_TOP`, `CHIP_DIR`,
   `NET_SEEN`, `OS_LAST` and the boot code.
 - The core install: `tools/install/install_core.sh`.
 - MiSTer itself: `menu.rbf`, `Scripts/`, `screenshots/`.
 
-Nothing here is new to the MiSTer.
+The eleven folders in `games/C64` (build 6, Neal's list) are the browser's SD CARD drive: Demos,
+Games, Apps, Code, Music, SIDs, Pictures, My Chips, Disks, Screenshots, Saves. os.ini's `start=` is
+`/media/fat/games/C64`.
 
 ```
 /media/fat/                                  the SD card (MiSTer)  =  "SD card/" (the emulator)
@@ -37,25 +39,39 @@ Nothing here is new to the MiSTer.
 |   +-- last.txt                             the last folder, for START IN: LAST USED (Main)
 |
 +-- games/
-|   +-- C64/                                 the browser's SD CARD drive
-|       +-- Octophonic/
-|       |   +-- <demo name> build <N>/       one folder per demo build: its .prg and its .reu
-|       |   |   +-- <demo>.prg                (the browser runs the .prg; the .reu of the same
-|       |   |   +-- <demo>.reu                 name, or the folder's only one, goes in first)
-|       |   +-- Stock64/<demo>/              demos for a stock C64
-|       +-- My Chips/                        Neal's chips: *.CHP (F8 MY CHIP LEFT / RIGHT)
-|       +-- ... any other C64 files          .prg .crt .d64 .g64 .t64 .d81 .reu, folders, zips
+|   +-- C64/                                 the browser's SD CARD drive (F1, then SD CARD)
+|       +-- Demos/                           one folder per demo build: its .prg and its .reu
+|       |   +-- <demo name> build <N>/        (the browser runs the .prg; the .reu of the same
+|       |       +-- <demo>.prg                 name, or the folder's only one, goes in first)
+|       |       +-- <demo>.reu
+|       +-- Games/                           games: .prg .crt .d64 ..., a folder each if you like
+|       +-- Apps/                            programs that make things: OCTOCODE.PRG (the code
+|       |                                     editor); later SIDWeaver Lite, OctoPaint
+|       +-- Code/                            your source code (.asm) and what it makes
+|       +-- Music/                           music programs and tunes as .prg
+|       +-- SIDs/                            SID tunes (the browser runs .prg; a raw .sid is not
+|       |                                     one of the core's file types, so it isn't listed)
+|       +-- Pictures/                        pictures (viewers as .prg)
+|       +-- My Chips/                        your own measured chips: *.CHP (F8 MY CHIP LEFT / RIGHT)
+|       +-- Disks/                           loose disk and cartridge images: .d64 .g64 .t64 .d81 .crt
+|       +-- Screenshots/                     SHOT's pictures when there is no network share
+|       +-- Saves/                           saved games and the files programs write
+|
+|                                            All eleven are EMPTY on a fresh card: you fill them.
+|                                            (An all-in-one image may bake apps into Apps/: a later
+|                                            recipe step, not 010.)
 |
 +-- Scripts/                                 MiSTer's scripts (Main reads cifs_mount.ini / .sh for
 |                                             a network share; the Octophonic updater goes here)
 |
-+-- screenshots/Octophonic/                  SHOT's pictures when there is no network share
++-- screenshots/                            MiSTer's own (Win+PrtScn)
 ```
 
 The network share is the browser's NETWORK drive, not part of the card. On the MiSTer it is
 `games/00-NETWORK/C64` or `/media/network/C64` (os.ini `start=`). On Neal's PC it is
 `C:\MiSTerBridge\Games\C64`. The emulator uses that same share by default (F12 > Octophonic 64 >
-Games folder). Demos on the share go in `Octophonic/<demo name> build <N>/`, as on the card.
+Games folder). Demos on the share go in `Octophonic/<demo name> build <N>/` (where the
+demos' Install .bats put them); on the card they go in `Demos/`.
 
 ## The emulator
 
@@ -65,7 +81,7 @@ The emulator's runtime folder (`rt/` in its tree, and the Windows package) has:
 |---|---|
 | `x64sc` (`x64sc.exe`) | the emulator |
 | `ROMs/` | your own C64 ROMs (checked by CRC; the Octophonic KERNAL is made from them) |
-| `SD card/` | **the SD card above, the same tree**: `games/C64` is its SD CARD drive, `octophonic/SHELL.PRG` its browser |
+| `SD card/` | **the SD card above, the same tree**: `games/C64` is its SD CARD drive (Demos, Games, SIDs, My Chips, Disks - empty), `octophonic/SHELL.PRG` its browser. `.CHP` files in `games/C64/My Chips` join the emulator's own `Chips/` |
 | `MiSTerBridge/Games/C64` (test runtime only) | a stand-in for the network share |
 
 An older emulator folder with `octophonic/SHELL.PRG` beside the emulator still works: the emulator
@@ -87,7 +103,7 @@ Steps 1-3 are what the Install .bats already do. Step 4 is new. Steps 5-6 cover 
 3. Copy `octophonic/SHELL.PRG` and write `octophonic/os.ini` (keep the user's own, if there is one).
 4. A new KERNAL gets onto the MiSTer only inside a new core (`.rbf`): the ROM is in the FPGA image
    (`rtl/roms/octo_C64.mif`). A new SHELL.PRG is a plain file copy.
-5. Put demos in `games/C64/Octophonic/<demo name> build <N>/`, with their `.reu`.
+5. Put demos in `games/C64/Demos/<demo name> build <N>/`, with their `.reu`.
 6. Leave `Scripts/`, `screenshots/` and `menu.rbf` as MiSTer has them.
 
 For the emulator, the same `SD card/` folder goes next to `x64sc.exe` (step 3's SHELL.PRG and step 5's
