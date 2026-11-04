@@ -1,0 +1,38 @@
+OCTOPHONIC FUSION build @BUILD@ - one card, flashed once from the PC
+=====================================================================
+
+What it is: a whole MiSTer on one SD card image (MiSTer @REL@, set up by MiSTer's own Mr. Fusion
+@MRF@) with Octophonic 64 already in: the core, Octophonic Main, the browser, and the empty
+games/C64 folders. Power on and it goes straight into Octophonic 64.
+
+You need: a micro SD card of 2 GB or more (everything on it will be wiped), a card reader, and
+balenaEtcher or Rufus on the PC.
+
+WITH BALENAETCHER (easiest)
+ 1. Install balenaEtcher from https://etcher.balena.io
+ 2. "Flash from file" -> pick  Octophonic Fusion build @BUILD@.img
+ 3. "Select target" -> pick the SD card. CHECK THE SIZE so you are sure it is the card.
+ 4. "Flash!" and wait for it to finish and verify. Windows may say the card needs formatting:
+    click Cancel - do NOT format it.
+
+WITH RUFUS
+ 1. Run Rufus (https://rufus.ie). Device: the SD card (check the size).
+ 2. Boot selection: SELECT -> Octophonic Fusion build @BUILD@.img
+ 3. START. If it asks how to write, choose "DD Image". OK to the warning that the card is wiped.
+ 4. When it says READY, close Rufus. If Windows offers to format the card: Cancel.
+
+FIRST POWER-ON
+ - Card into the MiSTer, switch on. The Octophonic setting-up picture comes up (navy, yellow
+   OCTOPHONIC 64) for about two minutes while it grows the card to its full size and puts
+   everything on it. Don't switch off. It restarts by itself.
+ - From then on, every power-on goes straight into Octophonic 64.
+
+OPTIONAL, before the first power-on: with the card still in the PC, a drive called OCTOFUSION
+shows up. Put a wpa_supplicant.conf (Wi-Fi) or samba.sh on it and they are set up too.
+
+THE MISTER'S OWN MENU is still there: C=+F1 (on a PC keyboard Alt+F1) at READY or in the browser.
+Every MiSTer script (Scripts folder) works as normal.
+
+GOING BACK TO A PLAIN MISTER: delete octophonic/os.ini and put a ; in front of the
+bootcore= line in MiSTer.ini; MiSTer.orig is the stock MiSTer program and menu.rbf.stock the stock
+menu core, if you want those back too.
