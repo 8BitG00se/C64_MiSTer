@@ -1,0 +1,4 @@
+# The payload lives here at install time. Binaries never go in git.
+# A build package fills this folder; see ../README.md
+*
+!.gitignore
