@@ -38,7 +38,7 @@ AUTORUN = $02A8
 seq     = $02AB         ; the request number, shared with the ROM's commands
 ROWS    = 13
 TOP     = 9             ; the first list row (5 the path, 7 the column names, 8 left blank)
-LBUF    = $CB00         ; Main writes the path (40) and the records (40 each) here (to $CD58; the settings to $CD20)
+LBUF    = $CDC0         ; Main writes the path (40) and the records (40 each) here (to $CFF0; the settings to $CF80)
 REC     = LBUF + 40
 P       = $FB
 Q       = $FD
@@ -355,7 +355,12 @@ call    sta lastcmd
         beq longl
         cmp #$0A
         bne +
-longl   ldx #m_load-msgs    ; (a 16 MB .reu over the network can take a while)
+longl   lda #0                  ; (OPEN takes no VALUE: from Main, VALUE 3 means a .reu is going in)
+        sta MB_VAL
+        lda #$FF
+        sta rbdone              ; (the bar is drawn the first time Main says how far it is)
+        sta rbdone+1
+        ldx #m_load-msgs    ; (a 16 MB .reu over the network can take a while)
         ldy #60
         bne long3
 long    ldx #m_scan-msgs
@@ -379,7 +384,11 @@ long3   sty secs
         ldx MB_RSEQ             ; the answer's number: ours?
         cpx seq
         beq fin
-tick    lda $A2
+tick    lda MB_VAL              ; still busy, VALUE 3: Main is putting a .reu in the REU - the bar
+        cmp #3
+        bne +
+        jsr reubar
++       lda $A2
         cmp lastj
         beq -
         sta lastj
@@ -439,6 +448,65 @@ hexd    cmp #10                 ; a hex digit as a screen code
         rts
 +       ora #$30
         rts
+
+; OPEN of a .reu, or of a demo that has one: Octophonic Main puts it in the REU itself, with no
+; MiSTer OSD bar, and while it does (STATUS still 1) keeps VALUE 3, RESULT the 64 KB blocks in so
+; far and LEN the blocks in all up to date. The bar goes on the status line in the start screen's
+; colours, and while it moves the wait starts again (60 s from the last block).
+reubar  lda lastcmd
+        cmp #$07
+        bne rbx
+        lda MB_RL
+        cmp rbdone
+        bne +
+        lda MB_RH
+        cmp rbdone+1
+        beq rbx                 ; no further on: nothing to draw
++       lda MB_RL
+        sta rbdone
+        sta rbn
+        lda MB_RH
+        sta rbdone+1
+        sta rbn+1
+        lda #60
+        sta secs
+        ldx #5                  ; the cells: done*32/all (done <= all <= 256 blocks, 16 MB)
+-       asl rbn
+        rol rbn+1
+        dex
+        bne -
+        stx rbq                 ; (X is 0)
+rbdiv   lda rbq
+        cmp #32
+        bcs rbdraw
+        lda rbn
+        sec
+        sbc MB_LL
+        tax
+        lda rbn+1
+        sbc MB_LH
+        bcc rbdraw
+        sta rbn+1
+        stx rbn
+        inc rbq
+        bne rbdiv
+rbdraw  ldx #m_rin-msgs
+        jsr status              ; "reu" on the status line, yellow, and the rest of it blank
+        ldy #0
+-       lda #$A0                ; a solid cell
+        sta SCR + 22*40 + 6,y
+        lda #14                 ; still to come: light blue
+        cpy rbq
+        bcs +
+        lda #1                  ; in: white
++       sta COL + 22*40 + 6,y
+        iny
+        cpy #32
+        bne -
+rbx     rts
+rbdone  !word $FFFF
+rbn     !word 0
+rbq     !byte 0
 
 ; the message at msgs+X on the status line (row 23), in yellow
 status  ldy #0
@@ -1088,6 +1156,7 @@ help2   !scr "c=+f1 mister menu (the mister's own)    "
 msgs
 m_none    !scr 0
 m_load    !scr "loading...", 0
+m_rin     !scr "reu", 0
 m_wait    !scr "please wait - connecting to network...", 0
 m_nonet   !scr "no network - using the sd card", 0
 m_nonc    !scr "?the network is not connected", 0
