@@ -3,7 +3,9 @@
 // and for the V1.1 ROM a model of Octophonic Main's mailbox serving a test folder). After each
 // step the screen and BASIC's memory are compared; cases marked OCTO check what the V1.1 ROM
 // must do differently (start screen, tape gone, @ / and F1). Keys go through the keyboard matrix
-// exactly as a person types them.
+// exactly as a person types them. The SAME cases start with a RUN in both (the start screen's
+// 24-row editor then gives way to the stock one, as for every program): from there every BASIC,
+// editor and disk case must match stock; the start screen's own editor is checked by OCTO cases.
 //   romtest stockroms octoroms drive.rom test.d64 folder shell.prg [case-filter]
 #include "C64Machine.h"
 #include <cstdio>
@@ -34,7 +36,7 @@ struct Mailbox
     std::vector<Line> lines = { { "CHIP PRESET", { "PLAIN", "WARM", "CLASSIC" }, 0 }, { "MY CHIP LEFT", { "MOS_6581_3184", "MOS_6581_5084" }, 0 }, { "MY CHIP RIGHT", { "CSG_8580R5_3591", "MOS_8580R5_4687" }, 0 }, { "START IN", { "SD CARD", "LAST USED", "NETWORK" }, 0 },
         { "LEFT SIDS 1357", { "6581", "8580" }, 0 }, { "RIGHT SIDS 2468", { "6581", "8580" }, 0 }, { "MY CHIPS", { "ON", "OFF" }, 0 }, { "OCTOPHONIC", { "8 SIDS", "4 SIDS", "OFF" }, 0 },
         { "OCTOSID FX", { "OFF", "CHORUS", "ECHO", "CHORUS+ECHO" }, 0 }, { "SPLIT SCREENS", { "OFF", "VGA C64+HDMI" }, 0 }, { "TURBO MODE", { "C128", "OFF", "SMART" }, 1 }, { "TURBO SPEED", { "2X", "3X", "4X" }, 0 } };
-    bool mute = false; int presetSel = 0; std::string boot = "PLAIN"; int saves = 0;
+    bool mute = false, mister = false; int menus = 0; int presetSel = 0; std::string boot = "PLAIN"; int saves = 0;
     std::string top, cwd, shell; uint8_t palSel = 0, palIdx = 0; int palPart = 0; uint8_t vicPal[16][3] = {}; uint8_t mb[16] = {}; std::string name; bool unlocked = false, stage = false; int ran = 0; std::string lastRun;
     uint8_t* ram = nullptr; C64Machine* m = nullptr; std::string loadedReu;
     // the network share, as Main: 0 none set up, 1 waiting, 2 there, 3 set up but not there; netAt:
@@ -170,6 +172,7 @@ struct Mailbox
         else if (mb[0] == 0x0B) { netWait = false; cwd = top; if (net == 1) net = 3; reply (2, 0); }
         else if (mb[0] == 0x10) { ++shots; lastShot = nm; reply (2, 0); }
         else if (mb[0] == 0x11) { if (mb[7] == 0xFF) appendFile[mb[6] & 3] = nm; else if (appendFile.count (mb[6] & 3)) { auto& f = appended[appendFile[mb[6] & 3]]; f += nm; if (! (mb[7] & 1)) f += "\n"; } reply (appendFile.count (mb[6] & 3) || mb[7] == 0xFF ? 2 : 0x81, 0); }
+        else if (mb[0] == 0x12) { if (mister) { ++menus; reply (2, 0); } else reply (0x8F, 0); }   // MENU: Main loads the MiSTer's menu core
         else if (mb[0] == 0x0F) {
             auto d = rd (shell); if (d.size() < 3) { reply (0x81, 0); return; }
             uint16_t at = d[0] | d[1] << 8; ramw (at, std::vector<uint8_t> (d.begin() + 2, d.end())); reply (2, at);
@@ -200,7 +203,7 @@ struct Mailbox
             if (! unlocked || a < 0xD600 || a >= 0xD700) return false;
             const uint8_t r = a & 0xFF;
             if (r == 0x19) palSel = v; else if (r == 0x1A) { palIdx = v; palPart = 0; }
-            else if (r >= 0x1B && r <= 0x1D && palSel == 1 && palIdx < 16) vicPal[palIdx][r - 0x1B] = v;
+            else if (r >= 0x1B && r <= 0x1D) { if (palSel == 1 && palIdx < 16) vicPal[palIdx][r - 0x1B] = v; if (r == 0x1D) ++palIdx; }   // PALB stores and moves PALIDX on
             if (r >= 0xF0) { const uint8_t i = r & 15;
                 if (i == 0) { mb[0] = v; mb[1] = 1; pending = true; }
                 else if (i == 8) { if (name.size() < 32) name += (char) v; }
@@ -211,7 +214,7 @@ struct Mailbox
         m.getBus().ioReadHook = [this] (uint16_t a, uint8_t& v) -> bool {
             if (! unlocked || a < 0xD600 || a >= 0xD700) return false;
             const uint8_t r = a & 0xFF;
-            if (r >= 0xF0) { const uint8_t i = r & 15; v = i == 0xC ? 2 : i == 8 ? (uint8_t) name.size() : i == 0xF ? (uint8_t) net : mb[i]; return true; }
+            if (r >= 0xF0) { const uint8_t i = r & 15; v = i == 0xC ? 2 : i == 8 ? (uint8_t) name.size() : i == 0xF ? (uint8_t) (net | (mister ? 0x20 : 0)) : mb[i]; return true; }
             static const char tag[] = "CORE7   ";     // the core's name and build date (OctoVIC version 3)
             v = r == 0x1E ? 0x8C : r == 0x1F ? 3 : (r >= 0xB8 && r <= 0xBF) ? (uint8_t) tag[r - 0xB8]
               : r == 0xB4 ? 0x01 : r == 0xB5 ? 0x11 : r == 0xB6 ? 0x26 : 0; return true;
@@ -234,7 +237,7 @@ static std::string text_of (const uint8_t* scr)
 struct Rig
 {
     std::unique_ptr<C64Machine> own; C64Machine* m; Mailbox box; D64Image disk; std::vector<float> l, r; bool octo = false;
-    Rig (const Roms& roms, const std::vector<uint8_t>& driveRom, const std::vector<uint8_t>& d64, const std::string& folder, const std::string& shell)
+    Rig (const Roms& roms, const std::vector<uint8_t>& driveRom, const std::vector<uint8_t>& d64, const std::string& folder, const std::string& shell, bool novic = false)
         : l (480), r (480)
     {
         own = std::make_unique<C64Machine>(); m = own.get();
@@ -245,7 +248,7 @@ struct Rig
         m->insertDiskInDrive (disk);
         m->reset();
         box.ram = m->getBus().getRam(); box.m = m; box.top = box.cwd = folder; box.shell = shell; box.netTop = folder.substr (0, folder.rfind ('/')) + "/netshare";
-        octo = roms.octo; if (roms.octo) box.attach (*m); else box.m = nullptr;
+        octo = roms.octo && ! novic; if (octo) box.attach (*m); else box.m = nullptr;
     }
     void run (double s) { const auto fa = m->getFrameCount(); while (m->getFrameCount() < fa + (uint64_t) (s * 50)) { m->renderStereo (l.data(), r.data(), 480); box.tick(); } }
     void key (int row, int col, bool shift, double hold = 0.1)
@@ -276,6 +279,10 @@ struct Rig
                 else if (k == "F1") key (0, 4, false); else if (k == "F3") key (0, 5, false); else if (k == "F5") key (0, 6, false); else if (k == "F7") key (0, 3, false);
                 else if (k == "F2") key (0, 4, true); else if (k == "F8") key (0, 3, true);
                 else if (k == "F1LONG") key (0, 4, false, 1.5);
+                else if (k == "CF1") { m->setKeyDown (7, 5, true); run (0.05); key (0, 4, false); m->setKeyDown (7, 5, false); run (0.1); }
+                else if (k == "CHOLD") { m->setKeyDown (7, 5, true); run (0.3); }
+                else if (k == "CUP") { m->setKeyDown (7, 5, false); run (0.2); }
+                else if (k == "MISTER") box.mister = true;
                 else if (k == "STOP") key (7, 7, false); else if (k == "SSTOP") key (7, 7, true);
                 else if (k == "RESTORE") { m->setKeyDown (7, 7, true); run (0.05); m->getCpu().triggerNmi(); run (0.2); m->setKeyDown (7, 7, false); run (0.5); }
                 else if (k.rfind ("WAIT", 0) == 0) run (atof (k.c_str() + 4));
@@ -304,30 +311,54 @@ struct Rig
 };
 
 // ------------------------------------------------------------------------ the boot screen
-// The V1.1 start screen as approved (Neal, 31 Oct: navy all over, OCTOPHONIC 64 V1.1, OCTOVIC 256
-// left under the band, F1 BROWSE, READY. and the cursor at the left): text, colours, border and
-// background, the cursor's place, and the whole picture against boot_ref.idx (pixels that blink
-// left out). REFDIR set and no reference there yet: this frame becomes it.
+// The V1.1 start screen as approved (Neal's mock-up 12, 4 Nov 2026): the top box (OCTOPHONIC 64, NET
+// and its light; 8 SIDS, OCTOVIC 256 in the rainbow, the REU), 38911 BASIC BYTES FREE on row 3,
+// READY. on row 5, the cursor on row 6, the bar on row 24 (keys yellow, labels pale), the editor at
+// 24 rows, the colours (OctoVIC's VIC palette), and the whole VIC picture against boot_ref.idx (pixels
+// that blink left out). REFDIR set and no reference there yet: this frame becomes it.
 static std::string g_refdir;
+static const char* BAR = "F1 BROWSE F3 LOAD F5 SIDS F7 DUAL F8 SET";
+static std::string rowtext (Rig& r, int y) { auto* ram = r.m->getBus().getRam(); std::string t; for (int c = 0; c < 40; ++c) { uint8_t s = ram[0x400 + y * 40 + c] & 0x7F; t += s == 0x20 ? ' ' : s < 27 ? (char) ('A' + s - 1) : (char) s; } return t; }
+static std::string barcheck (Rig& r)
+{
+    std::string why; auto* ram = r.m->getBus().getRam();
+    if (rowtext (r, 24) != BAR) why += "the bar not on row 24: '" + rowtext (r, 24) + "'; ";
+    for (int c = 0; c < 40; ++c) { const char ch = BAR[c]; const int want = (ch == 'F' || (ch >= '0' && ch <= '9')) ? 7 : 15;
+        if ((r.m->getBus().readColour (960 + c) & 15) != want) { why += "the bar's colours; "; break; } }
+    if (ram[0xB0] != 24 || ram[0xB1] != 23 || ram[0xBE] != 22) why += "the editor not at 24 rows; ";
+    return why;
+}
 static std::string bootcheck (Rig& r)
 {
     auto* ram = r.m->getBus().getRam();
-    auto row = [&] (int y) { std::string t; for (int c = 0; c < 40; ++c) { uint8_t s = ram[0x400 + y * 40 + c] & 0x7F; t += s == 0x20 ? ' ' : s < 27 ? (char) ('A' + s - 1) : (char) s; } return t; };
+    auto row = [&] (int y) { return rowtext (r, y); };
     std::string why;
-    if (row (1).substr (15, 18) != "OCTOPHONIC 64 V1.1") why += "title not at row 1; ";
-    if (row (3).substr (0, 11) != "OCTOVIC 256") why += "OCTOVIC 256 not at row 3 left; ";
-    if (row (3).substr (31, 9) != "F1 BROWSE") why += "no F1 BROWSE; ";
+    if (row (0).substr (13, 13) != "OCTOPHONIC 64") why += "title not at row 0, column 13; ";
+    if (row (0).substr (32, 3) != "NET") why += "NET not at row 0, column 32; ";
+    if (row (1).substr (0, 6) != "8 SIDS") why += "8 SIDS not at row 1 left; ";
+    if (row (1).substr (13, 11) != "OCTOVIC 256") why += "OCTOVIC 256 not at row 1, column 13; ";
+    if (row (1).substr (32).find ("REU") == std::string::npos) why += "the REU not at row 1, column 32; ";
+    if (row (3) .substr (0, 22) != "38911 BASIC BYTES FREE") why += "BYTES FREE not at row 3 left: '" + row (3) + "'; ";
     if (row (5).substr (0, 6) != "READY.") why += "READY. not at row 5 left; ";
-    if (row (0).find_first_not_of (' ') != std::string::npos) why += "row 0 not empty; ";
     if (ram[0xD6] != 6 || ram[0xD3] != 0) why += "cursor not at row 6 left; ";
-    if (row (4).find_first_not_of (' ') != std::string::npos) why += "row 4 not empty; ";
-    if (r.box.net == 0 && row (1)[39] != ' ') why += "a network light with no network set up; ";
+    for (int y : { 2, 4 }) if (row (y).find_first_not_of (' ') != std::string::npos) why += "row " + std::to_string (y) + " not empty; ";
+    static const int rb[7] = { 2, 8, 9, 5, 10, 14, 4 };
+    for (int c = 0; c < 7; ++c) if ((r.m->getBus().readColour (53 + c) & 15) != rb[c]) { why += "OCTOVIC not in the rainbow; "; break; }
+    for (int c = 0; c < 6; ++c) if ((ram[0x400 + c] & 0xFF) != 0xA0 || (r.m->getBus().readColour (c) & 15) != 3) { why += "the eq's cells; "; break; }
+    if (r.octo) {
+        if ((ram[0x400 + 38] & 0x7F) != 0x51) why += "no light's ball at row 0, column 38; ";
+        const int lc = r.m->getBus().readColour (38) & 15, want = r.box.net == 0 ? 6 : r.box.net == 2 ? 5 : 2;
+        if (lc != want) why += "the light's colour " + std::to_string (lc) + " (want " + std::to_string (want) + "); ";
+        why += barcheck (r);
+        if (ram[0x2A7] != 1) why += "OCTST not set; ";
+    }
     const int W = r.m->getFramebufferWidth(), H = r.m->getFramebufferHeight();
     std::vector<uint8_t> a (r.m->getFramebuffer(), r.m->getFramebuffer() + W * H); r.run (0.33);
     std::vector<uint8_t> b (r.m->getFramebuffer(), r.m->getFramebuffer() + W * H);
     for (auto& v : a) v &= 15; for (auto& v : b) v &= 15;
-    if (a[0] != 6) why += "border not navy (" + std::to_string (a[0]) + "); ";
-    if (r.octo && (r.box.vicPal[6][0] != 28 || r.box.vicPal[6][1] != 32 || r.box.vicPal[6][2] != 92)) why += "VIC colour 6 not made navy (OctoVIC palette); ";
+    if (a[0] != (r.octo ? 11 : 6)) why += "border not colour " + std::string (r.octo ? "11" : "6") + " (" + std::to_string (a[0]) + "); ";
+    if (r.octo && (r.box.vicPal[6][0] != 16 || r.box.vicPal[6][1] != 18 || r.box.vicPal[6][2] != 56)) why += "VIC colour 6 not the box's dark (OctoVIC palette); ";
+    if (r.octo && (r.box.vicPal[11][0] != 20 || r.box.vicPal[11][1] != 22 || r.box.vicPal[11][2] != 70)) why += "VIC colour 11 not the border's navy; ";
     if (a[(size_t) (H / 2) * W + W / 2] != 6) why += "background not navy; ";
     if (! g_refdir.empty()) {
         auto ref = rd (g_refdir + "/boot_ref.idx");
@@ -342,9 +373,10 @@ static std::string browsercheck (Rig& r)
     auto* ram = r.m->getBus().getRam();
     auto row = [&] (int y) { std::string t; for (int c = 0; c < 40; ++c) { uint8_t s = ram[0x400 + y * 40 + c] & 0x7F; t += s == 0x20 ? ' ' : s < 27 ? (char) ('A' + s - 1) : (char) s; } return t; };
     std::string why;
-    if (row (1).substr (15, 18) != "OCTOPHONIC 64 V1.1") why += "title; ";
-    if (row (3).substr (0, 11) != "OCTOVIC 256") why += "OCTOVIC 256 not on row 3; ";
-    if (row (4).find_first_not_of (' ') != std::string::npos) why += "row 4 not blank (crowded under the band); ";
+    if (row (0).substr (13, 13) != "OCTOPHONIC 64") why += "title; ";
+    if (row (1).substr (13, 11) != "OCTOVIC 256") why += "OCTOVIC 256 not on row 1; ";
+    if (row (4).find_first_not_of (' ') != std::string::npos) why += "row 4 not blank (crowded under the box); ";
+    if (row (24).substr (0, 7) != "RET RUN") why += "the browser's help not on row 24; ";
     if (row (5).substr (0, 5) != "/TEST") why += "path not on row 5: '" + row (5) + "'; ";
     if (row (6).find_first_not_of (' ') != std::string::npos) why += "row 6 not blank; ";
     if (row (7).substr (1, 4) != "NAME" || row (7).substr (30, 9) != "TYPE SIZE") why += "column names not on row 7; ";
@@ -352,8 +384,8 @@ static std::string browsercheck (Rig& r)
     for (int y = 9; y < 22; ++y) { std::string t = row (y); if (t.substr (30, 3) != "   " && t.substr (1, 23).find_first_not_of (' ') == std::string::npos) why += "a blank name on row " + std::to_string (y) + "; "; }
     for (int y = 9; y < 22; ++y) if (row (y).find ("65535") != std::string::npos) why += "65535 on row " + std::to_string (y) + "; ";
         const int W = r.m->getFramebufferWidth(); const auto* fb = r.m->getFramebuffer();
-    if ((fb[0] & 15) != 6) why += "border not navy; ";
-    if ((fb[(size_t) 260 * W + W / 2] & 15) != 6) why += "background not navy; ";
+    if ((fb[0] & 15) != 11) why += "border not colour 11; ";
+    if ((fb[(size_t) (r.m->getFramebufferHeight() / 2) * W + W / 2] & 15) != 6) why += "background not colour 6; ";
     return why;
 }
 
@@ -386,8 +418,7 @@ int main (int argc, char** argv)
         { "SHIFT+RUN/STOP shows LOAD and RUN in full", OCTO, { "{CLR}{SSTOP}{WAIT10}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
             return has (o, "LOAD\"*\",8") && has (o, "\nRUN") ? std::string() : std::string ("LOAD/RUN not spelt out"); } },
         { "boot screen: after F1, F7", OCTO, { "{F1}{WAIT1}", "{F7}{WAIT1}" }, [] (const Snap&, const Snap&, Rig&, Rig& oc) {
-            auto* ram = oc.m->getBus().getRam(); std::string t; for (int c = 0; c < 18; ++c) { uint8_t s = ram[0x400 + 40 + 15 + c] & 0x7F; t += s == 0x20 ? ' ' : s < 27 ? (char) ('A' + s - 1) : (char) s; }
-            return t == "OCTOPHONIC 64 V1.1" ? std::string() : std::string ("title gone after the browser"); } },
+            return rowtext (oc, 0).substr (13, 13) == "OCTOPHONIC 64" && barcheck (oc).empty() ? std::string() : std::string ("title or bar gone after the browser: ") + barcheck (oc); } },
         { "boot pointers and FRE", SAME, { "{CLR}PRINT FRE(0)\n", "PRINT PEEK(43);PEEK(44);PEEK(45);PEEK(46)\n" }, [] (const Snap& s, const Snap& o, Rig&, Rig&) { return has (s, " 1  8  3  8") && has (o, " 1  8  3  8") ? std::string() : std::string ("missing  1  8  3  8"); } },
         { "enter a numbered line (the hang)", SAME, { "{CLR}10 PRINT \"NEAL\"\n", "LIST\n", "RUN\n" }, [] (const Snap& s, const Snap& o, Rig&, Rig&) { return has (s, "\nNEAL") && has (o, "\nNEAL") ? std::string() : std::string ("missing NEAL"); } },
         { "program with strings and maths", SAME, { "{CLR}10 PRINT \"NEAL\"\n20 A=5:B$=\"X\"+\"Y\"\n30 PRINT A*2;B$\n", "LIST\n", "RUN\n" }, [] (const Snap& s, const Snap& o, Rig&, Rig&) { return has (s, " 10 XY") && has (o, " 10 XY") ? std::string() : std::string ("missing  10 XY"); } },
@@ -461,13 +492,13 @@ int main (int argc, char** argv)
         { "demo A runs with its own REU", OCTO, { "{CLR}@SUB/DEMOA\n", "/DEMOA\n{WAIT5}" },
           [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "DEMO A REU A") ? std::string() : std::string ("demo A didn't see its REU"); } },
         { "CTRL+F12 gets out to the start screen, folder kept", OCTO, { "{CLR}@SUB/DEMOA\n", "/DEMOA\n{WAIT5}", "{EXIT}{WAIT4}", "{F1}{WAIT1}" },
-          [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "OCTOPHONIC 64 V1.1") && has (o, "/TEST/SUB/DEMOA") ? std::string() : std::string ("not back in the demo's folder"); } },
+          [] (const Snap&, const Snap& o, Rig&, Rig&) { return has (o, "OCTOPHONIC 64") && has (o, "/TEST/SUB/DEMOA") ? std::string() : std::string ("not back in the demo's folder"); } },
         { "network: none set up - no light, browser on the SD card", OCTO, { "{WAIT1}", "{F1}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig& oc) {
             return has (o, "/TEST") && ! has (o, "PLEASE WAIT") && oc.box.net == 0 ? std::string() : std::string ("not straight to the SD card"); } },
         { "network: waiting - red light on the start screen", OCTO, { "{NETWAIT30}{WAIT1}" }, [] (const Snap&, const Snap&, Rig&, Rig& oc) {
-            auto* ram = oc.m->getBus().getRam(); return (ram[0x400 + 79] & 0x7F) == 0x51 && oc.m->getBus().readColour (79) == 2 ? std::string() : std::string ("no red light at the end of the title row"); } },
+            auto* ram = oc.m->getBus().getRam(); return (ram[0x400 + 38] & 0x7F) == 0x51 && (oc.m->getBus().readColour (38) & 15) == 2 ? std::string() : std::string ("no red light at row 0, column 38"); } },
         { "network: there - green light", OCTO, { "{NETUP}{WAIT1}" }, [] (const Snap&, const Snap&, Rig&, Rig& oc) {
-            auto* ram = oc.m->getBus().getRam(); return (ram[0x400 + 79] & 0x7F) == 0x51 && oc.m->getBus().readColour (79) == 5 ? std::string() : std::string ("no green light"); } },
+            auto* ram = oc.m->getBus().getRam(); return (ram[0x400 + 38] & 0x7F) == 0x51 && (oc.m->getBus().readColour (38) & 15) == 5 ? std::string() : std::string ("no green light"); } },
         { "network: F1 while connecting says PLEASE WAIT", OCTO, { "{NETWAIT8}{F1}{WAIT2}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
             return has (o, "PLEASE WAIT - CONNECTING TO NETWORK...") ? std::string() : std::string ("no PLEASE WAIT"); } },
         { "network: the share opens by itself when it connects", OCTO, { "{NETWAIT8}{F1}{WAIT2}", "{WAIT9}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
@@ -494,6 +525,46 @@ int main (int argc, char** argv)
         { "browser: a long name keeps its build number", OCTO, { "{NETUP}{F1}{WAIT1}" }, [] (const Snap&, const Snap& o, Rig&, Rig&) {
             return has (o, " OCTOPHONIC HORIZON BUILD 10 ") && has (o, " OCTOPHONIC SHOWC..N BUILD 12 ") ? std::string() : std::string ("long names cut wrong"); } },
 
+        // the start screen's own editor: rows 0-23, the bar on 24 never touched; the top box scrolls away
+        { "start screen: 30 typed lines scroll rows 0-23, the bar stays, the program as stock's", OCTO, { PROG30, "LIST 280-300\n" },
+          [] (const Snap& st, const Snap& o, Rig&, Rig& oc) { std::string w = barcheck (oc); auto* ram = oc.m->getBus().getRam();
+            if (! has (o, "300 PRINT \"LINE 30\";30*2")) w += "LIST 280-300 not shown; "; if (ram[0x2B0] != 0xE8) w += "the top box not scrolled away; ";
+            if (st.mem != o.mem) w += "the program differs from stock's; "; return w; } },
+        { "start screen: one scroll - the top box up a line with the text", OCTO, { "FOR I=1 TO 15:PRINT I:NEXT\n{WAIT1}" },
+          [] (const Snap&, const Snap&, Rig&, Rig& oc) { std::string w = barcheck (oc); auto* ram = oc.m->getBus().getRam();
+            if (rowtext (oc, 0).substr (0, 6) != "8 SIDS") w += "row 0 not the box's second line: '" + rowtext (oc, 0) + "'; ";
+            if (ram[0x2B0] != 0xF8) w += "TOPY " + std::to_string (ram[0x2B0]) + " (want $F8); "; return w; } },
+        { "start screen: CLR clears rows 0-23, the bar stays, the box goes", OCTO, { "{CLR}" },
+          [] (const Snap&, const Snap&, Rig&, Rig& oc) { std::string w = barcheck (oc); auto* ram = oc.m->getBus().getRam();
+            for (int y = 0; y < 24; ++y) if (rowtext (oc, y).find_first_not_of (' ') != std::string::npos) { w += "row " + std::to_string (y) + " not cleared; "; break; }
+            if (ram[0x2B0] != 0xE8) w += "the top box still there; "; if (ram[0xD6] != 0) w += "the cursor not home; "; return w; } },
+        { "start screen: cursor down past row 23 scrolls, never onto the bar", OCTO, { "{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}{DOWN}X" },
+          [] (const Snap&, const Snap&, Rig&, Rig& oc) { std::string w = barcheck (oc); auto* ram = oc.m->getBus().getRam();
+            if (ram[0xD6] != 23) w += "the cursor on row " + std::to_string (ram[0xD6]) + " (want 23); "; if (rowtext (oc, 23)[0] != 'X') w += "the X not on row 23; "; return w; } },
+        { "start screen: RUN - the stock 25-row editor, the bar's row an ordinary one", OCTO, { "10 PRINT 1\n", "RUN\n" },
+          [] (const Snap&, const Snap&, Rig&, Rig& oc) { std::string w; auto* ram = oc.m->getBus().getRam();
+            if (ram[0x2A7] != 0) w += "OCTST still set; "; if (ram[0xB0] != 25 || ram[0xB1] != 24 || ram[0xBE] != 23) w += "the editor not at 25 rows; ";
+            if (rowtext (oc, 24).find_first_not_of (' ') != std::string::npos) w += "row 24 not cleared; "; return w; } },
+        { "start screen: RUN/STOP+RESTORE - the stock 25-row editor", OCTO, { "{RESTORE}" },
+          [] (const Snap&, const Snap&, Rig&, Rig& oc) { auto* ram = oc.m->getBus().getRam();
+            return ram[0x2A7] == 0 && ram[0xB0] == 25 ? std::string() : std::string ("not back to the stock editor"); } },
+        { "stock VIC (no OctoVIC): the words plain, no bar, the 25-row editor", OCTO, { "{WAIT1}" },
+          [] (const Snap&, const Snap&, Rig&, Rig& oc) { std::string w; auto* ram = oc.m->getBus().getRam();
+            if (rowtext (oc, 0).substr (13, 13) != "OCTOPHONIC 64") w += "no title; "; if (rowtext (oc, 3).substr (0, 22) != "38911 BASIC BYTES FREE") w += "no BYTES FREE; ";
+            if (rowtext (oc, 24).find_first_not_of (' ') != std::string::npos) w += "a bar on row 24; ";
+            if (ram[0xB0] != 25 || ram[0x2A7] != 0) w += "not the stock editor; "; return w; } },
+        // the MiSTer's own menu: C=+F1 (NET b5 says Main is on a MiSTer)
+        { "C=+F1 without a MiSTer: nothing", OCTO, { "{CF1}{WAIT1}" },
+          [] (const Snap&, const Snap&, Rig&, Rig& oc) { return oc.box.menus == 0 && rowtext (oc, 0).substr (13, 13) == "OCTOPHONIC 64" ? std::string() : std::string ("something happened"); } },
+        { "C=+F1 on a MiSTer: MENU to Main", OCTO, { "{MISTER}{WAIT1}", "{CF1}{WAIT1}" },
+          [] (const Snap&, const Snap&, Rig&, Rig& oc) { return oc.box.menus == 1 ? std::string() : std::string ("MENU not sent"); } },
+        { "browser on a MiSTer: C= held shows the MiSTer's page", OCTO, { "{MISTER}{F1}{WAIT1}", "{CHOLD}" },
+          [] (const Snap&, const Snap&, Rig&, Rig& oc) { return rowtext (oc, 24).substr (0, 17) == "C=+F1 MISTER MENU" ? std::string() : std::string ("row 24: '" + rowtext (oc, 24) + "'"); } },
+        { "browser on a MiSTer: C=+F1 sends MENU; without one F1 pages", OCTO, { "{MISTER}{F1}{WAIT1}", "{CF1}{WAIT1}" },
+          [] (const Snap&, const Snap&, Rig&, Rig& oc) { return oc.box.menus == 1 ? std::string() : std::string ("MENU not sent from the browser"); } },
+        { "browser without a MiSTer: C= held, the help as it is", OCTO, { "{F1}{WAIT1}", "{CHOLD}" },
+          [] (const Snap&, const Snap&, Rig&, Rig& oc) { return rowtext (oc, 24).substr (0, 7) == "RET RUN" ? std::string() : std::string ("row 24: '" + rowtext (oc, 24) + "'"); } },
+
         { "settings: START IN", OCTO, { "{CLR}{F1}{WAIT1}", "{F8}{WAIT1}", "{DOWN}{DOWN}{DOWN}{RIGHT}{WAIT1}" },
           [] (const Snap&, const Snap& o, Rig&, Rig& oc) { return oc.box.lines[3].v == 1 && has (o, "START IN") && has (o, "LAST USED") ? std::string() : std::string ("START IN not changed"); } },
     };
@@ -503,8 +574,9 @@ int main (int argc, char** argv)
     for (auto& c : cases)
     {
         if (! filter.empty() && c.name.find (filter) == std::string::npos) continue;
-        Rig so (stock, drv, d64, folder, shell), oc (octo, drv, d64, folder, shell);
+        Rig so (stock, drv, d64, folder, shell), oc (octo, drv, d64, folder, shell, c.name.rfind ("stock VIC", 0) == 0);
         so.run (3.5); oc.run (3.5);
+        if (c.mode == SAME) { so.step ("RUN\n"); oc.step ("RUN\n"); }   // past the start screen, as every program is
         std::string why; Snap ls, lo;
         for (size_t i = 0; i < c.steps.size(); ++i)
         {

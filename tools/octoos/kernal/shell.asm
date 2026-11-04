@@ -58,12 +58,7 @@ start   lda #0
         cmp #$02
         beq +
         jmp READY
-+       jsr FRAME               ; the navy screen, the band, the title
-        ldx #8                  ; the start screen's F1 BROWSE hint: not in here
-        lda #$20
--       sta SCR + 3*40 + 31,x
-        dex
-        bpl -
++       jsr FRAME               ; the start screen's top box (the eq, the title, the network light)
         jsr fixed
         jsr netwait             ; a share still connecting: wait for it (any key: the SD card)
         jsr netlite
@@ -79,8 +74,9 @@ reload  jsr dolist
         sta nonet
         ldx #m_nonet-msgs
         jsr status
-loop    jsr netlite             ; the network light; when the share comes or goes, list again
+loop    jsr netlite             ; when the share comes or goes, list again
         bcs reload
+        jsr cpage               ; on a MiSTer: C= held shows the help's second page
         jsr getkey
         beq loop
         cmp #17
@@ -109,8 +105,18 @@ loop    jsr netlite             ; the network light; when the share comes or goe
         bne +
         jmp settings
 +
-        cmp #137                ; F2
+        cmp #137                ; F2 - or C=+F1 (the C= key's table makes F1 137 too): on a MiSTer
+        bne +                   ; the MiSTer's own menu
+        lda $028D
+        and #2
         beq startf
+        lda MB_NET
+        and #$20
+        beq startf
+        lda #$12                ; MENU: Main loads the MiSTer's menu core
+        jsr call
+        jmp loop
++
         cmp #19                 ; HOME
         beq home
         cmp #13
@@ -450,7 +456,9 @@ status  ldy #0
 +       rts
 
 ; the header line and the key help
-fixed   ldx #39
+fixed   lda #0                  ; (the help's first page)
+        sta hpage
+        ldx #39
 -       lda hdr,x
         sta SCR + 7*40,x
         lda #15
@@ -839,20 +847,38 @@ hirow   jsr rowptr              ; the bar on settings line A
         rts
 
 ; ------------------------------------------------------------------------------- the network
-; the light at the top right (row 3), as the start screen's: none set up - not shown, waiting or
-; not there - red, there - green. Carry set when it changed since last time
+; the network share's state (the light itself is the start screen's, on the top box: the KERNAL's
+; IRQ colours it from NET). Carry set when it changed since last time
 netlite lda MB_NET
         and #3
         tax
-        lda #$51
-        sta SCR + 3*40 + 39
-        lda litecol,x
-        sta COL + 3*40 + 39
         cpx lastnet
         stx lastnet
         clc
         beq +
         sec
++       rts
+
+; on a MiSTer (NET b5), while C= is held: the help line's second page (C=+F1 the MiSTer's menu)
+cpage   lda MB_NET
+        and #$20
+        beq +
+        lda $028D
+        and #2
+        cmp hpage
+        beq +
+        sta hpage
+        tay
+        ldx #39
+-       lda help,x
+        cpy #0
+        beq ++
+        lda help2,x
+++      sta SCR + 24*40,x
+        lda #15
+        sta COL + 24*40,x
+        dex
+        bpl -
 +       rts
 
 ; the share is set up but still connecting (Main is waiting to open it): PLEASE WAIT, until it is
@@ -1054,6 +1080,7 @@ stitle  !scr "settings                                "
 shelp   !scr "up/down pick  left/right change  f7 back"
 hdr     !scr " name                         type size "
 help    !scr "ret run f1/f5 page f3 up f7 ready f8 set"
+help2   !scr "c=+f1 mister menu (the mister's own)    "
 
 msgs
 m_none    !scr 0
@@ -1084,11 +1111,11 @@ jifs    !byte 0
 bsave   !byte 0
 lastj   !byte 0
 lastcmd !byte 0
+hpage   !byte 0
 mountonly !byte 0
 lastnet !byte $ff
 nonet   !byte 0
 reumb   !byte 0
-litecol !byte 6, 2, 5, 2
 skipup  !byte 1
 sline   !byte 0
 joyold  !byte 0

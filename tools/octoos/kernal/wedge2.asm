@@ -1,6 +1,7 @@
 ; OCTOPHONIC OS 1 - more of the READY-prompt commands, in the rest of the tape room $FB97-$FCD0
 ; (the tape's write and IRQ code; nothing else in the KERNAL calls in here). By Mong00se.
-;   F1 at READY: the browser (types @@ on a clear screen, for the wedge to pick up)
+;   F1 at READY: the browser (types @@ on a clear screen, for the wedge to pick up); C=+F1 on a
+;   MiSTer: @! (the MiSTer's own menu)
 ;   the no-reply message: ?NO REPLY FROM OCTOPHONIC MAIN (CMD nn)
 ;   call2: a request to Main, numbered (SEQ), waited on for up to 20 seconds with the border
 ;   flickering so it never looks hung; only an answer with our own number counts
@@ -75,8 +76,9 @@ setkey  php                     ; the keyboard's decode vector: through keyhk fi
         plp
         rts
 
-; every key the KERNAL decodes comes through here (in the IRQ). F1, newly pressed, unshifted,
-; with the editor waiting at a direct-mode line: clear the screen and type @@ RETURN
+; every key the KERNAL decodes comes through here (in the IRQ). F1, newly pressed, with the editor
+; waiting at a direct-mode line: unshifted - clear the screen and type @@ RETURN (the browser); with
+; C= on a MiSTer (Main sets NET b5) - clear the screen and type @! RETURN (the MiSTer's own menu)
 keyhk   lda $CC                 ; the cursor flashing: the editor is waiting for a line
         bne out
         lda $9D                 ; direct mode, not a running program
@@ -86,17 +88,25 @@ keyhk   lda $CC                 ; the cursor flashing: the editor is waiting for
         bne out
         cmp $C5                 ; held down since last time: once only
         beq out
-        lda $028D               ; no SHIFT, C= or CTRL
-        bne out
         ldx #3
+        lda $028D               ; no SHIFT, C= or CTRL: the browser
+        beq kf1
+        cmp #2                  ; C= alone: the MiSTer's menu, only on a MiSTer
+        bne out
+        lda $D6FF
+        and #$20
+        beq out
+        ldx #7
+kf1     ldy #3
 -       lda inject,x
-        sta KEYD,x
+        sta KEYD,y
         dex
+        dey
         bpl -
         lda #4
         sta NDX
 out     jmp $EB48               ; on to the KERNAL's own decoding
-inject  !byte $93, $40, $40, $0D
+inject  !byte $93, $40, $40, $0D, $93, $40, $21, $0D
 
 noreply ldx #0
 -       lda nrmsg,x

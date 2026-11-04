@@ -5,6 +5,7 @@
 ;   @NAME  @/NAME   into a folder (".." up, @/ back to the start folder), then its directory
 ;   /NAME        load and run it (.prg, .crt); a disk image goes into drive 8
 ;   @@           the browser (F1 at READY types it: wedge2.asm)
+;   @!           out to the MiSTer's own menu, on a MiSTer (C=+F1 at READY types it)
 ; The work is done by Main on the MiSTer; the 6502 talks to it through the mailbox at $D6F0.
 ; Every request gives up after 20 seconds (the border flickers while Main works) with
 ; ?NO REPLY FROM OCTOPHONIC MAIN (CMD nn). Each carries a number, so a late answer is never taken.
@@ -61,10 +62,17 @@ ours    jsr open
         jsr skipsp
         lda BUF
         cmp #$2F
-        beq dorun
-        lda BUF+1
+        bne +
+        jmp dorun
++       lda BUF+1
         cmp #$40                ; @@: the browser
         beq doshell
+        cmp #$21                ; @!: out to the MiSTer's own menu (Main loads it; C=+F1 types it)
+        bne +
+        lda #$12                ; MENU
+        jsr call
+        jmp ready
++
         lda BUF,x               ; @ alone: the directory
         beq dodir
         jsr name                ; (a leading / means from the start folder: Main does that)

@@ -3,6 +3,27 @@
 The MiSTer starts straight into Octophonic 64, and the SD card is used from the READY prompt.
 Nothing changes for a MiSTer without `/media/fat/octophonic/os.ini`.
 
+## The start screen (mock-up 12)
+
+The top box holds two rows:
+- Row 0: the 8-SID eq, OCTOPHONIC 64, NET and the network light.
+- Row 1: 8 SIDS, OCTOVIC 256 and the REU really attached (read from the REU's bank register: 16M, 2M,
+  512K ... or NO REU).
+
+Under the box: 38911 BASIC BYTES FREE, then READY. On row 24 is the bar:
+`F1 BROWSE F3 LOAD F5 SIDS F7 DUAL F8 SET`.
+
+The screen editor uses rows 0-23 only. Typing and scrolling never reach the bar, and the top box
+scrolls away with the text, a line at a time. CLR clears rows 0-23, and the box goes with its words.
+
+RUN, SYS and LOAD switch the box and bar off and give back the stock 25-row editor; so do RUN/STOP+RESTORE and a reset.
+With no OctoVIC (a stock VIC) the words are plain and there is no bar.
+
+How it is drawn is described in `tools/octoos/kernal/octo.asm`:
+- OctoVIC's copper switches KEY between the page and the box.
+- A bitmap layer carries the words' gradient, the eq and the rules.
+- The IRQ draws the eq from each SID's ENV3 (voice 3's envelope), every other frame.
+
 ## At READY
 
 | Type | Does |
@@ -11,6 +32,11 @@ Nothing changes for a MiSTer without `/media/fat/octophonic/os.ini`.
 | `@NAME` | into folder NAME, then its directory (`@..` up) |
 | `@/NAME` | the same, from the start folder; `@/` alone goes back to it; `@A/B` goes two down |
 | `/NAME` | load and run NAME (.prg, or a .crt); a .d64/.g64/.d81 goes into drive 8 |
+| `@!` | out to the MiSTer's own menu (MENU, `12`) |
+| F1 | the browser |
+| C=+F1 | the MiSTer's own menu (other cores, MiSTer's settings): types `@!`, only on a MiSTer (NET b5); the emulator ignores it |
+
+F3, F5, F7 and F8 are shown on the bar but are not wired yet: they do nothing at READY, as on a stock C64.
 
 Names match whole, then without the extension, then by their start (`/HOR` finds `horizon.prg`).
 
@@ -34,6 +60,7 @@ loads `SHELL.PRG` from `/media/fat/octophonic` to `$C000` and runs it. F-keys an
 | F2 | the start folder |
 | HOME | the top of the folder |
 | F8 | settings |
+| C=+F1 | on a MiSTer: the MiSTer's own menu; holding C= shows it on the help line |
 | F7, RUN/STOP | back to READY (the BASIC program is kept) |
 
 RETURN on a `.reu` attaches it (as the menu does, no reset), then the list comes back with
@@ -57,8 +84,9 @@ MiSTer, or MiSTer's cifs script has a SERVER. Both ways of mounting work: over `
 (then `games/C64` is the share) and in a folder of its own (`games/00-NETWORK/C64`,
 `/media/network/C64`); `start=` in os.ini, if it points at a folder on the share, is used.
 
-While a share that is set up is still connecting, the start screen has a red dot at the end of the
-title row (green once it is there; none at all without a share), and F1 shows
+While a share that is set up is still connecting, the start screen's network light is red. It is the
+ball at row 0, column 38, coloured by the IRQ, and it is also shown in the browser. It turns green once
+the share is there, and is not lit at all without a share, and F1 shows
 `PLEASE WAIT - CONNECTING TO NETWORK...` and opens the share's C64 folder the moment it mounts.
 Any key, or 60 seconds, uses the SD card instead (`NO NETWORK - USING THE SD CARD`).
 
@@ -118,9 +146,15 @@ the next demo's own .reu goes in over it when it is run, the way the menu attach
   page (OctoVIC must be unlocked: `$4F`, `$38` to `$D03F`). No block RAM.
   Plus a raw download index `$0A`: bytes straight into RAM at the 2-byte address in front -
   no reset and no BASIC pointers, unlike the menu's PRG load (index 1).
-- **The ROM** (`rtl/roms/octo_C64.mif`, sources in `tools/octoos/kernal`): the commands, in the tape
-  room `$F72C-$F8FA`; the V1.1 start screen calls `osinit`, which points BASIC's IMAIN (`$0302`) at
-  them. LOAD, SAVE and OPEN on device 1 give ?ILLEGAL DEVICE NUMBER, since the tape code is gone.
+- **The ROM** (`rtl/roms/octo_C64.mif`, sources in `tools/octoos/kernal`, built by `build.sh`):
+  - The commands are in the tape room `$F72C-$F928` (wedge.asm) and `$FB97-$FCD0` (wedge2.asm).
+  - The start screen (octo.asm) is in `$F92C-$FB96`, plus every other piece of ROM the core never
+    runs. These are the tape's LOAD, SAVE, OPEN, CHRIN, CHROUT and CLOSE paths and its messages, the old
+    banner, and the stock ROMs' unused bytes. All of them are listed in octo.asm and checked by patch.py.
+  - It calls `osinit`, which points BASIC's IMAIN (`$0302`) at the commands.
+  - LOAD, SAVE and OPEN on device 1 give ?ILLEGAL DEVICE NUMBER, since the tape code is gone.
+  - `build.sh` makes the core's `.mif` and the emulator's `octo_rompatch.h` from the same source, then
+    runs romtest.
 - **Octophonic Main** (`tools/octoos/main`: a patch on Main_MiSTer, built by
   `.github/workflows/octoos-main.yml` onto the branch `octoos-main-build`).
 
@@ -140,14 +174,15 @@ the next demo's own .reu goes in over it when it is run, the way the menu attach
 | FC | VERSION | read: 2 | |
 | FD | SEQ | write: the request's number, before CMD | reads |
 | FE | RSEQ | read: the number STATUS answers | writes it first in every reply |
-| FF | NET | read: b1-0 the network share (0 none set up, 1 waiting for it, 2 there, 3 set up but not there), b7 a screenshot is being copied out of video memory, b6 its PNG is being written | writes it whenever it changes (kept through a core reset) |
+| FF | NET | read: b1-0 the network share (0 none set up, 1 waiting for it, 2 there, 3 set up but not there), b5 Main is on a MiSTer (so MENU is offered; the emulator's model leaves it clear), b7 a screenshot is being copied out of video memory, b6 its PNG is being written | writes it whenever it changes (kept through a core reset) |
 
 Commands: `01` DIR (PETSCII text, 0-terminated), `02` CHDIR, `03` LOAD, `04` RUN, `05` INFO,
 `06` LIST (path 40 bytes, then 40-byte records: type, size text (5), ext (3), name (31; Main cuts a long name in the middle to 28 so its end - a build number - shows)), `07` OPEN (entry LEN),
 `08` SETLIST (40-byte lines: label, value), `09` SETSTEP (line ARG, VALUE 1 or $FF), `0A` SETAPPLY
 (start the chosen chip preset), `0B` NOSHARE (stop waiting for the network: the SD card), `10` SHOT,
 `11` APPEND, `0F` SHELL (SHELL.PRG to its load address), `13` COMPILE, `14` COMPLOG, `15` GO (the
-OCTOCODE editor: see below). `12` is the MISTER menu command.
+OCTOCODE editor: see below), `12` MENU (answered, then Main loads `menu.rbf`, MiSTer's own menu;
+Main starts the Octophonic core only once per power-on, so the menu stays a menu).
 OPEN on a lone `.reu` answers VALUE 2, RESULT its size in 64 KB units, LEN the list entry of its `.prg`
 ($FFFF none).
 Errors: `$81` not found, `$82` not a folder, `$83` too big, `$84` can't read, `$85` can't run,
@@ -213,6 +248,15 @@ a menu. With the OS active, plain F12 goes to the C64 and Win+F12 (or the Menu k
 same emulated C64 with a real 1541 and a test disk (`mkd64.py`), and a model of Main's mailbox (with
 its 40 ms answer time) serving a test folder, a network share that can be set to appear after a
 while, the drives level, and lone .reu files. Build the ROM with `tools/octoos/kernal/build.sh`; the
-start screen is also compared pixel by pixel with `boot_ref.idx`, and with no share set up there
-must be no network light. Every BASIC/editor/disk case must match stock screen
-and memory; the OS cases check the wedge, F1, the browser, the settings and the 3-second timeout.
+start screen is also compared pixel by pixel with `boot_ref.idx`, and with no share set up the network
+light must be unlit.
+
+Every BASIC, editor and disk case starts with a RUN, which leaves the start screen as any program does, and
+must then match stock screen and memory. The OCTO cases check:
+- the start screen's own 24-row editor: the bar is never touched, the box scrolls away, CLR, RUN and
+  RUN/STOP+RESTORE;
+- the plain screen with no OctoVIC;
+- C=+F1 with and without NET b5;
+- the wedge, F1, the browser, the settings and the timeouts.
+
+`mktest.sh DIR` makes the test folders.

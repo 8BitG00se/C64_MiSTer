@@ -52,10 +52,10 @@ index 6991398..299637f 100644
  #endif
 diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
 new file mode 100644
-index 0000000..d88d1e5
+index 0000000..4ccfd15
 --- /dev/null
 +++ b/support/octo/octo.cpp
-@@ -0,0 +1,1400 @@
+@@ -0,0 +1,1415 @@
 +// OCTOPHONIC OS (milestone 1, build 2) - by Mong00se.
 +//
 +// With /media/fat/octophonic/os.ini on the card, the MiSTer starts straight into the Octophonic 64
@@ -91,6 +91,10 @@ index 0000000..d88d1e5
 +//               otherwise NAME's text goes on the end of file ARG - VALUE b0 set: no new line yet
 +//               (a long line in several pieces)
 +//   0F SHELL    the browser (octophonic/SHELL.PRG) into RAM at its own load address
++//   12 MENU     out to the MiSTer's own menu (menu.rbf): answered, then the menu core is loaded
++//               (C=+F1 at READY or in the browser; the 6502 offers it only when NET b5 is set)
++// NET (the mailbox's $D6FF): b1-0 the network share, b7/b6 a screenshot, b5 always set - this Main
++// is on a MiSTer (the Octophonic 64 Emulator's model of Main leaves it clear, so it offers no MENU)
 +//
 +// Every request is written to /media/fat/octophonic/os.log (what, where, the result, how long).
 +// Main sees the mailbox through hps_io's extension bus (rtl/octovic/octo_os.sv): 0x70 poll,
@@ -444,7 +448,7 @@ index 0000000..d88d1e5
 +
 +static void net_publish()
 +{
-+	int b = (net_state & 3) | shot_bits();
++	int b = (net_state & 3) | shot_bits() | 0x20;   // b5: Main is on a MiSTer (the emulator's Main leaves it clear)
 +	spi_uio_cmd_cont(UIO_OCTO_WRITE);
 +	spi_w((0x0F << 8) | b);
 +	DisableIO();
@@ -1040,6 +1044,16 @@ index 0000000..d88d1e5
 +}
 +
 +// the browser itself: SHELL.PRG next to os.ini, into RAM at its own load address, no reset
++// MENU ($12, C=+F1 at READY or in the browser): out of the Octophonic 64 to the MiSTer's own menu
++// (menu.rbf: every other core, the MiSTer's settings). Answered first, so the 6502 isn't left waiting;
++// the menu then stays a menu: Main starts the Octophonic core only once a power-on (/tmp/octoos_booted)
++static void cmd_menu()
++{
++	os_log("MENU: the MiSTer's menu");
++	mb_reply(ST_DONE, 0);
++	fpga_load_rbf("menu.rbf");
++}
++
 +static void cmd_shell()
 +{
 +	FILE *f = fopen(OS_SHELL, "rb");
@@ -1401,7 +1415,7 @@ index 0000000..d88d1e5
 +	}
 +	if (!net_timer || CheckTimer(net_timer)) { net_timer = GetTimer(1000); net_update(); }
 +	shots_poll();
-+	if (((net_state & 3) | shot_bits()) != net_sent) net_publish();   // NET b7/b6: a screenshot under way
++	if (((net_state & 3) | shot_bits() | 0x20) != net_sent) net_publish();   // NET b7/b6: a screenshot under way
 +	if (poll_timer && !CheckTimer(poll_timer)) return;
 +	poll_timer = GetTimer(4);
 +
@@ -1437,6 +1451,7 @@ index 0000000..d88d1e5
 +	case 0x10: cmd_shot(name); break;
 +	case 0x11: cmd_append(reg[R_ARG], reg[R_VALUE], name); break;
 +	case 0x0F: cmd_shell(); break;
++	case 0x12: cmd_menu(); break;
 +	default:   mb_reply(E_BADCMD, 0); break;
 +	}
 +	if (strcmp(was, cwd)) keep_cwd();
@@ -1444,7 +1459,7 @@ index 0000000..d88d1e5
 +	// was the answer taken? (the 6502 may have given up and asked something else meanwhile)
 +	// (not after RUN, OPEN or a preset: the core may already be restarting)
 +	int taken = 1;
-+	if (reg[R_CMD] != 0x04 && reg[R_CMD] != 0x07 && reg[R_CMD] != 0x0A)
++	if (reg[R_CMD] != 0x04 && reg[R_CMD] != 0x07 && reg[R_CMD] != 0x0A && reg[R_CMD] != 0x12)
 +	{
 +		uint8_t now[16];
 +		char nn[33];
