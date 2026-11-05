@@ -39,10 +39,15 @@ echo "-- the card Mr. Fusion will write (the parts that are Octophonic's or abou
 echo "  games/C64:"; ( cd "$C/games/C64" && find . -mindepth 1 | sort | sed 's|^\./|    |' )
 echo "  _Computer:"; ls -A "$C/_Computer" | sed 's/^/    /'
 echo "  octophonic:"; ( cd "$C/octophonic" && find . -mindepth 1 | sort | sed 's|^\./|    |' )
-echo "  games/C64 files (should be none - the tree is empty):  $(find "$C/games/C64" -type f | wc -l)"
-[ "$(find "$C/games/C64" -type f | wc -l)" = 0 ] && okk "games/C64 is an empty tree" || bad "files in games/C64"
+echo "  games/C64 files (the example set, step 015): $(find "$C/games/C64" -type f | wc -l), $(du -sh "$C/games/C64" | cut -f1)"
+if [ "${OCTO_EXAMPLES:-}" = none ]; then
+    [ "$(find "$C/games/C64" -type f | wc -l)" = 0 ] && okk "games/C64 is an empty tree (OCTO_EXAMPLES=none)" || bad "files in games/C64"
+else
+    grep -q '^015-examples.sh ' "$C/octophonic/steps-done.txt" && okk "step 015 put the example set in" || bad "step 015 (the example set) did not run"
+fi
 for d in Demos Games Apps Code Music SIDs Pictures "My Chips" Disks Screenshots Saves; do
     [ -d "$C/games/C64/$d" ] || bad "no games/C64/$d"
+    [ "${OCTO_EXAMPLES:-}" = none ] || [ -n "$(ls -A "$C/games/C64/$d")" ] || bad "games/C64/$d is empty"
 done
 
 echo "-- straight into Octophonic"

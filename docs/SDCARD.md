@@ -57,9 +57,11 @@ Games, Apps, Code, Music, SIDs, Pictures, My Chips, Disks, Screenshots, Saves. o
 |       +-- Screenshots/                     SHOT's pictures when there is no network share
 |       +-- Saves/                           saved games and the files programs write
 |
-|                                            All eleven are EMPTY on a fresh card: you fill them.
-|                                            (An all-in-one image may bake apps into Apps/: a later
-|                                            recipe step, not 010.)
+|                                            Recipe step 015 puts the example set in all eleven
+|                                            (tools/examples, docs/EXAMPLES.md): every demo with its
+|                                            .reu, OCTOCODE, the coding examples (.asm + .prg, and
+|                                            a .d64 each in Disks), a game and its save disk, a
+|                                            picture, tunes, chips and the screenshot example.
 |
 +-- Scripts/                                 MiSTer's scripts (Main reads cifs_mount.ini / .sh for
 |                                             a network share; the Octophonic updater goes here)
@@ -103,7 +105,8 @@ Steps 1-3 are what the Install .bats already do. Step 4 is new. Steps 5-6 cover 
 3. Copy `octophonic/SHELL.PRG` and write `octophonic/os.ini` (keep the user's own, if there is one).
 4. A new KERNAL gets onto the MiSTer only inside a new core (`.rbf`): the ROM is in the FPGA image
    (`rtl/roms/octo_C64.mif`). A new SHELL.PRG is a plain file copy.
-5. Put demos in `games/C64/Demos/<demo name> build <N>/`, with their `.reu`.
+5. Put demos in `games/C64/Demos/<demo name> build <N>/`, with their `.reu` (recipe step 015 puts
+   the example set in, demos included).
 6. Leave `Scripts/`, `screenshots/` and `menu.rbf` as MiSTer has them.
 
 For the emulator, the same `SD card/` folder goes next to `x64sc.exe` (step 3's SHELL.PRG and step 5's

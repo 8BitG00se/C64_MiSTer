@@ -160,6 +160,22 @@ fi
 # SHELL.PRG from this commit's source
 acme -f cbm -o "$PAY/SHELL.PRG" "$REPO/tools/octoos/kernal/shell.asm"
 echo "SHELL.PRG: $(stat -c %s "$PAY/SHELL.PRG") bytes"
+# the example set for step 015 (something in every games/C64 folder, and the demos with their
+# .reu files): OCTO_EXAMPLES=<a folder with MANIFEST.txt and games/>, else the sdcard-examples
+# branch (binaries live there, not in this branch). OCTO_EXAMPLES=none leaves the folders empty.
+if [ "${OCTO_EXAMPLES:-}" = none ]; then echo "example set: none (OCTO_EXAMPLES=none) - the games/C64 folders stay empty"
+elif [ -n "${OCTO_EXAMPLES:-}" ]; then
+    [ -s "$OCTO_EXAMPLES/MANIFEST.txt" ] || die "OCTO_EXAMPLES=$OCTO_EXAMPLES has no MANIFEST.txt"
+    mkdir -p "$PAY/examples"; cp -r "$OCTO_EXAMPLES"/. "$PAY/examples/"
+    echo "example set: $(wc -l < "$PAY/examples/MANIFEST.txt") files from $OCTO_EXAMPLES"
+else
+    git -C "$REPO" fetch -q origin "+refs/heads/sdcard-examples:refs/remotes/origin/sdcard-examples" \
+        || die "no sdcard-examples branch to fetch (or set OCTO_EXAMPLES=<folder>, or =none)"
+    git -C "$REPO" archive origin/sdcard-examples examples | tar -x -C "$PAY" || die "could not unpack the example set"
+    [ -s "$PAY/examples/MANIFEST.txt" ] || die "the sdcard-examples branch has no examples/MANIFEST.txt"
+    (cd "$PAY/examples" && md5sum -c --quiet MANIFEST.txt) || die "the example set does not match its MANIFEST.txt"
+    echo "example set: $(wc -l < "$PAY/examples/MANIFEST.txt") files, $(du -sh "$PAY/examples" | cut -f1), sdcard-examples $(git -C "$REPO" rev-parse --short origin/sdcard-examples)"
+fi
 # the launcher (the plain one: its chip presets need chip files, which are not part of the image)
 cat > "$PAY/_Computer/Octophonic 64.mgl" <<'MGL'
 <mistergamedescription>

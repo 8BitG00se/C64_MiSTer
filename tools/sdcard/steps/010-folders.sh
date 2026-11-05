@@ -2,9 +2,8 @@
 # 010 - the folder tree from docs/SDCARD.md.
 # Creates only what is missing. Deletes nothing. Safe to run any number of times.
 # The browser's SD CARD drive is games/C64: Demos, Games, Apps, Code, Music, SIDs, Pictures,
-# My Chips, Disks, Screenshots, Saves - all empty on a fresh card (build 6's tree). os.ini's start=
-# is /media/fat/games/C64 (step 020). Apps get their programs from a later step (0xx, app installs:
-# OCTOCODE, then SIDWeaver Lite and OctoPaint if Neal keeps them) - this step only makes folders.
+# My Chips, Disks, Screenshots, Saves (build 6's tree). os.ini's start= is /media/fat/games/C64
+# (step 020). Step 015 fills them with the example set - this step only makes folders.
 set -u
 . "$(dirname "$0")/../octo-step-lib.sh"
 octo_is_done && { octo_say "already done"; exit 0; }

@@ -10,6 +10,9 @@ tools/sdcard/
   octo-step-lib.sh      helpers every step shares
   steps/
     010-folders.sh      the docs/SDCARD.md folder tree
+    015-examples.sh     the example set in every games/C64 folder (demos with their .reu files,
+                        OCTOCODE, code examples, a game, a picture, tunes, chips) - payload
+                        files/examples/, from the sdcard-examples branch (see docs/EXAMPLES.md)
     020-os-ini.sh       octophonic/os.ini, with startin=sd
     030-core.sh         the core (hidden .rbf) + the launchers
     040-main.sh         Octophonic Main
@@ -73,6 +76,9 @@ files/
   SHELL.PRG
   _Computer/Octophonic 64.mgl     and the chip-preset launchers
   menu.rbf                        the navy menu core (octo-menu-build), for step 090
+  examples/MANIFEST.txt           step 015: "<md5>  games/C64/<path>" a line
+  examples/games/C64/...          (the sdcard-examples branch; build-image.sh fetches it,
+                                   or OCTO_EXAMPLES=<folder>; OCTO_EXAMPLES=none: no examples)
   dev/octophonic-key.pub          DEV only
 ```
 
