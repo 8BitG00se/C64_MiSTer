@@ -116,7 +116,9 @@ fresh   lda #$A5
         sta fnlen
         jsr empty
         jsr drawall
-        jsr loadfile
+        ldx #<m_fresh           ; (no load from drive 8 here: on the MiSTer, with no disk in the
+        ldy #>m_fresh           ; drive, the 1541 never answers and the editor hung at the start)
+        jsr status
         jmp edit
 
 ; back from a program (RUN/STOP+RESTORE): the code as it was
@@ -2697,6 +2699,7 @@ keycol  !byte 7,7,15,15,15,15,15,15,15, 7,7,15,15,15,15,15,15,15,15, 7,7,15,15,1
 !if * - keycol != 40 { !error "keycol" }
 m_bye   !pet "octocode: your code is kept.", 13, "run takes you back to it.", 13, 0
 m_hello !scr "Welcome back. F2 compiles and runs it.", 0
+m_fresh !scr "New file. F3 loads from drive 8.", 0
 m_back  !scr "Back! Change something, then F2 again.", 0
 m_loading !scr "Loading from the disk...", 0
 m_loaded !scr "Change something, then F2 to run it!", 0
