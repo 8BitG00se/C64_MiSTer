@@ -14,12 +14,13 @@
 ; to $CDFF), the line being edited in LBUF. The mailbox ($D6F0, docs/OCTOOS.md):
 ;   $13 COMPILE  ADDR/LEN the source, NAME the file name, ARG b0: a copy is also in VRAM $FE0000
 ;   $14 COMPLOG  the log, a line at a time     $15 GO  the program into RAM (the 6502 starts it)
+;   $16 PRGVRAM  (build 3) the program F2 made into VRAM at $FD0000, for F5 to write to the disk
 ; Before GO the editor and its source ($0801 to the end of the text) go into OctoVIC's VRAM at
 ; $FF0000; the RUN/STOP+RESTORE handler (in the tape buffer, $0334) copies them back.
 !to "octocode.prg", cbm
 !cpu 6502
 
-BUILD   = 2
+BUILD   = 3
 MB      = $D6F0
 MB_CMD  = MB
 MB_ST   = MB+1
@@ -2523,12 +2524,18 @@ nodrive ldx #<m_nodrive
         ldy #>m_nodrive
         jmp status
 
-; the text to drive 8 as fname (a SEQ file, replacing one of that name)
+; the text to drive 8 as fname (a SEQ file, replacing one of that name). Build 3: first the program
+; F2 made, if there is one, so that on a new disk it is the first file (LOAD"*",8,1 finds it)
 savefile
         ldx #<m_saving
         ldy #>m_saving
         jsr status
-        jsr open15
+        lda #0
+        sta prgok
+        jsr saveprg
+        bcs +
+        inc prgok
++       jsr open15
         bcc +
         jmp nodrive
 +       lda #'W'
@@ -2570,9 +2577,108 @@ savefile
         jsr CLOSE
         lda #0
         sta dirty2
+        lda prgok               ; build 3: the program went first
+        bne +
         ldx #<m_saved
         ldy #>m_saved
         jmp status
++       ldx #<m_saved2
+        ldy #>m_saved2
+        jmp status
+
+; build 3: the program F2 made, onto the disk next to its source - a PRG file named as the source
+; without its .asm, so the disk runs with LOAD"*",8,1 and RUN (F3 at READY) when it is the disk's
+; first file. Main puts <name>.prg into VRAM at $FD0000 (PRGVRAM, $16: RESULT its length with the
+; two address bytes); the 6502 writes it to drive 8 through the KERNAL. C clear: done; C set: none
+; (no Main, nothing compiled under this name, or the disk said no - its message is shown).
+saveprg lda octo
+        bne +
+-       sec
+        rts
++       jsr setname
+        lda #0
+        sta MB_VAL
+        lda #$16
+        jsr call
+        bne -
+        lda MB_RL               ; the length
+        sta CNT
+        lda MB_RH
+        sta CNT+1
+        ora CNT
+        beq -
+        jsr open15              ; (first: it uses X)
+        bcc +
+        rts                     ; (C set: no drive)
++       ldx #0                  ; "@0:<name>,P,W"
+        lda #'@'
+        sta fbuf
+        lda #'0'
+        sta fbuf+1
+        lda #':'
+        sta fbuf+2
+        ldx #3
+        ldy #0
+-       cpy fnlen
+        bcs +
+        lda fname,y
+        cmp #'.'
+        beq +
+        sta fbuf,x
+        inx
+        iny
+        bne -
++       ldy #0
+-       lda pwtail,y
+        sta fbuf,x
+        inx
+        iny
+        cpy #4
+        bne -
+        jsr open2
+        jsr dskerr
+        bcc +
+        jsr dskshow
+        jsr close2
+        sec
+        rts
++       ldx #2
+        jsr CHKOUT
+        lda #0                  ; read it back out of VRAM, a byte at a time
+        sta VADDR
+        sta VADDR+1
+        lda #$FD
+        sta VADDR+2
+        lda #1
+        sta VINC
+        nop                     ; (VDATA is fetched 2 us after VADDR is set)
+        nop
+        nop
+        nop
+-       lda VDATA
+        jsr CHROUT
+        lda CNT
+        bne +
+        dec CNT+1
++       dec CNT
+        lda CNT
+        ora CNT+1
+        bne -
+        jsr CLRCHN
+        lda #2
+        jsr CLOSE
+        jsr dskerr
+        bcc +
+        jsr dskshow
+        lda #15
+        jsr CLOSE
+        sec
+        rts
++       lda #15
+        jsr CLOSE
+        clc
+        rts
+pwtail  !pet ",p,w"
 
 ; ============================================================================ data
 rowlo
@@ -2606,7 +2712,8 @@ m_comp  !scr "Compiling...", 0
 m_lname !scr "Load: ", 0
 m_sname !scr "Save as: ", 0
 m_saving !scr "Saving to the disk...", 0
-m_saved !scr "Saved.", 0
+m_saved !scr "Saved. F2 first, then F5 saves the prg.", 0
+m_saved2 !scr "Saved: the code and its program.", 0
 m_nodrive !scr "No disk drive 8.", 0
 f_run   !scr " Running it... ", 0
 f_key   !scr " Any key: to the line ", 0
@@ -2642,6 +2749,7 @@ errln   !word 0
 shown   !word 0
 total   !word 0
 cstate  !byte 0
+prgok   !byte 0
 boxrow  !byte 0
 lcol    !byte 0
 row     !byte 0

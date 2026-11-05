@@ -4,7 +4,8 @@ Original project by Mong00se - Octophonic 64 and OctoVIC by Mong00se (github.com
 
 - `octocode.asm` - the editor (6502, ACME). Navy page, a title row, the code (20 rows, 79 characters
   a line, the screen moves along for long lines), a status row and the key bar:
-  F1 BROWSE, F2 COMPILE, F3 LOAD, F5 SAVE, F7 READY (build 2: the one key map); SHIFT+RETURN deletes
+  F1 BROWSE, F2 COMPILE, F3 LOAD, F5 SAVE, F7 READY (build 2: the one key map; build 3: after a good F2,
+  F5 also writes the program onto the disk, before its source, so the disk runs with LOAD"*",8,1); SHIFT+RETURN deletes
   a line, F4 a new line, F6/F8 page up/down;
   cursor keys, RETURN (splits, keeps the indent), DEL (joins at a line's start), INST, HOME, CLR.
 - `stock.asm` - a stock C64 example: its `; target stock` line makes COMPILE warn about Octophonic-only

@@ -298,6 +298,7 @@ text, PETSCII in the upper/lower case set; Main saves it, assembles it with ACME
 | `13` | COMPILE | ADDR/LEN the source in C64 RAM (lines end with RETURN), NAME the file name (`HELLO.ASM`), ARG b0: the same bytes are also in OctoVIC's VRAM at `$FE0000` | writes `<name>.asm` (lower case, ASCII) in the folder of the disk in drive 8 (else its current folder), runs `acme -v1 -f cbm -o <name>.prg -Wno-label-indent --maxerrors 10 <name>.asm` there, and keeps its messages as a log | STATUS 2 at once; `$81` nothing to compile |
 | `14` | COMPLOG | ADDR where, LEN the first log line wanted, VALUE how many (0: 8) | those lines to ADDR, PETSCII, RETURN after each, 0 at the end (36 characters a line at most; a long message carries on, indented two) | VALUE 0 still compiling, 1 done and good, 2 done with errors; RESULT the first error's line (0 none); LEN the log's lines so far |
 | `15` | GO | (NAME still from COMPILE) | `<name>.prg` into C64 RAM at its own address, no reset | RESULT the load address, LEN the end; `$81` none, `$83` it would reach below `$0400` |
+| `16` | PRGVRAM | (NAME: the file being saved; build 3 of OCTOCODE) | `<name>.prg` of the last good COMPILE into OctoVIC's VRAM at `$FD0000`, its two address bytes first | RESULT its length; `$81` nothing compiled (or it had errors) |
 
 The log's lines start with what they are, so the box can colour them: `Saved ...`, `ACME ...`,
 `Error line N: ...`, `Warning line N: ...`, `Made <name>.prg: N bytes, $0801-$0A92`, then `OK - compiled.`
@@ -308,6 +309,13 @@ After GO answers, the 6502 starts the program itself: at `$0801` as RUN does (`$
 `$A7AE`, BASIC's pointers from LEN), anywhere else with a JMP to RESULT - after the KERNAL's own
 RUN/STOP+RESTORE set-up (`$FDA3` `$FD15` `$E518`), OctoVIC off and its page shut, the SIDs quiet.
 The launcher runs from `$0100-$01A0` (out of Main's reach: GO refuses anything below `$0400`).
+
+**F5 SAVE writes the program too (OCTOCODE build 3).** After a good F2, F5 asks Main for PRGVRAM
+(`16`), then writes those bytes, read back through VDATA, to drive 8 as a PRG file named as the
+source without `.asm` (`@0:RASTER,P,W`) - before the source's SEQ file, so on a new disk the
+program is the first file and the disk runs with LOAD"*",8,1 and RUN (F3 at READY does that).
+Without a compiled program (or with a Main that doesn't know `16`) F5 saves the source only and
+says so. The emulator's Main does `16` (emulator build 7); the MiSTer's Main draft does not yet.
 
 **Back to the editor.** Before GO, OCTOCODE copies itself and the source (`$0801` to the end of the
 text) into VRAM at `$FF0000` (`'O'`, its build, the pages, then the bytes) and points the NMI vector
