@@ -70,7 +70,7 @@ b1c045e87efb03d0e0ef4276d2b96ea7  games/C64/Disks/OCTOCODE Examples.d64
 07c3fb6aadf64941d9e36cde9c521444  games/C64/Disks/Plasma.d64
 6c8da11b71334e52abe89f8be6b9fa3f  games/C64/Disks/Raster Bars.d64
 63a66d746684e699f168ce8ae2eb543f  games/C64/Disks/Split Screens.d64
-cbe87d14375d32095eb9bef492f193a4  games/C64/Games/Note Catcher.prg
+46b2b1ea3e10d27c1ce25c20395ab6f7  games/C64/Games/Note Catcher.prg
 43bfa34efb9c092e2bfc45459612feaf  games/C64/Music/Crystal Harbour.prg
 1707cfa49713f37b254729741f4fe50b  games/C64/My Chips/CSG_8580R5_3591.CHP
 f752da500e05cb7e554b8e3151e30b7a  games/C64/My Chips/MOS_6581_3184.CHP
@@ -79,6 +79,6 @@ f752da500e05cb7e554b8e3151e30b7a  games/C64/My Chips/MOS_6581_3184.CHP
 ee8af5ebbedde63f446805438f319de3  games/C64/Pictures/Sunset.prg
 480952f70f7e9f6498d0658d10f81243  games/C64/SIDs/Neal Plays.prg
 bf6095306644cba9675940ec3b66a902  games/C64/Saves/Blank Disk.d64
-2ea02639380b5d4b44251554e1d51e94  games/C64/Saves/Note Catcher Save Disk.d64
+a1d5091d71448fb93440d22ff1964e87  games/C64/Saves/Note Catcher Save Disk.d64
 cf1abe00fefd96d6410a8f215e4fde55  games/C64/Screenshots/Sunset.png
 caf8561307c6ed0075cdeba31a95d3b8  games/C64/Screenshots/Take a Screenshot.prg
