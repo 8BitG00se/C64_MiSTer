@@ -52,19 +52,43 @@ title   lda #0          ; no notes
         inx
         bne -
 +       jsr score       ; (the best so far)
+        lda #0          ; 4 seconds, then
+        sta demo        ; it plays itself
+        lda #200
+        sta t
 -       jsr frame       ; wait for SPACE
         jsr fire
-        beq -
-        jsr newgame
+        bne +
+        dec t
+        bne -
+        inc demo        ; the demo game
++       jsr newgame
+        lda demo
+        beq game
+        ldx #0
+-       lda m_demo,x
+        beq game
+        sta $0400+2*40+7,x
+        inx
+        bne -
 game    jsr frame
-        jsr movebar
+        lda demo        ; demo: SPACE plays
+        beq +
+        jsr fire
+        beq +
+        lda #0
+        sta demo
+        jsr newgame
++       jsr movebar
         jsr fall
         jsr spawn
         jsr score
         lda lives
         bne game
+        lda demo        ; (the demo keeps
+        bne +           ; no score)
         jsr savehi      ; over: keep a new
-        jsr screen      ; best, then say so
++       jsr screen      ; best, then say so
         ldx #0
 -       lda m_over,x
         beq +
@@ -110,7 +134,9 @@ fire    lda $dc00
 +       lda #1
         rts
 
-movebar lda $dc00
+movebar lda demo        ; the demo steers to
+        bne steer       ; the lowest note
+        lda $dc00
         and #4
         beq left
         lda $cb
@@ -123,6 +149,35 @@ movebar lda $dc00
         cmp #23         ; X
         beq right
         rts
+steer   ldx #0
+        ldy #$ff        ; Y: the lowest
+        lda #0
+        sta t
+-       lda ny,x
+        cmp t
+        bcc +
+        sta t
+        txa
+        tay
++       inx
+        cpx #notes
+        bne -
+        cpy #$ff
+        beq +++
+        lda nx,y        ; bar centre = note
+        sec
+        sbc #8
+        bcs +
+        lda #0
++       cmp barx
+        beq +++
+        bcc left
+        sec             ; (not past it)
+        sbc barx
+        cmp #5
+        bcc +++
+        jmp right
++++     rts
 left    lda barx
         sec
         sbc #5
@@ -356,6 +411,8 @@ number  ldy #$2f
         sta $0400+2,x
         tya
         sta $0400+1,x
+        lda demo        ; (not in the demo)
+        bne +
         lda points
         cmp best
         bcc +
@@ -366,6 +423,7 @@ m_score !scr " score 000  best 000  lives 3            "
 m_title !scr "n o t e   c a t c h e r", 0
 m_keys  !scr "z x move, space to start", 0
 m_over  !scr "game over - well played", 0
+m_demo  !scr "demo - space to play", 0
 
 ; ---- the best score on the disk
 loadhi  lda drive
@@ -686,6 +744,7 @@ freqlo  !byte 103,137,237,19,69,206,17,218,38,137,157,35,181,77,19,57
 freqhi  !byte 17,19,21,26,29,34,39,43,52,58,69,78,87,104,117,139
 
 drive   !byte 0
+demo    !byte 0
 buf     !byte 0
 tick    !byte 0
 barx    !byte 110
