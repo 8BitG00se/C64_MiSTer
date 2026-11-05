@@ -2,8 +2,11 @@ OCTOPHONIC FUSION build @BUILD@ - one card, flashed once from the PC
 =====================================================================
 
 What it is: a whole MiSTer on one SD card image (MiSTer @REL@, set up by MiSTer's own Mr. Fusion
-@MRF@) with Octophonic 64 already in: the core, Octophonic Main, the browser, and the empty
-games/C64 folders. Power on and it goes straight into Octophonic 64.
+@MRF@) with Octophonic 64 already in: the core, Octophonic Main, the browser, and an
+example in every games/C64 folder (four demos with their .reu, the coding examples and their
+.d64s, music, a picture, a game). Power on and it goes straight into Octophonic 64. The other
+demos come with the Octophonic updater (the installer has to unpack the whole card in the
+MiSTer's memory, so the card image is kept small).
 
 You need: a micro SD card of 2 GB or more (everything on it will be wiped), a card reader, and
 balenaEtcher or Rufus on the PC.

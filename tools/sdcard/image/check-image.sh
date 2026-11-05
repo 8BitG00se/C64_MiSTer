@@ -104,4 +104,21 @@ grep -q 'OCTOPHONIC SSH KEY' "$C/linux/user-startup.sh" 2>/dev/null && bad "the 
 find "$W/card" "$W/fat" -iname '*kernal*' -o -iname '*basic*.bin' -o -iname '*chargen*' -o -iname '*.rom' 2>/dev/null | grep -v -i 'mt32\|soundfont' | sed 's/^/  rom-like name: /'
 
 echo
+echo "-- will it install (Mr. Fusion unpacks the whole card into RAM, /tmp, before writing it)"
+# Build 2 (499 MB) ran the DE10-Nano out of RAM part way through the unpack; Mr. Fusion's
+# installer does not check for that, so it wrote a half card (no menu.rbf: a black screen).
+# MiSTer's own release alone unpacks to about 398 MB (linux.img is 375 MB of it) and installs;
+# /tmp is a tmpfs, half the 1 GB RAM at most - so keep within about 50 MB of the official size.
+LIMIT_MB=${OCTO_TREE_LIMIT_MB:-450}
+TREE_MB=$(( $(du -sk "$C" | cut -f1) / 1024 ))
+if [ "$TREE_MB" -le "$LIMIT_MB" ]; then okk "the card unpacks to $TREE_MB MB (limit $LIMIT_MB MB)"
+else bad "the card unpacks to $TREE_MB MB - over the $LIMIT_MB MB limit, Mr. Fusion cannot install it"; fi
+M=$(stat -c %s "$C/menu.rbf" 2>/dev/null || echo 0)
+[ "$M" -gt 1048576 ] && okk "menu.rbf is there ($M bytes)" || bad "menu.rbf missing or too small ($M bytes)"
+for f in linux/uboot.img octophonic/os.ini octophonic/SHELL.PRG octophonic/steps-done.txt; do
+    [ -s "$C/$f" ] && okk "$f is there ($(stat -c %s "$C/$f") bytes)" || bad "$f missing or empty"
+done
+Z0=$(find "$C" -type f -size 0 | sed "s|^$C/||")
+[ -z "$Z0" ] && okk "no empty (0-byte) file anywhere" || { bad "empty files:"; echo "$Z0" | sed 's/^/      /'; }
+
 if [ "$FAIL" = 0 ]; then echo "IMAGE_OK"; else echo "IMAGE_FAILED"; exit 1; fi
