@@ -142,10 +142,10 @@ port(
 	chip_wdata  : in  std_logic_vector(7 downto 0) := (others => '0');
 	chip_on     : in  std_logic_vector(1 downto 0) := "00";
 	sid_digifix : in  std_logic;
-	-- OCTOPHONIC: '1' four SIDs - $D400, $D420, $D500, $D520 (the Ultimate 64's layout)
+	-- OCTOPHONIC: '1' four SIDs - $D400, $D420, $D500, $D520 (the standard multi-SID layout)
 	sid_quad    : in  std_logic := '0';
 	-- OCTOPHONIC: '1' (with sid_quad) eight SIDs - A7 picks two more pairs:
-	-- $D480, $D4A0, $D580, $D5A0 (the layout 8-SID music such as The Tuneful Eight uses)
+	-- $D480, $D4A0, $D580, $D5A0 (the standard 8-SID layout)
 	sid_oct     : in  std_logic := '0';
 	-- OCTOPHONIC: OctoSID FX from the menu (b0 chorus, b1 echo) - see rtl/octovic/sid_fx.sv
 	sid_fx_osd  : in  std_logic_vector(1 downto 0) := "00";

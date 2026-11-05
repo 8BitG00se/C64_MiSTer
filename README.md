@@ -9,7 +9,7 @@ Octophonic option in the Audio & Video menu: Off (the stock core's one or two SI
 | Address | $D400 | $D420 | $D500 | $D520 | $D480 | $D4A0 | $D580 | $D5A0 |
 | Side | left | right | left | right | left | right | left | right |
 
-The same layout as the Ultimate 64's, so a program written for one plays on the other:
+The standard multi-SID address layout, so 4- and 8-SID music written for it plays here:
 A5 picks left or right, A8 the second pair, A7 the third and fourth. 4 SIDs mode is
 SIDs 1-4. "Left SIDs 1357" and "Right SIDs 2468" in the menu set the model of the odd and even SIDs.
 With all of them playing each side is mixed at a half (4 SIDs) or a quarter (8 SIDs)
@@ -17,6 +17,11 @@ so it never clips.
 
 Made with SIDWeaver, whose sequencer writes 4- and
 8-SID tunes to a .d64 that plays here with the REU (16MB) switched on.
+
+Credits: see [CREDITS.md](CREDITS.md) - the MiSTer C64 core (FPGA64 by Peter Wendrich and
+later contributors), MiSTer Main and the MiSTer project (Sorgelig and contributors), VICE (the
+VICE team), ACME (Marco Baye), Mr. Fusion (MiSTer-devel), tty2oled (venice1200 and contributors)
+and Antonio Villena's front-screen board. Octophonic 64 / Mong00se.
 
 Builds on GitHub: every push to master builds the core (Actions, artifact
 C64_Octophonic); its fit and timing reports are kept on the build-reports branch.
