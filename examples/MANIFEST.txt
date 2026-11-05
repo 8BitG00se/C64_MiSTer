@@ -1,4 +1,4 @@
-5ceb9e607d3eafaa135f227a11547283  games/C64/Apps/OCTOCODE.PRG
+e8cfccacefff782883e95aec15f89a97  games/C64/Apps/OCTOCODE.PRG
 bc305a080f45e053fc92e7c7b73a8fde  games/C64/Code/bounce.asm
 56791f3c69469f2d747dccda2e7c883a  games/C64/Code/bounce.prg
 67f40b002c90513d47d93003405b0fe4  games/C64/Code/hello.asm
