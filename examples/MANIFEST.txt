@@ -1,0 +1,84 @@
+5ceb9e607d3eafaa135f227a11547283  games/C64/Apps/OCTOCODE.PRG
+bc305a080f45e053fc92e7c7b73a8fde  games/C64/Code/bounce.asm
+56791f3c69469f2d747dccda2e7c883a  games/C64/Code/bounce.prg
+67f40b002c90513d47d93003405b0fe4  games/C64/Code/hello.asm
+f4076a00da3c24aaad1bd55585033590  games/C64/Code/hello.prg
+218851802543d7e1ff1d3835eaea1e71  games/C64/Code/parallax.asm
+f2311f51b18a7f36b95cace142070cd1  games/C64/Code/parallax.prg
+9e87020f07f111a41722d4786377581a  games/C64/Code/plasma.asm
+f43a248ebf139ac1ec30284633593550  games/C64/Code/plasma.prg
+dbe2dcc89e7d9c75e8202f5bd807fcc8  games/C64/Code/raster.asm
+3461474d78ce2526b1fe6997cc341bff  games/C64/Code/raster.prg
+56600a551de842cac3a47e6694e3b309  games/C64/Code/scroll.asm
+69852fab13d4ca2b7c06ee472e116d21  games/C64/Code/scroll.prg
+86f1b6677a66884f3f5eedf37998f44d  games/C64/Code/split.asm
+91df53c5dbcd10e06fa1fc0db5ba06a7  games/C64/Code/split.prg
+6b4a63b2a7ecc9004e585f0ba8d0623e  games/C64/Code/sprites.asm
+2b6ba4062f2fd4cf1ea29b3a38de4d45  games/C64/Code/sprites.prg
+5213c484f9aa800d4d6f3510719330aa  games/C64/Code/stock.asm
+f0e26ab1d4eb8b7a0ab429e6d42d7fc4  games/C64/Code/stock.prg
+bd4219e4282fe7f4f63439801aa2b283  games/C64/Demos/Octophonic Black Hole build 1/Black Hole.prg
+54cd776459e614a97c054dddb6b69950  games/C64/Demos/Octophonic Black Hole build 1/Black Hole.reu
+1eead9268dedbb9c9188098be5b40631  games/C64/Demos/Octophonic Cube Ripple build 1/Cube Ripple.prg
+cfc12e98085af23d8e84b62222401634  games/C64/Demos/Octophonic Cube Ripple build 1/Cube Ripple.reu
+57d57a9b83a12e976f7a1ffd9e0c2bbe  games/C64/Demos/Octophonic Cube Wall build 1/Cube Wall.prg
+2b18dc63f8d790404a491d3fb74e0757  games/C64/Demos/Octophonic Cube Wall build 1/Cube Wall.reu
+938525be1a36fc54c02ea4695ef8c118  games/C64/Demos/Octophonic Drone Waves build 2/Drone Waves.prg
+29573fa6792d5381ef1d42cd71d79ef2  games/C64/Demos/Octophonic Drone Waves build 2/Drone Waves.reu
+678f5d4a42ac23b024ef3100a24bddb4  games/C64/Demos/Octophonic Full Show build 2/Octophonic Full Show-10.reu
+3401bc597ca9b261e6209d24b7d67a53  games/C64/Demos/Octophonic Full Show build 2/Octophonic Full Show-2.reu
+0e78cec9fac11a76cd2fa4ca0c7d6a1b  games/C64/Demos/Octophonic Full Show build 2/Octophonic Full Show-3.reu
+ac9b748d24bec6fa9beab2743b4655d0  games/C64/Demos/Octophonic Full Show build 2/Octophonic Full Show-4.reu
+40757425ad29c4018b18e29049d6b819  games/C64/Demos/Octophonic Full Show build 2/Octophonic Full Show-5.reu
+c38eae5c4a2ca3751005b1e0a062a96d  games/C64/Demos/Octophonic Full Show build 2/Octophonic Full Show-6.reu
+108e9a1ec985a1b080db1865d35ed614  games/C64/Demos/Octophonic Full Show build 2/Octophonic Full Show-7.reu
+ac1e7e0ce494d0dc2c8fc473a39075e8  games/C64/Demos/Octophonic Full Show build 2/Octophonic Full Show-8.reu
+0f2ee6ba211dc8a46d83e6bdcadf457f  games/C64/Demos/Octophonic Full Show build 2/Octophonic Full Show-9.reu
+dfa33a70230fe71a0676bc9036b0b44a  games/C64/Demos/Octophonic Full Show build 2/Octophonic Full Show.prg
+2a61dbe58862c6d3893df7371039a82d  games/C64/Demos/Octophonic Full Show build 2/Octophonic Full Show.reu
+5ce19a27e582a293b362817dfae8f3de  games/C64/Demos/Octophonic Gold Black Hole build 2/Gold Black Hole.prg
+5f1ded570c84e78c76b7404bd572bd3c  games/C64/Demos/Octophonic Gold Black Hole build 2/Gold Black Hole.reu
+2c594b10c0df70686add638e323504dc  games/C64/Demos/Octophonic Halloween build 3/Halloween.prg
+58d0746f1b01246f506361f770802351  games/C64/Demos/Octophonic Halloween build 3/Halloween.reu
+1562c41ead7e1216f7d5a0b9bbdca8ec  games/C64/Demos/Octophonic Horizon build 11/Octophonic Horizon.prg
+28c7388184c2adc027bf578968c05f08  games/C64/Demos/Octophonic Horizon build 11/Octophonic Horizon.reu
+e0cbe1dd0f24a332da583ab7075f5336  games/C64/Demos/Octophonic Illusions examples build 1/Illusions.prg
+68b999d47fc02f3fb7bd82686c78491f  games/C64/Demos/Octophonic Illusions examples build 1/Illusions.reu
+d62b486d54166198f0293a631811764d  games/C64/Demos/Octophonic Octo Black Hole build 1/Octo Black Hole.prg
+44ed2e68875e7f9cf4047815984d5607  games/C64/Demos/Octophonic Octo Black Hole build 1/Octo Black Hole.reu
+776edc054826fba10f8300f4b0fe46c9  games/C64/Demos/Octophonic Perspective Floor build 2/Perspective Floor.prg
+25f7b8a0a678e1a77cdb060a44808330  games/C64/Demos/Octophonic Perspective Floor build 2/Perspective Floor.reu
+b0849ded5ec96ea198e649897c0e9f86  games/C64/Demos/Octophonic Pulsar build 3/Octophonic Pulsar.prg
+637acbd6949ebe2c526a15b4a39ad4fd  games/C64/Demos/Octophonic Pulsar build 3/Octophonic Pulsar.reu
+144128d89cf7181005f0cb8a73595f09  games/C64/Demos/Octophonic Punching Cubes build 3/Punching Cubes.prg
+002cad4ed3bb4b80bcac5bf317bfb955  games/C64/Demos/Octophonic Punching Cubes build 3/Punching Cubes.reu
+f13ac18a13a407ac9eb20c706ab31bc5  games/C64/Demos/Octophonic Saturn build 1/Saturn.prg
+6211fad82eefd9025aab728f479bd27f  games/C64/Demos/Octophonic Saturn build 1/Saturn.reu
+394aac2b5b666bfd1dfb9c4eae18b3aa  games/C64/Demos/Octophonic Showcase build 1/Octophonic Showcase.prg
+a00e6f304bd9db007fc4b98374d1e8ff  games/C64/Demos/Octophonic Showcase build 1/Octophonic Showcase.reu
+e43a87b9c4e962a3a487e67affde6fe0  games/C64/Demos/Octophonic Skipping Ball build 2/Skipping Ball.prg
+9d9f5b71fca9f502ad096ac384fc8dc8  games/C64/Demos/Octophonic Skipping Ball build 2/Skipping Ball.reu
+f7c562c18db60f3f409a37d867716edf  games/C64/Demos/Stock64/Octophonic 64 Stock Cube Wall Blended build 7/Stock Cube Wall.prg
+5610ffbeb330bcb061e244cf037f97fb  games/C64/Demos/Stock64/Octophonic 64 Stock Skipping Ball build 6/Stock Skipping Ball.prg
+703e07eea899b631a3a3f9f30fac6c5a  games/C64/Disks/64 Sprites.d64
+3f49817779e4842a9e32a5a94fdf0e47  games/C64/Disks/Big Scroller.d64
+9053d7cc5f23898df4a0235358e540e1  games/C64/Disks/Bouncing Logo.d64
+70945c6fad5b510068c54e9666144ee1  games/C64/Disks/Hello Cart.crt
+86c2d861b9a4df4a58af33efc701aa82  games/C64/Disks/Hello Disk.d64
+b1c045e87efb03d0e0ef4276d2b96ea7  games/C64/Disks/OCTOCODE Examples.d64
+0a73f1e6e419cb16632052d2c7bfa716  games/C64/Disks/Parallax.d64
+07c3fb6aadf64941d9e36cde9c521444  games/C64/Disks/Plasma.d64
+6c8da11b71334e52abe89f8be6b9fa3f  games/C64/Disks/Raster Bars.d64
+63a66d746684e699f168ce8ae2eb543f  games/C64/Disks/Split Screens.d64
+cbe87d14375d32095eb9bef492f193a4  games/C64/Games/Note Catcher.prg
+43bfa34efb9c092e2bfc45459612feaf  games/C64/Music/Crystal Harbour.prg
+1707cfa49713f37b254729741f4fe50b  games/C64/My Chips/CSG_8580R5_3591.CHP
+f752da500e05cb7e554b8e3151e30b7a  games/C64/My Chips/MOS_6581_3184.CHP
+6c66724207577d75cae8728440e4ee56  games/C64/My Chips/MOS_6581_5084.CHP
+9874960781985b04359e3672d1dbee33  games/C64/My Chips/MOS_8580R5_4687.CHP
+ee8af5ebbedde63f446805438f319de3  games/C64/Pictures/Sunset.prg
+480952f70f7e9f6498d0658d10f81243  games/C64/SIDs/Neal Plays.prg
+bf6095306644cba9675940ec3b66a902  games/C64/Saves/Blank Disk.d64
+2ea02639380b5d4b44251554e1d51e94  games/C64/Saves/Note Catcher Save Disk.d64
+cf1abe00fefd96d6410a8f215e4fde55  games/C64/Screenshots/Sunset.png
+caf8561307c6ed0075cdeba31a95d3b8  games/C64/Screenshots/Take a Screenshot.prg
