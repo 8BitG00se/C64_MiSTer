@@ -1335,30 +1335,6 @@ jingle  sei
         jsr jp1
         dex
         bpl -
-        cli
-        lda #1                  ; then the volume up a step a frame (a 6581 clicks at a jump in volume,
-                                ; and at a waveform chosen at full volume: chosen above, at 0)
-        sta jvol
---      ldx #7
----     lda jlo,x
-        sta jp1+1
-        lda jhi,x
-        sta jp1+2
-        ldy #$18
-        lda jvol
-        jsr jp1
-        ldy #0                  ; (the SIDs a step each 1.3 ms apart: eight small steps, not one)
--       dey
-        bne -
-        dex
-        bpl ---
-        lda $A2
--       cmp $A2
-        beq -
-        inc jvol
-        lda jvol
-        cmp #JVOL+1
-        bne --
         sei
         ldx #5                  ; the pad: SID 1-6 voice 1 (1 3 5 C3, 2 4 6 G3: three of each, in
                                 ; phase - build 6, louder), slow attack, long decay
@@ -1390,6 +1366,32 @@ jingle  sei
         lda #>JP
         sta $0315
         cli
+; build 8: the volume ramp moved here, after the first notes are set going - it was before them, and
+; on its own the SIDs' DC step at each volume step was half a second of low thump before the tune.
+; Now it is the tune's 0.3 s fade-in and the steps are under the notes.
+        lda #1                  ; then the volume up a step a frame (a 6581 clicks at a jump in volume,
+                                ; and at a waveform chosen at full volume: chosen above, at 0)
+        sta jvol
+--      ldx #7
+---     lda jlo,x
+        sta jp1+1
+        lda jhi,x
+        sta jp1+2
+        ldy #$18
+        lda jvol
+        jsr jp1
+        ldy #0                  ; (the SIDs a step each 1.3 ms apart: eight small steps, not one)
+-       dey
+        bne -
+        dex
+        bpl ---
+        lda $A2
+-       cmp $A2
+        beq -
+        inc jvol
+        lda jvol
+        cmp #JVOL+1
+        bne --
         rts
 jp1     sta $FFFF,y
         rts
