@@ -61,7 +61,7 @@ c1541 -format "note bouncer,nb" d64 "$G/Saves/Note Bouncer Save Disk.d64" -write
 c1541 -format "blank disk,bd" d64 "$G/Saves/Blank Disk.d64" >/dev/null 2>&1
 
 # Pictures
-(cd "$HERE/picture" && acme -f cbm -o "$G/Pictures/Sunset.prg" viewer.asm)
+(cd "$HERE/picture" && acme -f cbm -o "$G/Pictures/Moonlight.prg" viewer.asm)
 
 # Music and SIDs: SIDWeaver tunes in a player (a raw .sid is not one of the browser's file types)
 mkplayer() {   # out init play fx tune lines...
@@ -85,6 +85,6 @@ cp "$REPO"/chips/*.CHP "$G/My Chips/"
 
 # Screenshots: the SHOT example, and a screenshot
 acme -f cbm -o "$G/Screenshots/Take a Screenshot.prg" "$HERE/misc/shot.asm"
-cp "$HERE/picture/sunset.png" "$G/Screenshots/Sunset.png"
+cp "$HERE/picture/moonlight.png" "$G/Screenshots/Moonlight.png"
 
 echo "example set: $(find "$G" -type f | wc -l) files in $G"

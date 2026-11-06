@@ -1,5 +1,6 @@
-; SUNSET - a picture for the Octophonic 64: 320 x 200 in 253 of
-; OctoVIC's 256 colours, on a bitmap layer, packed (runs) in 8 KB.
+; MOONLIGHT - a picture for the Octophonic 64: 320 x 200 in 253 of
+; OctoVIC's 256 colours, on a bitmap layer, packed (runs) in 42 KB
+; (the packed picture runs up under the BASIC ROM, which is switched out while it is unpacked).
 ; It fades up, stays, and SPACE fades it out to READY.
 ; Original picture: Octophonic 64 / Mong00se.
 * = $0801
@@ -46,7 +47,11 @@ start   sei
         lda #0
         sta level
         jsr setpal      ; all black first
+        lda #$36        ; BASIC out: the packed picture is under it
+        sta $01
         jsr unpack
+        lda #$37
+        sta $01
         lda #0          ; layer 0: the bitmap
         sta $d624
         sta $d625
@@ -208,5 +213,5 @@ rowstart                ; VADDR = $100000 + row*512
 level   !byte 0
 row     !word 0
 left    !word 0
-pal     !binary "sunset.pal"
-packed  !binary "sunset.rle"
+pal     !binary "moonlight.pal"
+packed  !binary "moonlight.rle"
