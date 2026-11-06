@@ -431,14 +431,14 @@ tick    lda MB_VAL              ; still busy, VALUE 3: Main is putting a .reu in
         cmp #3
         bne +
         jsr reubar
-+       lda $A2
++       jsr bars                ; (build 4) gentle raster bars in the border while we wait
+        lda $A2
         cmp lastj
         beq -
         sta lastj
-        and #3
-        bne +
-        inc $D020
-+       dec jifs
+        lsr                     ; the bars slide down the border: one step every two jiffies
+        sta phase
+        dec jifs
         bne -
         lda #50
         sta jifs
@@ -451,6 +451,24 @@ fin     pha
         pla
         cmp #$02
         rts
+
+; the waiting border (build 4; it used to flash): soft dark-blue raster bars, the border colour
+; chosen by the raster line (8 lines a step) and slid down the screen by PHASE. Neighbouring
+; colours are close, so the ragged edge of a poll loop can't be seen.
+bars    lda $D012
+        lsr
+        lsr
+        lsr
+        clc
+        adc phase
+        and #$1F
+        tax
+        lda bartab,x
+        sta $D020
+        rts
+bartab  !byte 0,0,0,6,6,6,14,14,6,6,6,0,0,0,0,0
+        !byte 0,11,11,11,12,12,11,11,11,0,0,0,0,0,0,0
+phase   !byte 0
 
 ; an error (A) on the status line
 err     cmp #$FE
