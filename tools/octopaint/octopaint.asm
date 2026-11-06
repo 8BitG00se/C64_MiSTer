@@ -323,7 +323,10 @@ nmi     rti
 irq     lda $d019
         sta $d019
         inc tick
-        jmp $ea81
+        inc frames
+        bne .f
+        inc frames+1
+.f      jmp $ea81
 
 ; ================================================================================================ main loop
 !zone main
@@ -3012,8 +3015,6 @@ c_negay sec
         sta ay+1
         rts
 
-; the flood fill (a later step)
-do_fill rts
 
 
 ; ================================================================================================ colour edit (E)
@@ -3258,7 +3259,351 @@ vset    lda sx,x
         sta vx+1,x
         rts
 
+
+; ================================================================================================ PAINT: flood fill (F)
+; Scanline fill, 4-way, same colour: a stack of seeds in C64 RAM (at most 1024), the row being filled read through VDATA
+; into RAM, runs written with the blitter's FILL. A seed is popped, its row read, the run of target-coloured pixels round it
+; found and filled, and the rows above and below that run scanned for runs to seed. If the stack fills: FILL TOO BIG.
+!zone do_fill
+do_fill lda cx
+        sta p_x
+        lda cx+1
+        sta p_x+1
+        lda cy
+        sta p_y
+        lda cy+1
+        sta p_y+1
+        jsr readpixel
+        sta tgt
+        cmp scolr
+        bne .go
+        rts                     ; already that colour
+.go     lda #0
+        sta fsp
+        sta fsp+1
+        sta fover
+        lda frames
+        sta fstart
+        lda frames+1
+        sta fstart+1
+        lda cx
+        sta qx
+        lda cx+1
+        sta qx+1
+        lda cy
+        sta qy
+        jsr push
+.loop   lda fsp
+        ora fsp+1
+        bne .more
+        jmp .done
+.more   jsr pop
+        lda qx                  ; still the target colour?
+        sta p_x
+        lda qx+1
+        sta p_x+1
+        lda qy
+        sta p_y
+        lda #0
+        sta p_y+1
+        jsr readpixel
+        cmp tgt
+        bne .loop
+        jsr readrow             ; the whole row into ROWBUF
+        lda tgt                 ; end stops: a byte that is never the target, either side of the row
+        eor #1
+        sta ROWBUF-1
+        sta ROWBUF+CW
+        clc                     ; ptr and ptr2 = ROWBUF + qx
+        lda qx
+        adc #<ROWBUF
+        sta ptr2
+        sta ptr
+        lda qx+1
+        adc #>ROWBUF
+        sta ptr2+1
+        sta ptr+1
+        ldy #0
+.left   lda ptr2                ; extend left
+        bne .l1
+        dec ptr2+1
+.l1     dec ptr2
+        lda (ptr2),y
+        cmp tgt
+        beq .left
+        sec                     ; xl = (first non-target) + 1
+        lda ptr2
+        sbc #<(ROWBUF-1)
+        sta xl
+        lda ptr2+1
+        sbc #>(ROWBUF-1)
+        sta xl+1
+.right  inc ptr                 ; extend right
+        bne .r1
+        inc ptr+1
+.r1     lda (ptr),y
+        cmp tgt
+        beq .right
+        sec                     ; xr = (first non-target) - 1
+        lda ptr
+        sbc #<(ROWBUF+1)
+        sta xr
+        lda ptr+1
+        sbc #>(ROWBUF+1)
+        sta xr+1
+.rend   lda xl                  ; fill the run: one row
+        sta f_x
+        lda xl+1
+        sta f_x+1
+        lda qy
+        sta f_y
+        lda #0
+        sta f_y+1
+        sec
+        lda xr
+        sbc xl
+        sta f_w
+        lda xr+1
+        sbc xl+1
+        sta f_w+1
+        inc f_w
+        bne .w1
+        inc f_w+1
+.w1     lda #1
+        sta f_h
+        lda #0
+        sta f_h+1
+        lda scolr
+        sta f_c
+        lda #VR_CAN
+        sta f_hb
+        jsr fillrect
+        lda qy                  ; the row above
+        beq .noup
+        sec
+        sbc #1
+        sta ny
+        jsr scanrow
+.noup   lda qy                  ; the row below
+        cmp #CH-1
+        bcs .nodn
+        clc
+        adc #1
+        sta ny
+        jsr scanrow
+.nodn   lda fover
+        bne .over
+        jmp .loop
+.over   ldx #<m_fillbig
+        ldy #>m_fillbig
+        jsr msg
+        rts
+.done   sec                     ; how long it took, in frames
+        lda frames
+        sbc fstart
+        sta fillt
+        lda frames+1
+        sbc fstart+1
+        sta fillt+1
+        lda #1                  ; FILLED IN n FRAMES on row 24
+        sta tcol
+        ldx #0
+        ldy #24
+        jsr txtpos
+        ldx #40
+        jsr fillsp
+        ldx #0
+        ldy #24
+        jsr txtpos
+        +puts s_filled
+        lda fillt
+        sta nv
+        lda fillt+1
+        sta nv+1
+        lda #0
+        sta nv+2
+        ldx #0
+        jsr prdec
+        +puts s_frames
+        lda #150
+        sta msgt
+        rts
+
+; the row ny, columns xl..xr, read straight from VDATA: seed every run of target-coloured pixels
+!zone scanrow
+scanrow lda qy
+        sta sqy
+        lda ny
+        sta qy
+        lda xl
+        sta p_x
+        sta qx
+        lda xl+1
+        sta p_x+1
+        sta qx+1
+        lda ny
+        sta p_y
+        lda #0
+        sta p_y+1
+        clc
+        lda xr
+        adc #1
+        sta qe
+        lda xr+1
+        adc #0
+        sta qe+1
+        jsr vaddr_xy
+        jsr vwait
+        ldx #0                  ; X = 1 inside a run
+.l      lda VDATA
+        cmp tgt
+        beq .hit
+        ldx #0
+.nx     inc qx
+        bne .c
+        inc qx+1
+.c      lda qx
+        cmp qe
+        bne .l
+        lda qx+1
+        cmp qe+1
+        bne .l
+        lda sqy
+        sta qy
+        rts
+.hit    cpx #0
+        bne .nx
+        ldx #1
+        jsr push                ; push keeps X
+        jmp .nx
+
+; push (qx, qy); pop -> (qx, qy)
+!zone push
+push    lda fsp+1
+        cmp #>STKMAX
+        bcc .ok
+        lda #1
+        sta fover
+        rts
+.ok     clc
+        adc #>STK_XL
+        sta ptr2+1
+        lda #0
+        sta ptr2
+        ldy fsp
+        lda qx
+        sta (ptr2),y
+        lda fsp+1
+        clc
+        adc #>STK_XH
+        sta ptr2+1
+        lda qx+1
+        sta (ptr2),y
+        lda fsp+1
+        clc
+        adc #>STK_Y
+        sta ptr2+1
+        lda qy
+        sta (ptr2),y
+        inc fsp
+        bne .r
+        inc fsp+1
+.r      rts
+
+!zone pop
+pop     lda fsp
+        bne .a
+        dec fsp+1
+.a      dec fsp
+        lda fsp+1
+        clc
+        adc #>STK_XL
+        sta ptr2+1
+        lda #0
+        sta ptr2
+        ldy fsp
+        lda (ptr2),y
+        sta qx
+        lda fsp+1
+        clc
+        adc #>STK_XH
+        sta ptr2+1
+        lda (ptr2),y
+        sta qx+1
+        lda fsp+1
+        clc
+        adc #>STK_Y
+        sta ptr2+1
+        lda (ptr2),y
+        sta qy
+        rts
+
+; ---- the read hooks (platform): a row, or a stretch of one, from the canvas into RAM through VDATA
+; readrow: row p_y -> ROWBUF (320 bytes)
+!zone readrow
+readrow lda #0
+        sta p_x
+        sta p_x+1
+        jsr vaddr_xy
+        jsr vwait
+        lda #<ROWBUF
+        sta ptr2
+        lda #>ROWBUF
+        sta ptr2+1
+        ldy #0
+.a      lda VDATA
+        sta (ptr2),y
+        nop
+        nop
+        nop
+        iny
+        bne .a
+        inc ptr2+1
+.b      lda VDATA
+        sta (ptr2),y
+        nop
+        nop
+        nop
+        iny
+        cpy #CW-256
+        bne .b
+        rts
+
+; readseg: scnt pixels from (p_x, p_y) -> NBUF
+!zone readseg
+readseg jsr vaddr_xy
+        jsr vwait
+        lda #<NBUF
+        sta ptr2
+        lda #>NBUF
+        sta ptr2+1
+        ldy #0
+.l      lda VDATA
+        sta (ptr2),y
+        nop
+        nop
+        iny
+        bne .n
+        inc ptr2+1
+.n      lda scnt
+        bne .d
+        dec scnt+1
+.d      dec scnt
+        lda scnt
+        ora scnt+1
+        bne .l
+        rts
+
+!zone m_fillbig
+m_fillbig !scr "fill too big", $ff
+s_filled !scr "filled in ", $ff
+s_frames !scr " frames", $ff
+
 ; ================================================================================================ variables (zero at start)
+!zone qe
+qe      !fill 2
+!zone sqy
+sqy     !fill 1
 !zone f_x
 f_x     !fill 2                 ; fillrect: x, y, width, height (in this order)
 !zone f_y
@@ -3368,4 +3713,17 @@ eorig   !fill 3
 erep    !fill 1
 eh      !fill 1
 estep   !fill 1
+frames  !fill 2
+fillt   !fill 2
+fstart  !fill 2
+fsp     !fill 2
+fover   !fill 1
+tgt     !fill 1
+qx      !fill 2
+qy      !fill 1
+xl      !fill 2
+xr      !fill 2
+ny      !fill 1
+scnt    !fill 2
+inrun   !fill 1
 progend
