@@ -146,17 +146,9 @@ else
     echo "Main: built from $C (same patches as $HEADC), $(md5sum < "$PAY/MiSTer" | cut -c1-8)"
 fi
 grep -q 'Octophonic OS' "$PAY/MiSTer" || die "that MiSTer is not Octophonic Main"
-# the navy menu core, if built from this source (else step 090 leaves the stock one)
-if [ -n "${OCTO_MENU:-}" ]; then cp "$OCTO_MENU" "$PAY/menu.rbf"
-else
-    C=$(built_from octo-menu-build || true)
-    if [ "$(built_ok octo-menu-build || true)" = success ] && same_src "$C" tools/octoos/menu .github/workflows/octo-menu.yml \
-        && git -C "$REPO" show origin/octo-menu-build:menu.rbf > "$PAY/menu.rbf" 2>/dev/null && [ -s "$PAY/menu.rbf" ]; then
-        echo "navy menu core: built from $C"
-    else
-        rm -f "$PAY/menu.rbf"; echo "navy menu core: none built from this source yet - the stock menu.rbf stays"
-    fi
-fi
+# no menu core in the payload: since build 4 the stock (white noise) menu.rbf stays; step 095 puts
+# it back on a card that had the navy one
+rm -f "$PAY/menu.rbf"
 # SHELL.PRG from this commit's source
 acme -f cbm -o "$PAY/SHELL.PRG" "$REPO/tools/octoos/kernal/shell.asm"
 echo "SHELL.PRG: $(stat -c %s "$PAY/SHELL.PRG") bytes"

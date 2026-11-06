@@ -10,8 +10,8 @@ Every folder outside `games/C64` is one that something already uses:
 - The core install: `tools/install/install_core.sh`.
 - MiSTer itself: `menu.rbf`, `Scripts/`, `screenshots/`.
 
-The eleven folders in `games/C64` (build 6, Neal's list) are the browser's SD CARD drive: Demos,
-Games, Apps, Code, Music, SIDs, Pictures, My Chips, Disks, Screenshots, Saves. os.ini's `start=` is
+The twelve folders in `games/C64` (build 6, Neal's list; Textures from Fusion build 4) are the browser's SD CARD drive: Demos,
+Games, Apps, Code, Music, SIDs, Pictures, My Chips, Disks, Screenshots, Saves, Textures. os.ini's `start=` is
 `/media/fat/games/C64`.
 
 ```
@@ -54,8 +54,9 @@ Games, Apps, Code, Music, SIDs, Pictures, My Chips, Disks, Screenshots, Saves. o
 |       +-- Pictures/                        pictures (viewers as .prg)
 |       +-- My Chips/                        your own measured chips: *.CHP (F8 MY CHIP LEFT / RIGHT)
 |       +-- Disks/                           loose disk and cartridge images: .d64 .g64 .t64 .d81 .crt
-|       +-- Screenshots/                     SHOT's pictures when there is no network share
+|       +-- Screenshots/                     SHOT's pictures (always here; also on the network share when there is one)
 |       +-- Saves/                           saved games and the files programs write
+|       +-- Textures/                        seamless textures as .d64 disks, to open in OctoPaint
 |
 |                                            Recipe step 015 puts the example set in all eleven
 |                                            (tools/examples, docs/EXAMPLES.md): every demo with its

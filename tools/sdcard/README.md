@@ -20,7 +20,7 @@ tools/sdcard/
     060-mister-ini.sh   makes sure a MiSTer.ini exists; sets no video
     070-migrate-drop-octophonic-folder.sh   the old games/C64/Octophonic folders, if empty
     080-bootcore.sh     MiSTer.ini: bootcore=Octophonic 64.mgl, every bootcore_timeout off
-    090-navy-menu-core.sh   menu.rbf: the navy menu core (no grey noise before the core starts)
+    095-stock-menu-core.sh  menu.rbf: MiSTer's own (white noise) menu core back, if the old navy one was in
     900-DEV-ssh-key.sh          Neal's ssh key + the startup hook
     910-DEV-mister-ini-crt.sh   Neal's JVC CRT video settings
     920-DEV-network-share.sh    reports his share; configures nothing
@@ -75,7 +75,6 @@ files/
   MiSTer
   SHELL.PRG
   _Computer/Octophonic 64.mgl     and the chip-preset launchers
-  menu.rbf                        the navy menu core (octo-menu-build), for step 090
   examples/MANIFEST.txt           step 015: "<md5>  games/C64/<path>" a line
   examples/games/C64/...          (the sdcard-examples branch; build-image.sh fetches it,
                                    or OCTO_EXAMPLES=<folder>; OCTO_EXAMPLES=none: no examples)
