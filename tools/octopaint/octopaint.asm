@@ -666,14 +666,9 @@ pal_upload
         bne .l
         rts
 
-; one palette entry (A = its number) from PAL to OctoVIC
-!zone pal_set1
-pal_set1
-        sta PALIDX
-        sta t0
-        lda #0
-        sta PALSEL
-        lda t0
+; ptr = the address of palette entry A in PAL (3 * A + PAL)
+!zone palptr
+palptr  sta t0
         sta ptr
         lda #0
         sta ptr+1
@@ -693,6 +688,18 @@ pal_set1
         lda ptr+1
         adc #>PAL
         sta ptr+1
+        rts
+
+; one palette entry (A = its number) from PAL to OctoVIC
+!zone pal_set1
+pal_set1
+        pha
+        lda #0
+        sta PALSEL
+        pla
+        pha
+        sta PALIDX
+        jsr palptr
         ldy #0
         lda (ptr),y
         sta PALR
@@ -702,6 +709,7 @@ pal_set1
         iny
         lda (ptr),y
         sta PALB
+        pla
         rts
 
 !zone spr_load
@@ -2032,10 +2040,6 @@ c_quit  ldx #<m_quit
 .n      rts
 
 ; ---- not yet: (replaced step by step)
-!zone c_edit
-c_edit
-!zone c_zoom
-c_zoom
 !zone c_new
 c_new
 !zone c_save
@@ -3011,6 +3015,249 @@ c_negay sec
 ; the flood fill (a later step)
 do_fill rts
 
+
+; ================================================================================================ colour edit (E)
+; R, G, B of the current colour: Q/A, W/S, E/D up / down by 4 (SHIFT: 1), live on the swatch; RETURN keeps, RUN/STOP puts it back
+!zone c_edit
+c_edit  lda col
+        jsr palptr
+        ldy #2
+.sv     lda (ptr),y
+        sta eorig,y
+        dey
+        bpl .sv
+        lda #0
+        sta erep
+        jsr edit_show
+.w      jsr waittick
+        jsr kscan
+        lda kn+0
+        and #2                  ; RETURN: keep
+        beq .nr
+        jmp .keep
+.nr     lda kn+7
+        and #$80                ; RUN/STOP: back
+        beq .ns
+        jmp .back
+.ns     lda #0                  ; which keys are held: b0 R+ b1 R- b2 G+ b3 G- b4 B+ b5 B-
+        sta eh
+        lda kb+7
+        and #$40                ; Q
+        beq .a
+        lda #1
+        ora eh
+        sta eh
+.a      lda kb+1
+        and #4                  ; A
+        beq .b
+        lda #2
+        ora eh
+        sta eh
+.b      lda kb+1
+        and #2                  ; W
+        beq .c
+        lda #4
+        ora eh
+        sta eh
+.c      lda kb+1
+        and #$20                ; S
+        beq .d
+        lda #8
+        ora eh
+        sta eh
+.d      lda kb+1
+        and #$40                ; E
+        beq .e
+        lda #$10
+        ora eh
+        sta eh
+.e      lda kb+2
+        and #4                  ; D
+        beq .f
+        lda #$20
+        ora eh
+        sta eh
+.f      lda eh
+        bne .held
+        lda #0
+        sta erep
+        jmp .w
+.held   lda erep                ; act on the press, then after a pause every other frame
+        beq .act
+        cmp #12
+        bcc .wait
+        and #1
+        bne .wait
+.act    lda #4
+        ldx kshift
+        beq .st
+        lda #1
+.st     sta estep
+        lda col
+        jsr palptr
+        ldx #0                  ; component 0, 1, 2
+.cmp    lsr eh                  ; + ?
+        bcc .nplus
+        ldy ecomp,x
+        jsr edit_add
+.nplus  lsr eh                  ; - ?
+        bcc .nminus
+        jsr edit_sub
+.nminus inx
+        cpx #3
+        bne .cmp
+        lda col
+        jsr pal_set1
+        jsr edit_show
+.wait   lda erep
+        cmp #200
+        bcs .j
+        inc erep
+.j      jmp .w
+.back   lda col
+        jsr palptr
+        ldy #2
+.rs     lda eorig,y
+        sta (ptr),y
+        dey
+        bpl .rs
+        lda col
+        jsr pal_set1
+.keep   jsr kclear
+        lda #0
+        sta msgt
+        jmp ui_all
+
+; component X (0-2) up / down by estep, clamped
+!zone edit_add
+edit_add
+        txa
+        tay
+        lda (ptr),y
+        clc
+        adc estep
+        bcc .ok
+        lda #255
+.ok     sta (ptr),y
+        rts
+!zone edit_sub
+edit_sub
+        txa
+        tay
+        lda (ptr),y
+        sec
+        sbc estep
+        bcs .ok
+        lda #0
+.ok     sta (ptr),y
+        rts
+
+!zone edit_show
+edit_show
+        lda col
+        jsr palptr
+        lda #15
+        sta tcol
+        ldx #0
+        ldy #24
+        jsr txtpos
+        ldx #40
+        jsr fillsp
+        ldx #0
+        ldy #24
+        jsr txtpos
+        lda #18                 ; R
+        jsr putc
+        ldy #0
+        jsr .num
+        lda #7                  ; G
+        jsr putc
+        ldy #1
+        jsr .num
+        lda #2                  ; B
+        jsr putc
+        ldy #2
+        jsr .num
+        lda #15
+        sta tcol
+        +puts s_editkeys
+        rts
+.num    lda (ptr),y
+        sta nv
+        lda #0
+        sta nv+1
+        sta nv+2
+        lda #1
+        sta tcol
+        ldx #3
+        jsr prdec
+        lda #15
+        sta tcol
+        lda #32
+        jmp putc
+
+!zone ecomp
+ecomp   !byte 0,1,2
+!zone s_editkeys
+s_editkeys !scr " ret keep  stop back", $ff
+
+
+; ================================================================================================ zoom (Z)
+; 1x -> 2x -> 4x -> 1x, keeping the canvas pixel under the pointer where it is (clamped to the picture)
+!zone c_zoom
+c_zoom  lda zsh
+        cmp #2
+        bne .u
+        lda #$ff
+.u      clc
+        adc #1
+        sta zsh
+        ldx #0
+        jsr vset
+        ldx #2
+        jsr vset
+        ldx #0
+        jsr cpos
+        ldx #2
+        jsr cpos
+        jmp ui_mark
+
+; view origin on axis X = the canvas pixel there - the pointer / zoom, within 0 .. vmax
+!zone vset
+vset    lda sx,x
+        sta t0
+        lda sx+1,x
+        sta t1
+        ldy zsh
+        beq .s
+.l      lsr t1
+        ror t0
+        dey
+        bne .l
+.s      sec
+        lda cx,x
+        sbc t0
+        sta vx,x
+        lda cx+1,x
+        sbc t1
+        sta vx+1,x
+        bmi .zero
+        jsr vmax
+        lda t2
+        cmp vx,x
+        lda t3
+        sbc vx+1,x
+        bcs .ok
+        lda t2
+        sta vx,x
+        lda t3
+        sta vx+1,x
+.ok     rts
+.zero   lda #0
+        sta vx,x
+        sta vx+1,x
+        rts
+
 ; ================================================================================================ variables (zero at start)
 !zone f_x
 f_x     !fill 2                 ; fillrect: x, y, width, height (in this order)
@@ -3117,4 +3364,8 @@ ccy     !fill 2
 cd      !fill 2
 ax      !fill 2
 ay      !fill 2
+eorig   !fill 3
+erep    !fill 1
+eh      !fill 1
+estep   !fill 1
 progend
