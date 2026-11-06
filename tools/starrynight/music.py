@@ -160,7 +160,7 @@ def build():
     # ================================================================ SID 5 (n=4): the harp
     c = 4
     S.route[:, c] = 0x07; S.mode[:, c] = LP; S.res[:, c] = 1
-    S.vol[:, c] = 15
+    S.vol[:, c] = 6                                          # build 3: much quieter (was 15)
     HARP = {True: [55, 62, 66, 71, 74, 78], False: [50, 57, 61, 66, 69, 73]}      # G3 D4 F#4 B4 D5 F#5 | D3 A3 C#4 F#4 A4 C#5
     plucks = []
     def ripple(bar, beat, lo, hi, gap=5, up=True, off=0):
@@ -169,17 +169,9 @@ def build():
         f = bf(bar, beat) + off
         for j, n in enumerate(notes):
             plucks.append((f + gap * j, n))
-    ripple(2, 1.5, 0, 5)                                     # the title shows (185-190): the harp enters
-    ripple(3, 1.5, 0, 4); ripple(4, 1.5, 0, 5)
-    for b in (5, 7, 11):    ripple(b, 0, 0, 4)                # phrase 1: sparse, under the melody
-    ripple(9, 0, 0, 5)
-    ripple(10, 0, 0, 5); ripple(12, 0, 0, 5)
-    ripple(10, 2, 2, 6, gap=6); ripple(12, 2, 2, 6, gap=6)      # while the F#4 is held, the harp keeps it moving
-    ripple(8, 1, 0, 4, gap=6)
-    for b in (13, 14, 15, 16): ripple(b, 0, 0, 5)              # the swell: every bar, higher at the top
-    ripple(13, 2.2, 1, 5, gap=6); ripple(15, 2.2, 1, 5, gap=6, off=0)
-    ripple(14, 2.4, 2, 6, gap=5); ripple(16, 1.5, 0, 6, gap=5)
-    ripple(17, 0, 0, 5); ripple(19, 0, 0, 5, gap=6); ripple(18, 1.5, 1, 5, gap=6)
+    # build 3 (Neal: the arp was out of place and too loud): only a few slow, soft ripples - the entrance and the swell
+    ripple(2, 1.5, 0, 4, gap=9)                              # the title shows: the harp enters, softly
+    ripple(14, 0, 0, 4, gap=9); ripple(16, 0, 0, 4, gap=9)   # the swell into the moon zoom
     ripple(20, 0.2, 0, 5, gap=9)                            # the last slow ripple, resolving on D major 7
     plucks.sort()
     hv = 0
