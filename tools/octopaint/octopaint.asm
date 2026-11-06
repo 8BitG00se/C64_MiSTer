@@ -98,6 +98,8 @@ KSCR    = $C000
 KCOL    = $C400
 ROWBUF  = $C000         ; flood fill: the row being filled (320) and a neighbouring row (320)
 NBUF    = $C200
+TPAL    = $C400         ; a loaded picture's palette waits here until the file is known to be good
+TOPFREE = $A000         ; (the fill stack and the packer's buffer begin here)
 PAL     = $CA00         ; the working palette, 768 bytes (r, g, b) - what is in OctoVIC, and what is saved
 STKMAX  = 1024
 
@@ -2043,20 +2045,10 @@ c_quit  ldx #<m_quit
 .n      rts
 
 ; ---- not yet: (replaced step by step)
-!zone c_new
-c_new
-!zone c_save
-c_save
-!zone c_open
-c_open
 !zone c_import
 c_import
 !zone c_help
 c_help
-!zone c_debug
-c_debug
-!zone dbg_draw
-dbg_draw
         rts
 
 ; ================================================================================================ data
@@ -3599,6 +3591,1012 @@ m_fillbig !scr "fill too big", $ff
 s_filled !scr "filled in ", $ff
 s_frames !scr " frames", $ff
 
+; ================================================================================================ FILES (.OCT), new, debug
+; Disk I/O is through the KERNAL (device 8, SEQ files), with the raster interrupt off while the drive is busy. The picture is
+; never held in C64 RAM: it goes to and from the canvas through VDATA, packed / unpacked on the way (see docs/OCTOPAINT.md).
+
+!macro dec16 .v { lda .v : sta nv : lda .v+1 : sta nv+1 : lda #0 : sta nv+2 }
+
+; row 24 cleared, text position at its start (the message is put with puts / prdec / putc, then msg_end)
+!zone msg_begin
+msg_begin
+        lda #1
+        sta tcol
+        ldx #0
+        ldy #24
+        jsr txtpos
+        ldx #40
+        jsr fillsp
+        ldx #0
+        ldy #24
+        jmp txtpos
+
+!zone msg_end
+msg_end lda #150
+        sta msgt
+        rts
+
+; the name prompt: X / Y = the prompt text. C set = a name is in fname (flen letters), C clear = cancelled.
+; letters, digits, space, - and . ; DEL rubs out, RETURN accepts, RUN/STOP cancels
+!zone askname
+askname stx apr
+        sty apr+1
+.draw   jsr msg_begin
+        lda apr
+        sta str
+        lda apr+1
+        sta str+1
+        jsr puts
+        lda #7
+        sta tcol
+        ldx #0
+.pn     cpx flen
+        beq .pd
+        lda fname,x
+        stx ni
+        jsr putc
+        ldx ni
+        inx
+        bne .pn
+.pd     lda #160                ; the cursor: a block
+        jsr putc
+.k      jsr waitkey
+        cmp #63                 ; RUN/STOP
+        beq .cancel
+        cmp #1                  ; RETURN
+        beq .ret
+        cmp #0                  ; DEL
+        beq .del
+        tax
+        lda keychr,x
+        beq .k
+        ldy flen
+        cpy #12
+        bcs .k
+        sta fname,y
+        inc flen
+        jmp .draw
+.del    lda flen
+        beq .k
+        dec flen
+        jmp .draw
+.ret    lda flen
+        beq .k
+        lda #1
+        sta msgt
+        sec
+        rts
+.cancel lda #1
+        sta msgt
+        clc
+        rts
+
+; fname -> pbuf (PETSCII) + ".OCT" unless it already ends with that; plen = its length
+!zone mkname
+mkname  ldx #0
+.c      cpx flen
+        beq .e
+        lda fname,x
+        cmp #27
+        bcs .p
+        ora #$40
+.p      sta pbuf,x
+        inx
+        bne .c
+.e      stx plen
+        cpx #4
+        bcc .add
+        txa
+        sec
+        sbc #4
+        tax
+        ldy #0
+.cmp    lda pbuf,x
+        cmp s_oct,y
+        bne .add
+        inx
+        iny
+        cpy #4
+        bne .cmp
+        rts
+.add    ldx plen
+        ldy #0
+.a      lda s_oct,y
+        sta pbuf,x
+        inx
+        iny
+        cpy #4
+        bne .a
+        stx plen
+        rts
+
+; the file name on row 24 (screen codes)
+!zone show_name
+show_name
+        ldx #0
+.l      cpx plen
+        beq .r
+        lda pbuf,x
+        cmp #$41
+        bcc .p
+        cmp #$5b
+        bcs .p
+        sec
+        sbc #$40
+.p      stx ni
+        jsr putc
+        ldx ni
+        inx
+        bne .l
+.r      rts
+
+; the command / file name builder: cbuf, clen
+!zone cb_reset
+cb_reset
+        lda #0
+        sta clen
+        rts
+!zone cb_add
+cb_add  ldx clen
+        sta cbuf,x
+        inc clen
+        rts
+!zone cb_pb
+cb_pb   ldy #0
+.l      cpy plen
+        beq .r
+        lda pbuf,y
+        jsr cb_add
+        iny
+        bne .l
+.r      rts
+!zone cb_str
+cb_str  stx ptr
+        sty ptr+1
+        ldy #0
+.l      lda (ptr),y
+        cmp #$ff
+        beq .r
+        jsr cb_add
+        iny
+        bne .l
+.r      rts
+!zone setnm_cb
+setnm_cb
+        lda clen
+        ldx #<cbuf
+        ldy #>cbuf
+        jmp SETNAM
+
+; the drive's message into ebuf; A = 0 if it starts "00"
+!zone rderr
+rderr   ldx #15
+        jsr CHKIN
+        bcc .ok
+        lda #0
+        sta elen
+        lda #1
+        rts
+.ok     lda #0
+        sta elen
+        sta ni
+.l      inc ni
+        beq .e
+        jsr CHRIN
+        cmp #13
+        beq .e
+        ldy elen
+        cpy #38
+        bcs .l
+        sta ebuf,y
+        inc elen
+        jmp .l
+.e      jsr CLRCHN
+        lda elen
+        cmp #2
+        bcc .bad
+        lda ebuf
+        cmp #$30
+        bne .bad
+        lda ebuf+1
+        cmp #$30
+        bne .bad
+        lda #0
+        rts
+.bad    lda #1
+        rts
+
+; both files closed, the default channels back
+!zone io_fin
+io_fin  jsr CLRCHN
+        lda #2
+        jsr CLOSE
+        lda #15
+        jsr CLOSE
+        rts
+
+!zone io_begin
+io_begin
+        lda #0
+        sta $d01a               ; no raster interrupt while the drive is busy
+        lda #$ff
+        sta $d019
+        lda #0
+        sta ioerr
+        sta bcnt
+        sta bcnt+1
+        sta bcnt+2
+        sta pacc
+        sta pcell
+        rts
+
+!zone io_end
+io_end  lda #$ff
+        sta $d019
+        lda #1
+        sta $d01a
+        lda #$7f
+        sta $dc00
+        jsr kclear
+        jsr bar_clear
+        jmp ui_all
+
+; the progress bar: VIC row 21, 40 cells
+!zone bar_clear
+bar_clear
+        lda #1
+        sta tcol
+        ldx #0
+        ldy #21
+        jsr txtpos
+        ldx #40
+        jmp fillsp
+
+; one more row of 200 done: every 5 rows one more cell
+!zone barstep
+barstep lda pacc
+        clc
+        adc #40
+.p      cmp #200
+        bcc .d
+        sbc #200
+        sta pacc
+        ldx pcell
+        lda #160
+        sta SCREEN+21*40,x
+        lda #7
+        sta COLRAM+21*40,x
+        inc pcell
+        lda pacc
+        jmp .p
+.d      sta pacc
+        rts
+
+!zone diskask
+diskask ldx #<m_disk
+        ldy #>m_disk
+        jmp askyn
+
+; ---- the run-length packer (see mkoct.py: the same rule). A = the next pixel byte.
+!zone rlein
+rlein   ldx rcnt
+        beq .new
+        cmp rbyte
+        bne .brk
+        cpx #130
+        bcs .brk
+        inc rcnt
+        rts
+.brk    pha
+        jsr endrun
+        pla
+.new    sta rbyte
+        lda #1
+        sta rcnt
+        rts
+
+!zone endrun
+endrun  lda rcnt
+        cmp #3
+        bcc .lit
+        jsr flushlit
+        lda rcnt
+        clc
+        adc #125                ; 128 + n - 3
+        jsr outb
+        lda rbyte
+        jmp outb
+.lit    ldy lcnt
+        lda rbyte
+        sta LITBUF,y
+        iny
+        sty lcnt
+        cpy #128
+        bne .n
+        jsr flushlit
+.n      dec rcnt
+        bne .lit
+        rts
+
+!zone flushlit
+flushlit
+        lda lcnt
+        beq .r
+        sec
+        sbc #1
+        jsr outb
+        lda #0
+        sta li
+.b      ldy li
+        lda LITBUF,y
+        jsr outb
+        inc li
+        lda li
+        cmp lcnt
+        bne .b
+        lda #0
+        sta lcnt
+.r      rts
+
+!zone outb
+outb    jsr CHROUT
+        inc bcnt
+        bne .r
+        inc bcnt+1
+        bne .r
+        inc bcnt+2
+.r      rts
+
+; ---- S: save
+!zone c_save
+c_save  ldx #<s_saveas
+        ldy #>s_saveas
+        jsr askname
+        bcs .g
+        rts
+.g      jsr mkname
+        jsr diskask
+        bcs .y
+        ldx #<m_nosave
+        ldy #>m_nosave
+        jmp msg
+.y      jsr bar_clear
+        jsr io_begin
+        jsr dosave
+        jsr io_end
+        lda ioerr
+        bne .e
+        jsr msg_begin
+        +puts m_saved
+        jsr show_name
+        jmp result_bytes
+.e      jmp show_ioerr
+
+!zone result_bytes
+result_bytes
+        lda #32
+        jsr putc
+        lda bcnt
+        sta nv
+        lda bcnt+1
+        sta nv+1
+        lda bcnt+2
+        sta nv+2
+        lda #1
+        sta dcomma
+        ldx #0
+        jsr prdec
+        lda #0
+        sta dcomma
+        +puts m_bytes
+        jmp msg_end
+
+!zone show_ioerr
+show_ioerr
+        jsr msg_begin
+        lda ioerr
+        cmp #1
+        bne .n2
+        lda ioacc
+        cmp #5
+        bne .gen
+        +puts m_e5
+        jmp msg_end
+.gen    +puts m_e1
+        lda ioacc
+        sta nv
+        lda #0
+        sta nv+1
+        sta nv+2
+        ldx #0
+        jsr prdec
+        jmp msg_end
+.n2     cmp #2
+        bne .n3
+        lda elen
+        beq .gd
+        ldx #0
+.dl     cpx elen
+        beq .de
+        lda ebuf,x
+        cmp #$41
+        bcc .dp
+        cmp #$5b
+        bcs .dp
+        sec
+        sbc #$40
+.dp     stx ni
+        jsr putc
+        ldx ni
+        inx
+        bne .dl
+.de     jmp msg_end
+.gd     +puts m_e2
+        jmp msg_end
+.n3     sec
+        sbc #3
+        asl
+        tax
+        lda errtab,x
+        sta str
+        lda errtab+1,x
+        sta str+1
+        jsr puts
+        jmp msg_end
+
+!zone dosave
+dosave  jsr cb_reset            ; scratch the old file: S0:NAME.OCT on the command channel
+        ldx #<s_scr
+        ldy #>s_scr
+        jsr cb_str
+        jsr cb_pb
+        jsr setnm_cb
+        lda #15
+        ldx #8
+        ldy #15
+        jsr SETLFS
+        jsr OPEN
+        bcc .o15
+        jmp .eopen
+.o15    jsr rderr               ; (its answer, files scratched, is not needed)
+        jsr cb_reset            ; NAME.OCT,S,W
+        jsr cb_pb
+        ldx #<s_sw
+        ldy #>s_sw
+        jsr cb_str
+        jsr setnm_cb
+        lda #2
+        ldx #8
+        ldy #2
+        jsr SETLFS
+        jsr OPEN
+        bcc .o2
+        jmp .eopen
+.o2     jsr rderr
+        beq .o3
+        lda #2
+        sta ioerr
+        jmp io_fin
+.o3     ldx #2
+        jsr CHKOUT
+        bcc .w
+.eopen  sta ioacc
+        lda #1
+        sta ioerr
+        jmp io_fin
+.w      ldx #0                  ; the header
+.h      stx ni
+        lda hdr,x
+        jsr outb
+        ldx ni
+        inx
+        cpx #10
+        bne .h
+        lda #<PAL               ; the palette
+        sta ptr2
+        lda #>PAL
+        sta ptr2+1
+        lda #3
+        sta cnt
+.pg     lda #0
+        sta ni
+.pb     ldy ni
+        lda (ptr2),y
+        jsr outb
+        inc ni
+        bne .pb
+        inc ptr2+1
+        dec cnt
+        bne .pg
+        lda #0                  ; the pixels, row by row, packed
+        sta frow
+        sta rcnt
+        sta lcnt
+        lda #1
+        sta VINC
+.row    lda #0
+        sta p_x
+        sta p_x+1
+        sta p_y+1
+        lda frow
+        sta p_y
+        jsr vaddr_xy
+        jsr vwait
+        lda #<CW
+        sta ccnt
+        lda #>CW
+        sta ccnt+1
+.px     lda VDATA
+        jsr rlein
+        lda ccnt
+        bne .c1
+        dec ccnt+1
+.c1     dec ccnt
+        lda ccnt
+        ora ccnt+1
+        bne .px
+        lda $90                 ; the drive still there?
+        bne .werr
+        jsr barstep
+        inc frow
+        lda frow
+        cmp #CH
+        bne .row
+        lda rcnt
+        beq .nl
+        jsr endrun
+.nl     jsr flushlit
+        lda $90
+        bne .werr
+        jsr CLRCHN
+        lda #2
+        jsr CLOSE
+        jsr rderr               ; DISK FULL and the like show up here
+        beq .done
+        lda #2
+        sta ioerr
+.done   jmp io_fin
+.werr   lda #3
+        sta ioerr
+        jmp io_fin
+
+; ---- O: open
+!zone inb
+inb     lda $90
+        bne .e
+        jsr CHRIN
+        inc bcnt
+        bne .r
+        inc bcnt+1
+        bne .r
+        inc bcnt+2
+.r      rts
+.e      ldx iosp                ; the file ended (or the drive failed) early: unwind
+        txs
+        lda #6
+        sta ioerr
+        jmp io_fin
+
+!zone vout
+vout    ldx frow
+        cpx #CH
+        bcs .r
+        sta VDATA
+        inc fcol
+        bne .a
+        inc fcol+1
+.a      lda fcol
+        cmp #<CW
+        bne .r
+        lda fcol+1
+        cmp #>CW
+        bne .r
+        lda #0
+        sta fcol
+        sta fcol+1
+        inc frow
+        jsr barstep
+        lda frow
+        cmp #CH
+        bcs .r
+        sta p_y
+        lda #0
+        sta p_x
+        sta p_x+1
+        sta p_y+1
+        jsr vaddr_xy
+.r      rts
+
+!zone c_open
+c_open  ldx #<s_openas
+        ldy #>s_openas
+        jsr askname
+        bcs .g
+        rts
+.g      jsr mkname
+        jsr diskask
+        bcs .y
+        ldx #<m_noopen
+        ldy #>m_noopen
+        jmp msg
+.y      jsr bar_clear
+        jsr io_begin
+        jsr doload
+        jsr io_end
+        lda ioerr
+        bne .e
+        jsr msg_begin
+        +puts m_loaded
+        jsr show_name
+        jmp result_bytes
+.e      jmp show_ioerr
+
+!zone doload
+doload  tsx
+        stx iosp
+        lda #0
+        jsr SETNAM              ; the command channel, to read the drive's messages
+        lda #15
+        ldx #8
+        ldy #15
+        jsr SETLFS
+        jsr OPEN
+        bcc .o15
+        jmp .eopen
+.o15    jsr cb_reset            ; NAME.OCT,S,R
+        jsr cb_pb
+        ldx #<s_sr
+        ldy #>s_sr
+        jsr cb_str
+        jsr setnm_cb
+        lda #2
+        ldx #8
+        ldy #2
+        jsr SETLFS
+        jsr OPEN
+        bcc .o2
+        jmp .eopen
+.o2     jsr rderr
+        beq .o3
+        lda #2
+        sta ioerr
+        jmp io_fin
+.o3     lda #0
+        sta $90
+        ldx #2
+        jsr CHKIN
+        bcc .rd
+.eopen  sta ioacc
+        lda #1
+        sta ioerr
+        jmp io_fin
+.rd     ldx #0                  ; the header
+.h      stx ni
+        jsr inb
+        ldx ni
+        sta hbuf,x
+        inx
+        cpx #10
+        bne .h
+        ldx #3
+.v      lda hbuf,x
+        cmp s_oct1,x
+        bne .b4
+        dex
+        bpl .v
+        lda hbuf+4
+        cmp #<CW
+        bne .b5
+        lda hbuf+5
+        cmp #>CW
+        bne .b5
+        lda hbuf+6
+        cmp #CH
+        bne .b5
+        lda hbuf+7
+        bne .b5
+        lda hbuf+8
+        cmp #8
+        bne .b5
+        lda hbuf+9
+        cmp #2
+        bcs .b5
+        bcc .pal
+.b4     lda #4
+        sta ioerr
+        jmp io_fin
+.b5     lda #5
+        sta ioerr
+        jmp io_fin
+.pal    lda #<TPAL              ; the palette, first into a spare place
+        sta ptr2
+        lda #>TPAL
+        sta ptr2+1
+        lda #3
+        sta cnt
+.pg     lda #0
+        sta ni
+.pb     jsr inb
+        ldy ni
+        sta (ptr2),y
+        inc ni
+        bne .pb
+        inc ptr2+1
+        dec cnt
+        bne .pg
+        ldx #0                  ; now it is the picture's palette
+.cp     lda TPAL,x
+        sta PAL,x
+        lda TPAL+256,x
+        sta PAL+256,x
+        lda TPAL+512,x
+        sta PAL+512,x
+        inx
+        bne .cp
+        jsr pal_upload
+        jsr save_undo           ; (U brings the old picture back)
+        lda #1
+        sta VINC
+        lda #0
+        sta frow
+        sta fcol
+        sta fcol+1
+        sta p_x
+        sta p_x+1
+        sta p_y
+        sta p_y+1
+        jsr vaddr_xy
+        lda hbuf+9
+        bne .rle
+.raw    jsr inb
+        jsr vout
+        lda frow
+        cmp #CH
+        bne .raw
+        beq .done
+.rle    jsr inb
+        cmp #128
+        bcs .rep
+        clc
+        adc #1
+        sta cnt
+.lit    jsr inb
+        jsr vout
+        dec cnt
+        bne .lit
+        beq .chk
+.rep    sec
+        sbc #125
+        sta cnt
+        jsr inb
+        sta rv
+.rp     lda rv
+        jsr vout
+        dec cnt
+        bne .rp
+.chk    lda frow
+        cmp #CH
+        bne .rle
+.done   jmp io_fin
+
+; ---- N: new
+!zone c_new
+c_new   ldx #<m_clear
+        ldy #>m_clear
+        jsr askyn
+        bcc .r
+        jsr save_undo
+        lda #VR_CAN
+        sta f_hb
+        +rect 0, 0, CW, CH, 0
+.r      rts
+
+; ---- D: the debug overlay
+; the checksum of the 320 x 200 picture: crc = rotate left 1 (crc xor pixel), 16 bits (mkoct.py: csum)
+!zone vsum
+vsum    lda #0
+        sta crc
+        sta crc+1
+        sta frow
+.row    lda #0
+        sta p_x
+        sta p_x+1
+        sta p_y+1
+        lda frow
+        sta p_y
+        jsr vaddr_xy
+        jsr vwait
+        ldy #0
+.a      lda VDATA
+        eor crc
+        sta crc
+        asl crc
+        rol crc+1
+        bcc .a1
+        inc crc
+.a1     iny
+        bne .a
+        ldy #64
+.b      lda VDATA
+        eor crc
+        sta crc
+        asl crc
+        rol crc+1
+        bcc .b1
+        inc crc
+.b1     dey
+        bne .b
+        inc frow
+        lda frow
+        cmp #CH
+        bne .row
+        rts
+
+!zone c_debug
+c_debug lda flags
+        eor #2
+        sta flags
+        and #2
+        bne .on
+        lda #7                  ; off: rows 0 and 1 cleared
+        sta tcol
+        ldx #0
+        ldy #0
+        jsr txtpos
+        ldx #40
+        jsr fillsp
+        ldx #0
+        ldy #1
+        jsr txtpos
+        ldx #40
+        jmp fillsp
+.on     lda #0
+        sta crc
+        sta crc+1
+        jmp vsum                ; (about a second)
+
+!zone dbg_draw
+dbg_draw
+        lda #7
+        sta tcol
+        ldx #0
+        ldy #0
+        jsr txtpos
+        +puts d_late
+        lda LATE
+        sta nv
+        lda #0
+        sta nv+1
+        sta nv+2
+        ldx #3
+        jsr prdec
+        +puts d_tot
+        lda LATETOT
+        sta nv
+        lda LATETOT+1
+        sta nv+1
+        lda #0
+        sta nv+2
+        ldx #5
+        jsr prdec
+        +puts d_crc
+        lda crc+1
+        jsr prhex
+        lda crc
+        jsr prhex
+        +puts d_fill
+        lda fillt
+        sta nv
+        lda fillt+1
+        sta nv+1
+        lda #0
+        sta nv+2
+        ldx #5
+        jsr prdec
+        ldx #0
+        ldy #1
+        jsr txtpos
+        +puts d_ptr
+        +dec16 sx
+        ldx #3
+        jsr prdec
+        lda #44
+        jsr putc
+        +dec16 sy
+        ldx #3
+        jsr prdec
+        +puts d_cvs
+        +dec16 cx
+        ldx #3
+        jsr prdec
+        lda #44
+        jsr putc
+        +dec16 cy
+        ldx #3
+        jsr prdec
+        +puts d_free
+        lda #<(TOPFREE-progend)
+        sta nv
+        lda #>(TOPFREE-progend)
+        sta nv+1
+        lda #0
+        sta nv+2
+        ldx #5
+        jsr prdec
+        rts
+
+
+; ---- data
+!zone keychr
+keychr  !byte 0,0,0,0,0,0,0,0
+        !byte $33,23,1,$34,26,19,5,0
+        !byte $35,18,4,$36,3,6,20,24
+        !byte $37,25,7,$38,2,8,21,22
+        !byte $39,9,10,$30,13,11,15,14
+        !byte 0,16,12,45,46,0,0,0
+        !byte 0,0,0,0,0,0,0,0
+        !byte $31,0,0,$32,32,0,17,0
+!zone hdr
+hdr     !byte $4f,$43,$54,$31, <CW,>CW, CH,0, 8,1
+!zone s_oct
+s_oct   !byte $2e,$4f,$43,$54, $ff
+!zone s_oct1
+s_oct1  !byte $4f,$43,$54,$31, $ff
+!zone s_scr
+s_scr   !byte $53,$30,$3a, $ff
+!zone s_sw
+s_sw    !byte $2c,$53,$2c,$57, $ff
+!zone s_sr
+s_sr    !byte $2c,$53,$2c,$52, $ff
+!zone s_saveas
+s_saveas !scr "save as: ", $ff
+!zone s_openas
+s_openas !scr "open: ", $ff
+!zone m_disk
+m_disk  !scr "disk in drive 8? y/n", $ff
+!zone m_nosave
+m_nosave !scr "not saved (no disk used)", $ff
+!zone m_noopen
+m_noopen !scr "not opened (no disk used)", $ff
+!zone m_saved
+m_saved !scr "saved ", $ff
+!zone m_loaded
+m_loaded !scr "loaded ", $ff
+!zone m_bytes
+m_bytes !scr " bytes", $ff
+!zone m_clear
+m_clear !scr "clear the picture? y/n", $ff
+!zone m_e1
+m_e1    !scr "disk error ", $ff
+!zone m_e2
+m_e2    !scr "drive error", $ff
+!zone m_e5
+m_e5    !scr "device not present", $ff
+!zone m_e3
+m_e3    !scr "write error: disk full?", $ff
+!zone m_e4
+m_e4    !scr "not an oct file", $ff
+!zone m_e6
+m_e6    !scr "picture size not supported", $ff
+!zone m_e7
+m_e7    !scr "file too short or read error", $ff
+!zone errtab
+errtab  !word m_e3, m_e4, m_e6, m_e7
+!zone d_late
+d_late  !scr "late ", $ff
+!zone d_tot
+d_tot   !scr " tot ", $ff
+!zone d_crc
+d_crc   !scr " crc ", $ff
+!zone d_fill
+d_fill  !scr " fill ", $ff
+!zone d_ptr
+d_ptr   !scr "ptr ", $ff
+!zone d_cvs
+d_cvs   !scr "  cvs ", $ff
+!zone d_free
+d_free  !scr "  free ", $ff
+
 ; ================================================================================================ variables (zero at start)
 !zone qe
 qe      !fill 2
@@ -3726,4 +4724,31 @@ xr      !fill 2
 ny      !fill 1
 scnt    !fill 2
 inrun   !fill 1
+fname   !fill 12
+flen    !fill 1
+pbuf    !fill 24
+plen    !fill 1
+cbuf    !fill 32
+clen    !fill 1
+ebuf    !fill 40
+elen    !fill 1
+apr     !fill 2
+ni      !fill 1
+ioerr   !fill 1
+ioacc   !fill 1
+iosp    !fill 1
+bcnt    !fill 3
+rbyte   !fill 1
+rcnt    !fill 1
+lcnt    !fill 1
+li      !fill 1
+ccnt    !fill 2
+frow    !fill 1
+fcol    !fill 2
+pacc    !fill 1
+pcell   !fill 1
+cnt     !fill 1
+rv      !fill 1
+crc     !fill 2
+hbuf    !fill 10
 progend
