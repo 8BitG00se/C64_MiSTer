@@ -95,10 +95,11 @@ def build():
     dyn = np.interp(t, [p[0] for p in pts], [p[1] for p in pts])
     # ----- SID 1: taiko
     def don(f, big=1.0, v=0, soft=False):
-        top = 230 if big > 1 else 190
-        steps = [(NOI, 2400, 0x800), (PUL, top, 0x800), (PUL, top * .72, 0x800), (TRI, top * .52, 0), (TRI, top * .40, 0), (TRI, top * .33, 0),
-                 (TRI, top * .29, 0), (TRI, 60, 0), (TRI, 52, 0)]
-        S.drum(0, v, f, steps, 0x08 if not soft else 0x06, 0x00, 12 if not soft else 8)
+        # build 4 (Neal: too clicky, too busy, not deep enough): a deep, soft drum - one low noise frame, then a triangle falling
+        top = 120 if big > 1 else 100
+        steps = [(NOI, 700, 0), (TRI, top, 0), (TRI, top * .8, 0), (TRI, top * .66, 0), (TRI, top * .56, 0), (TRI, top * .5, 0),
+                 (TRI, 52, 0), (TRI, 47, 0), (TRI, 44, 0)]
+        S.drum(0, v, f, steps, 0x09 if not soft else 0x07, 0x00, 12 if not soft else 8)
     def ka(f):
         S.drum(0, 2, f, [(NOI, 6500, 0), (PUL, 420, 0x400), (PUL, 330, 0x400), (TRI, 270, 0)], 0x04, 0x00, 5)
     def roll(f0, f1, v0=0):
@@ -189,7 +190,6 @@ def build():
         pluck(ef(b, 0), n1, 12); pluck(ef(b, 2), n2, 12, v=1)
     for b in (2, 3):
         for i in (1, 3): bass(ef(b, i), 38 if b == 2 else 45, 18, oct_up=False)
-    tick(ef(3, 3.5)); tick(ef(3, 2.5))
     # -- A, B, A', B' : bars 4-7, 8-11, 13-16, 17-20
     rows = [(4, 'A', 0), (8, 'B', 0), (13, 'A', 1), (17, 'B', 1)]
     chordsA = ['D', 'D', 'G', 'D']; chordsB = ['D', 'G', 'D', 'D']
@@ -207,17 +207,15 @@ def build():
         for b in range(4):
             bb = b0 + b
             # rowing bass: D and A on the beat (A on beats 2 and 4 of the call, D on 1 and 3)
-            for i in range(4):
+            for i in (0, 2):                                            # build 4: rows on 1 and 3 only
                 g = ch[b] == 'G'
                 bass(ef(bb, i), (43 if g else 38) if i % 2 == 0 else (50 if g else 45), 19)
             if b % 2 == 0 and not second:
                 pass
             # taiko / small drums
-            don(ef(bb, 0)); don(ef(bb, 2), soft=True)
-            if b % 2 == 1: don(ef(bb, 3.5), soft=True)
-            for i in (1, 3): rim(ef(bb, i))
-            if part == 'B' or second:
-                for i in range(8): tick(ef(bb, i * .5 + .25), v=1)
+            # build 4: the beat backs the lead - a deep drum on 1, a soft one on 3 every other bar; no rims, no ticks
+            don(ef(bb, 0))
+            if b % 2 == 1: don(ef(bb, 2), soft=True)
             # koto
             dens = 'h' if (part == 'A' and not second) else ('q' if part == 'A' else 'e')
             koto_bar(bb, (kA if part == 'A' else kB)[b], dens)
@@ -231,7 +229,6 @@ def build():
             S.note(4, 2, f, f + 6, nhz(62), SAW, 0x00, 0x83, tail=6)
             don(f, 1.3 if b in (0, 2) else 1.0, v=int(b * 2) % 2); rim(f)
             S.note(2, 0, f, f + 8, nhz(38), PUL, 0x00, 0xA3, pw=2048, tail=6)
-        for i in range(8): tick(ef(bar, i * .5 + .25))
         S.note(6, 0, bar * BAR + 2, bar * BAR + BAR - 4, nhz(50), SAW, 0x08, 0xF8, tail=20)
         S.note(6, 1, bar * BAR + 2, bar * BAR + BAR - 4, nhz(57), SAW, 0x08, 0xF8, tail=20)
         S.note(6, 2, bar * BAR + 2, bar * BAR + BAR - 4, nhz(62), SAW, 0x08, 0xF8, tail=20)
