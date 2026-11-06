@@ -1,8 +1,9 @@
-; PARALLAX.ASM - three depths moving at
-; three speeds: a sky made by the
-; copper (a colour a line), mountains
-; on layer 0 (16 colours, slow) and
-; hills on layer 1 (256 colours, fast).
+; PARALLAX.ASM - the ocean, in three
+; depths moving at three speeds: a sky
+; made by the copper (a colour a line),
+; far swells with white foam on layer 0
+; (16 colours, slow) and the near sea
+; on layer 1 (256 colours, fast).
 ; Every tile is worked out here, pixel
 ; by pixel, from a sine wave. One
 ; 16-colour and one 256-colour layer:
@@ -17,20 +18,20 @@
 
 ; ======== change these ===============
 
-far     = 1     ; mountains: pixels a step
-near    = 3     ; hills: pixels a frame
-slow    = 2     ; mountains step every N
-peaks   = 3     ; mountain bumpiness 1-5
+far     = 1     ; far swells: pixels a step
+near    = 3     ; near sea: pixels a frame
+slow    = 2     ; far swells step every N
+peaks   = 3     ; swell bumpiness 1-5
 ; the sky, top to bottom: red, green,
 ; blue at the top and at the horizon
-skytop  !byte 10,20,80
-skylow  !byte 255,150,90
+skytop  !byte 30,80,190
+skylow  !byte 190,225,255
 
 ; ======== the program ================
 
 sine    = $3000         ; 256 bytes
-h0      = $3100         ; mountain tops
-h1      = $3300         ; hill tops
+h0      = $3100         ; far swell tops
+h1      = $3300         ; near sea tops
 gmin    = $3500         ; per 8 columns
 gmax    = $3540
 edges   = $3600         ; the edge tiles
@@ -48,7 +49,7 @@ start   sei
 main    lda #255
 -       cmp $d012
         bne -
-        lda x1          ; the hills
+        lda x1          ; the near sea
         clc
         adc #near
         sta x1
@@ -59,7 +60,7 @@ main    lda #255
         and #1
         sta x1+1
         sta $d639
-        inc wait        ; the mountains
+        inc wait        ; the far swells
         lda wait
         cmp #slow
         bne main
@@ -139,10 +140,10 @@ mksine  ldx #0
         rts
 
 ; ---- the tops: 512 columns each.
-; mountains 30-110 (from map row 8),
-; hills 130-175
+; far swells 30-110 (from map row 8),
+; near sea 130-175
 heights ldx #0
--       txa             ; mountains:
+-       txa             ; far swells:
         ldy #peaks      ; sine(x) / 4 +
         jsr times       ; sine(x*peaks)/8
         tay
@@ -159,7 +160,7 @@ heights ldx #0
         adc #100
         sta h0,x
         sta h0+256,x
-        txa             ; hills: a slow
+        txa             ; sea: a slow
         asl             ; wave
         tay
         lda sine,y
@@ -189,8 +190,9 @@ times   sta t2
         bne -
         rts
 
-; ---- the palette: 1-15 the rock
-; (bank 0, layer 0), 32-63 the hills
+; ---- the palette: 1-15 the far
+; swells (bank 0, layer 0), 32-63 the
+; near sea
 colours lda #0
         sta $d619
         lda #1
@@ -207,36 +209,39 @@ colours lda #0
         inx
         cpx #45
         bne -
-        lda #32         ; hills: green,
+        lda #32         ; the sea: blue,
         sta $d61a       ; darker going
         ldx #0          ; down
 -       txa
         eor #31
         asl
         asl
-        sta t           ; 4-124
-        lda #10
-        sta $d61b
+        sta t           ; 0-124
+        lsr
+        lsr
+        lsr
+        sta $d61b       ; red: a little
         lda t
+        lsr
         clc
-        adc #90
+        adc #40
         sta $d61c       ; green
         lda t
-        lsr
-        lsr
-        sta $d61d
+        clc
+        adc #120
+        sta $d61d       ; blue
         inx
         cpx #32
         bne -
         rts
-rock    !byte 255,255,255, 230,230,245
-        !byte 170,160,200, 150,140,185
-        !byte 135,125,175, 120,110,165
-        !byte 108,98,155,  96,86,145
-        !byte 86,76,135,   76,66,125
-        !byte 68,58,115,   60,50,105
-        !byte 54,44,98,    48,38,90
-        !byte 42,32,82
+rock    !byte 255,255,255, 215,240,255
+        !byte 150,205,245, 100,170,235
+        !byte 70,140,220,  50,115,200
+        !byte 40,95,185,   30,80,170
+        !byte 25,68,155,   20,58,140
+        !byte 16,50,128,   12,42,115
+        !byte 10,36,104,   8,30,94
+        !byte 6,26,84
 
 ; ---- the sky: the copper sets the
 ; backdrop on every line from 16 to 200
@@ -304,8 +309,8 @@ sky     lda #2
         lda ln
         cmp #200
         bne -
-        ldx #0          ; under the hills:
--       lda ground,x    ; dark green
+        ldx #0          ; under the sea:
+-       lda ground,x    ; deep blue
         sta $d604
         inx
         cpx #16
@@ -325,8 +330,8 @@ sky     lda #2
         sta $d60e
         rts
 reg     !byte $1a,$1b,$1c,$1d
-ground  !byte 15,1,$1a,0, 15,1,$1b,10
-        !byte 15,1,$1c,154, 15,1,$1d,16
+ground  !byte 15,1,$1a,0, 15,1,$1b,8
+        !byte 15,1,$1c,72, 15,1,$1d,184
 
 ; ---- a layer's map and tiles. Each
 ; map tile is sky (tile 0), deep rock
@@ -589,13 +594,13 @@ pixel   ldx col
         lsr             ; depth/2
         ldx layer
         bne +
-        clc             ; mountains:
+        clc             ; far swells:
         adc #1          ; 1 + depth/2
         cmp #15
         bcc ++
         lda #15
 ++      rts
-+       asl             ; hills: 32 +
++       asl             ; sea: 32 +
         cmp #15         ; depth
         bcc ++
         lda #15
