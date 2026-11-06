@@ -90,7 +90,7 @@ def default_sounds(s):
     s.sound(5, wave=TRI, ad=0x05, sr=0x00, voicing=DRUMS, wp=(NOISE, NOISE, 0, 0), fall=10)    # KICK
     s.sound(6, wave=NOISE, ad=0x04, sr=0x00, voicing=DRUMS, detune=4, wp=(NOISE, 0, 0, 0))     # SNARE
     s.sound(7, wave=NOISE, ad=0x01, sr=0x00)                                                   # HAT
-    s.sound(8, wave=PULSE, ad=0x09, sr=0xa9, pw=8, voicing=OCTAVES)                            # BELL
+    s.sound(8, wave=PULSE, ad=0x09, sr=0x09, pw=8, voicing=OCTAVES)                            # BELL: sustain 0, it rings out and ends
     s.sound(9, wave=NOISE, ad=0x0a, sr=0x09, filt=1)                                           # FX
 
 def sounds_inc(path):

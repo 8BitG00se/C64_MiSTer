@@ -239,8 +239,21 @@ compute_range
         sta ZP+1
         ldy nstep
         lda (ZP),y
+        bne @has
+        cpy #0                  ; a bar with no notes at all ends the note that was ringing: its gate goes off at the bar's first step
+        bne @n                  ; (a silent bar / an emptied pattern; a note otherwise lasts until the next note or a stop)
+        lda vctl,x              ; (only if a gate is on: nothing is written to a track that is already quiet)
+        ora vctl+8,x
+        ora vctl+16,x
+        and #1
         beq @n
-        cmp #255
+        ldy #15
+@e      lda (ZP),y
+        bne @n
+        dey
+        bpl @e
+        bmi @off
+@has    cmp #255
         beq @off
         pha
         tya

@@ -829,7 +829,7 @@ play_start
         lda #3
         sta tcol
         jsr pstr
-        !scr "build 1", 0
+        !scr "build 2", 0
         ldx #12
         ldy #20
         jsr txtpos

@@ -348,7 +348,7 @@ draw_title
         lda #3
         sta tcol
         jsr pstr
-        !scr "build 1", 0
+        !scr "build 2", 0
         ldx #26
         ldy #0
         jsr txtpos
@@ -1022,7 +1022,11 @@ mutes   ldx #7                  ; any solo at all?
         bne @w
 @no     lda #0
 @w      sta tmute,x
-        dex
+        beq @u                  ; a track just muted: a note still ringing on it stops now
+        sei
+        jsr pl_gate
+        cli
+@u      dex
         bpl @t
         lda #1
         sta dirty
@@ -1680,10 +1684,14 @@ p_hear  jsr curpat
         pla
         jmp hear
 ; note A on the cursor's track with sound csnd
-hear    ldx ctrk
+hear    sei
+        lda audt                ; an audition still ringing on another track: its gate goes off now (it would never be switched off)
+        beq @h1
+        ldx audtrk
+        jsr pl_gate
+@h1     ldx ctrk
         ldy csnd
         stx audtrk
-        sei
         jsr pl_trig
         cli
         lda #28

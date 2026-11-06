@@ -1,4 +1,4 @@
-; defs.inc - shared by weaver.asm, player.asm, play.asm.  Octo Weaver Lite build 1, by Mong00se.
+; defs.inc - shared by weaver.asm, player.asm, play.asm.  Octo Weaver Lite build 2, by Mong00se.
 ; The memory map (one fixed layout, the same in the editor, in NAME PLAY and in a demo's NAME.OWP):
 ;   $0801         the BASIC stub and  jmp (entry)
 ;   $1000-$24FF  the player (init $1000, play $1003, stop $1006 ...)  - see player.asm

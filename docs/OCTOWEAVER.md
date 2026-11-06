@@ -1,10 +1,10 @@
-# OCTO WEAVER LITE (build 1)
+# OCTO WEAVER LITE (build 2)
 
 An 8-SID step sequencer for the Octophonic 64, by Mong00se. It is made for **demos and games**: each SID has one fixed job, a tune
 has a shape (the SIDs come in one at a time), a short hook over a few chords. You do not have to play in time or in key: type notes
 on the QWERTY row, they snap to the scale, and ROLL writes a musical idea for you.
 
-Build 1 is a `.prg` (6502, ACME). It starts like OctoPaint: it needs OctoVIC (ID `$8C`, version 2 or more), else it prints a line and
+Build 2 is a `.prg` (6502, ACME). It starts like OctoPaint: it needs OctoVIC (ID `$8C`, version 2 or more), else it prints a line and
 goes back to BASIC. F7 asks, then silences all 8 SIDs and returns to BASIC.
 
 ## 1. Install and start
@@ -127,7 +127,7 @@ cannot damage the song in memory. Loading takes about 45 seconds (the KERNAL, by
 - `NAME.OWP` - **the player and the song** for a demo: a PRG that loads at `$1000` and ends at `$5AFF` (the song is inside it).
 - `NAME PLAY` - a stand-alone program: the eq full screen and the song (SPACE pause / play, F7 or RUN/STOP exit), for a music disk.
 
-### The .OWS song file, byte by byte (build 1, version 1)
+### The .OWS song file, byte by byte (build 2, version 1)
 
 `OWS1` (4 bytes), then the song, 14080 bytes = the memory image of the player's song block (`defs.inc`):
 
@@ -203,11 +203,12 @@ Made with `demos.py` (original notes). Each uses all 8 SIDs with the SHAPE entra
 3. **SKIP ROPE** - C major, 150 bpm, C Am F G, 48 bars (77 s). SID 1 and SID 2 are the two ropes: noise slaps, the second between
    the first's beats like double dutch; then a bouncy bass, claps and kick, a chant-like pulse melody, stabs, bells, blips and a whistle.
 
-## 10. Limits of build 1
+## 10. Limits of build 2
 
 - A `.prg`; the Windows build comes later and shares the song format.
+- How long a note lasts: until the next note or a **stop** (`O` in the pattern editor), whichever comes first; a bar with no notes in it (pattern 0, or an emptied pattern) also ends it, at the bar's first step. A sound with a high sustain and no stop rings on through rests (that is what a pad is); a muted track is gated off at once, and F1 stop silences all 8 SIDs. ROLL puts a stop three steps after each bell.
 - No real-time recording (step entry only), no REU use, no export of the eq as a separate tool.
-- The player takes `$1000-$5AFF` and zero page `$E0-$EF` (it cannot be moved in build 1).
+- The player takes `$1000-$5AFF` and zero page `$E0-$EF` (it cannot be moved in build 2).
 - A track about to strike a new note holds its vibrato, PWM and arpeggio for the 1-4 frames before the strike.
 - Save and load run at the 1541's own speed (a song is 14 KB: about 45 s).
 - Tested in the headless emulator only; not yet on the real MiSTer.

@@ -364,6 +364,16 @@ r_bells lda #0
         tay
         pla
         jsr rput
+        tya                     ; the bell rings for three steps, then a stop (unless the step is taken): a bell never hangs on
+        sec
+        sbc #13                 ; (rput leaves Y = step + 16)
+        cmp #16
+        bcs @n
+        tay
+        lda (ip),y
+        bne @n
+        lda #255
+        sta (ip),y
 @n      inc rcnt
         lda rcnt
         cmp #3
