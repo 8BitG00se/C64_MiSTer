@@ -139,6 +139,9 @@ kx      = $65
 ky      = $66
 t4      = $67
 t5      = $68
+sptr    = $69           ; 2  Koala import: screen / colour / bitmap pointers
+cptr    = $6B           ; 2
+bptr    = $6D           ; 2
 
 ; tools
 T_PENCIL = 0
@@ -2045,8 +2048,6 @@ c_quit  ldx #<m_quit
 .n      rts
 
 ; ---- not yet: (replaced step by step)
-!zone c_import
-c_import
 !zone c_help
 c_help
         rts
@@ -4597,6 +4598,312 @@ d_cvs   !scr "  cvs ", $ff
 !zone d_free
 d_free  !scr "  free ", $ff
 
+; ================================================================================================ I: import a Koala picture
+; 10003 bytes: load address (2), bitmap 8000, screen 1000, colour 1000, background 1. Read into RAM ($A000, $C000, $C400), then
+; each 4 x 8 multicolour cell is written to the canvas as 2-wide pixels (160 x 200 -> 320 x 200). C64 colour c = palette entry c.
+
+; fname and kname change places (the import has a name of its own, used as typed)
+!zone swapname
+swapname
+        ldx #11
+.l      lda fname,x
+        tay
+        lda kname,x
+        sta fname,x
+        tya
+        sta kname,x
+        dex
+        bpl .l
+        lda flen
+        ldy klen
+        sta klen
+        sty flen
+        rts
+
+; fname as typed -> pbuf (PETSCII), no extension
+!zone mkraw
+mkraw   ldx #0
+.c      cpx flen
+        beq .e
+        lda fname,x
+        cmp #27
+        bcs .p
+        ora #$40
+.p      sta pbuf,x
+        inx
+        bne .c
+.e      stx plen
+        rts
+
+; one more cell of the bar
+!zone bardraw
+bardraw ldx pcell
+        cpx #40
+        bcs .r
+        lda #160
+        sta SCREEN+21*40,x
+        lda #7
+        sta COLRAM+21*40,x
+        inc pcell
+.r      rts
+
+; ccnt bytes from the file to (ptr2); the bar moves every 250 bytes
+!zone rdblock
+rdblock jsr inb
+        ldy #0
+        sta (ptr2),y
+        inc ptr2
+        bne .a
+        inc ptr2+1
+.a      inc pcnt
+        lda pcnt
+        cmp #250
+        bcc .b
+        lda #0
+        sta pcnt
+        jsr bardraw
+.b      lda ccnt
+        bne .c
+        dec ccnt+1
+.c      dec ccnt
+        lda ccnt
+        ora ccnt+1
+        bne rdblock
+        rts
+
+!zone c_import
+c_import
+        jsr swapname
+        ldx #<s_impas
+        ldy #>s_impas
+        jsr askname
+        bcs .g
+        jsr swapname
+        rts
+.g      jsr mkraw
+        jsr swapname
+        jsr diskask
+        bcs .y
+        ldx #<m_noimp
+        ldy #>m_noimp
+        jmp msg
+.y      jsr bar_clear
+        jsr io_begin
+        lda #0
+        sta pcnt
+        jsr doimport
+        jsr io_end
+        lda ioerr
+        bne .e
+        jsr msg_begin
+        +puts m_imported
+        jsr show_name
+        jmp result_bytes
+.e      jmp show_ioerr
+
+!zone doimport
+doimport
+        tsx
+        stx iosp
+        lda #0
+        jsr SETNAM
+        lda #15
+        ldx #8
+        ldy #15
+        jsr SETLFS
+        jsr OPEN
+        bcc .o15
+        jmp .eopen
+.o15    jsr cb_reset            ; NAME,P,R
+        jsr cb_pb
+        ldx #<s_pr
+        ldy #>s_pr
+        jsr cb_str
+        jsr setnm_cb
+        lda #2
+        ldx #8
+        ldy #2
+        jsr SETLFS
+        jsr OPEN
+        bcc .o2
+        jmp .eopen
+.o2     jsr rderr
+        beq .o3
+        lda #2
+        sta ioerr
+        jmp io_fin
+.o3     lda #0
+        sta $90
+        ldx #2
+        jsr CHKIN
+        bcc .rd
+.eopen  sta ioacc
+        lda #1
+        sta ioerr
+        jmp io_fin
+.rd     jsr inb                 ; the load address
+        jsr inb
+        lda #<KBMP
+        sta ptr2
+        lda #>KBMP
+        sta ptr2+1
+        lda #<8000
+        sta ccnt
+        lda #>8000
+        sta ccnt+1
+        jsr rdblock
+        lda #<KSCR
+        sta ptr2
+        lda #>KSCR
+        sta ptr2+1
+        lda #<1000
+        sta ccnt
+        lda #>1000
+        sta ccnt+1
+        jsr rdblock
+        lda #<KCOL
+        sta ptr2
+        lda #>KCOL
+        sta ptr2+1
+        lda #<1000
+        sta ccnt
+        lda #>1000
+        sta ccnt+1
+        jsr rdblock
+        jsr inb                 ; the background colour
+        and #15
+        sta kbg
+        jsr CLRCHN
+        lda #2
+        jsr CLOSE               ; (the drive is done with)
+        jsr bar_clear
+        lda #0
+        sta pacc
+        sta pcell
+        jsr save_undo
+        lda #1
+        sta VINC
+        lda #0
+        sta frow
+.row    lda frow                ; the row's cells: cy = row / 8, line = row mod 8
+        lsr
+        lsr
+        lsr
+        sta kcy
+        tax
+        lda rowlo,x             ; cy * 40
+        sta sptr
+        sta cptr
+        lda rowhi,x
+        sta sptr+1
+        sta cptr+1
+        lda sptr                ; bitmap: (cy * 40) * 8 + line
+        asl
+        sta bptr
+        lda sptr+1
+        rol
+        sta bptr+1
+        asl bptr
+        rol bptr+1
+        asl bptr
+        rol bptr+1
+        lda frow
+        and #7
+        clc
+        adc bptr
+        sta bptr
+        bcc .b1
+        inc bptr+1
+.b1     clc
+        lda bptr
+        adc #<KBMP
+        sta bptr
+        lda bptr+1
+        adc #>KBMP
+        sta bptr+1
+        clc                     ; screen and colour RAM copies
+        lda sptr
+        adc #<KSCR
+        sta sptr
+        lda sptr+1
+        adc #>KSCR
+        sta sptr+1
+        clc
+        lda cptr
+        adc #<KCOL
+        sta cptr
+        lda cptr+1
+        adc #>KCOL
+        sta cptr+1
+        lda #0
+        sta p_x
+        sta p_x+1
+        sta p_y+1
+        lda frow
+        sta p_y
+        jsr vaddr_xy
+        ldx #0
+        stx kcx
+.cell   ldy kcx
+        lda kbg
+        sta ctab
+        lda (sptr),y
+        pha
+        lsr
+        lsr
+        lsr
+        lsr
+        sta ctab+1
+        pla
+        and #15
+        sta ctab+2
+        lda (cptr),y
+        and #15
+        sta ctab+3
+        ldy #0
+        lda (bptr),y
+        sta kbyte
+        clc                     ; the next cell's bitmap: 8 on
+        lda bptr
+        adc #8
+        sta bptr
+        bcc .b2
+        inc bptr+1
+.b2     ldx #4
+.px     lda #0
+        asl kbyte
+        rol
+        asl kbyte
+        rol
+        tay
+        lda ctab,y
+        sta VDATA
+        sta VDATA
+        dex
+        bne .px
+        inc kcx
+        lda kcx
+        cmp #40
+        bne .cell
+        jsr barstep
+        inc frow
+        lda frow
+        cmp #CH
+        beq .fin
+        jmp .row
+.fin    lda #0
+        sta ioerr
+        jmp io_fin
+
+!zone s_pr
+s_pr    !byte $2c,$50,$2c,$52, $ff
+!zone s_impas
+s_impas !scr "import koala: ", $ff
+!zone m_noimp
+m_noimp !scr "not imported (no disk used)", $ff
+!zone m_imported
+m_imported !scr "imported ", $ff
+
 ; ================================================================================================ variables (zero at start)
 !zone qe
 qe      !fill 2
@@ -4751,4 +5058,12 @@ cnt     !fill 1
 rv      !fill 1
 crc     !fill 2
 hbuf    !fill 10
+kname   !fill 12
+klen    !fill 1
+pcnt    !fill 1
+kbg     !fill 1
+kcy     !fill 1
+kcx     !fill 1
+kbyte   !fill 1
+ctab    !fill 4
 progend

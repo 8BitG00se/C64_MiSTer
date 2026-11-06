@@ -5,6 +5,7 @@
 #   mkoct.py examples DIR             draw TESTCARD.OCT and PALETTE.OCT into DIR
 #   mkoct.py to-oct  IN.png OUT.oct   a picture (PNG, BMP, ...) to .OCT, 320 x 200 (see below)
 #   mkoct.py to-png  IN.oct OUT.png   .OCT to PNG
+#   mkoct.py from-koala IN.kla OUT.oct  a Koala picture (10003 bytes) to .OCT, the way OctoPaint's import (I) does it
 #   mkoct.py csum   IN.oct            the picture's checksum, as OctoPaint's debug overlay (D) shows it
 #   mkoct.py check                    self test of the run-length packing
 #   add --raw to write the pixels unpacked (packing 0)
@@ -98,6 +99,25 @@ def read_oct(blob):
     body = blob[778:]
     px = unrle(body, w * h) if pk else bytes(body[:w * h])
     return w, h, pal, px
+
+
+def koala(blob):
+    """A Koala picture (2 address bytes, 8000 bitmap, 1000 screen, 1000 colour, background) as 320 x 200 pixels:
+    each multicolour pixel 2 wide, C64 colour c = palette entry c."""
+    if len(blob) != 10003:
+        raise ValueError('a Koala file is 10003 bytes')
+    bmp, scr, col, bg = blob[2:8002], blob[8002:9002], blob[9002:10002], blob[10002] & 15
+    out = bytearray()
+    for y in range(200):
+        cy, line = y >> 3, y & 7
+        for cx in range(40):
+            s_, c_ = scr[cy * 40 + cx], col[cy * 40 + cx]
+            tab = (bg, s_ >> 4, s_ & 15, c_ & 15)
+            b = bmp[(cy * 40 + cx) * 8 + line]
+            for k in range(4):
+                v = tab[(b >> (6 - 2 * k)) & 3]
+                out += bytes([v, v])
+    return bytes(out)
 
 
 def csum(pixels):
@@ -237,6 +257,8 @@ def main(a):
             blob = make_oct(pic, pal, pack=not raw)
             open(os.path.join(a[1], name), 'wb').write(blob)
             print(name, len(blob), 'bytes')
+    elif len(a) == 3 and a[0] == 'from-koala':
+        open(a[2], 'wb').write(make_oct(koala(open(a[1], 'rb').read()), mkpal.table(), pack=not raw))
     elif len(a) == 2 and a[0] == 'csum':
         print('%04X' % csum(read_oct(open(a[1], 'rb').read())[3]))
     elif len(a) == 3 and a[0] == 'to-oct':
