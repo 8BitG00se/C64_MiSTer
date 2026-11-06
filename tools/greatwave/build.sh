@@ -21,6 +21,16 @@ mkdir -p "$OUT"
 
 python3 "$HERE/../octopaint/mkoct.py" check
 python3 "$HERE/gen.py" "$SRC" "$W" ${DITHER:+--dither "$DITHER"}
+# the music (music.py -> 2550 frames x 256 bytes), appended to the .reu on a 64 KB boundary: R_MUS
+python3 "$HERE/music.py" "$W/music.bin"
+python3 - "$W" <<'PY'
+import sys, os
+w = sys.argv[1]; reu = open(w + '/Great Wave.reu', 'rb').read(); mus = open(w + '/music.bin', 'rb').read()
+r = (len(reu) + 0xFFFF) & ~0xFFFF
+open(w + '/Great Wave.reu', 'wb').write(reu + bytes(r - len(reu)) + mus)
+open(w + '/data.inc', 'a').write('R_MUS = $%06x\n' % r)
+print('music at REU $%06x, %d bytes; the .reu is now %d bytes' % (r, len(mus), r + len(mus)))
+PY
 acme -I "$W" -f cbm -o "$OUT/Great Wave.prg" -l "$W/wave.lbl" "$HERE/wave.asm"
 cp "$W/Great Wave.reu" "$OUT/Great Wave.reu"
 

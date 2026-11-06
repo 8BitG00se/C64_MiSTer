@@ -9,7 +9,8 @@ as `tools/starrynight` and keeps its structure.
 |---|---|
 | `wave.asm` | the demo (`acme -f cbm`, `$0801`, `10 SYS2061`) |
 | `gen.py` | the scan to `Great Wave.reu` (picture, two smaller copies, copper lists, palette), `data.inc`, `rows.inc` (the camera path) and `great wave.oct` |
-| `build.sh` | `build.sh WAVE.jpg OUT [STARRY]`: the `.prg`, the `.reu`, `OctoPaint Pictures build 2.d64` (Starry Night and Great Wave), `About.txt`, the zip |
+| `music.py` | the music: Soran Bushi for 8 SIDs, rendered to SID register frames (`music.bin`, 2550 x 8 x 32 bytes) |
+| `build.sh` | `build.sh WAVE.jpg OUT [STARRY]`: the `.prg`, the `.reu` (with the music appended), `OctoPaint Pictures build 2.d64` (Starry Night and Great Wave), `About.txt`, the zip |
 | `about.txt` | the text that goes in the zip |
 
 The scan (1920 x 1315) is not in git; get it from Wikimedia Commons (Great Wave off Kanagawa2.jpg / the Google Art Project copy).
@@ -35,7 +36,21 @@ The scan (1920 x 1315) is not in git; get it from Wikimedia Commons (Great Wave 
   is 5 sprites of 64 x 16 in "taken away" mode, its grey palette entry 255 faded with the text.
 * **The REU.** Every part of the `.reu` starts on a 64 KB boundary and is copied 64 KB at a time: the REU's address counter
   wraps inside each 512 KB, so a transfer that crosses one reads the wrong bytes.
-* The music hook: `JSR $1003` each frame (a `RTS` at `$1000`/`$1003`, init/play as a SID tune has them); build 1 is silent.
+* **The music** (build 2): `music.py` composes *Soran Bushi* (traditional, public domain; an original arrangement, D minor
+  pentatonic, 120 bpm, 25 frames a beat) and renders it to SID register frames: 2550 frames, the length of the camera loop,
+  8 SIDs x 32 bytes each ($00-$18 and zeros). They sit in the `.reu` after the picture data, on a 64 KB boundary (`R_MUS`, `build.sh`
+  adds it to `data.inc`). The 6502 (`music_play` in `wave.asm`, called every frame after `advance`) does 4 REU DMA transfers of 64 bytes
+  from R_MUS + frame * 256 into the SIDs' windows ($D400, $D480, $D500, $D580: SIDs 0+1, 4+5, 2+3, 6+7, so the stream is in that
+  order) and counts the frame; the camera's wrap (`.wrap`) restarts it at 0, so picture and music loop together. SPACE: volume 0 on
+  all SIDs (the frame counter waits, the next frame's registers bring the sound back); F7: every SID register 0. The REU is
+  used only for this and for the start-up copies, so no registers need saving.
+  The SIDs: 1 taiko (wavetable drums), 2 rim/clicks/toms, 3 rowing bass (D and A), 4 koto (plucked pulses), 5 shakuhachi lead (delayed
+  vibrato, slides, breath noise), 6 harmony/answer (enters for the second A), 7 pad (filtered saws), 8 the sea (filtered noise, low).
+  Technique in the Python: hard restart, wavetable drums, PWM, 50 Hz arpeggios, filter sweeps. Form (bars of 100 frames): intro 0-3
+  (taiko roll into the title hold at frame 185), A 4-7 (the melody starts at frame 400, the glide to the boat begins at 385), B 8-11,
+  chant 12, A' 13-16 (lead an octave up, harmony), B' 17-20 (the big taiko hit at frame 1715 as the zoom into Fuji starts; quieter over
+  the Fuji hold 1615-1715; the volume builds up the crest, frames 615-1500), turn 21, chant 22-23 around the credit (2215), outro 24-25
+  as it wipes out.
 
 ## Palette and dithering
 
@@ -48,7 +63,7 @@ shows steps in the gradient and both keep the paper grain; the dithered one only
 
 ## Keys
 
-SPACE pause, D the debug line (LATE, MAX, TOT, OVR), F7 quit.
+SPACE pause (music muted), D the debug line (LATE, MAX, TOT, OVR), F7 quit.
 
 ## Checks (headless emulator + OctoVIC's RTL)
 

@@ -1,4 +1,4 @@
-; GREAT WAVE build 1 - a picture-viewer demo for the Octophonic 64 (OctoVIC 2+). By Mong00se.
+; GREAT WAVE build 2 - a picture-viewer demo for the Octophonic 64 (OctoVIC 2+). By Mong00se.
 ; Katsushika Hokusai, "The Great Wave off Kanagawa", about 1831 (public domain; a scan of the print, via Wikimedia Commons).
 ; 6502, ACME (-f cbm), loads at $0801 (10 SYS2061). The picture, its two smaller copies for the zoomed-out views, the copper
 ; lists of the wipes and the palette are in "Great Wave.reu" (gen.py makes it); the 6502 uploads them into the VRAM before
@@ -13,7 +13,7 @@
 ; The VIC text, in front (KEY = black is see-through), carries the captions, faded with the VIC palette.
 ; SPACE pauses, D shows the debug line (LATE and friends), F7 quits to BASIC.
 !cpu 6502
-BUILD   = 1
+BUILD   = 2
 !src "data.inc"
 
 OV      = $D600
@@ -121,11 +121,82 @@ REGS    = $9020         ; U0 V0 DUX DVX DUY DVY, as OctoVIC has them ($D688-$D69
         * = $0801
         !byte $0b,$08,$0a,$00,$9e,$32,$30,$36,$31,$00,$00,$00
         jmp start
-; the music: a SID tune comes in here later (init at $1000, play at $1003, as SID tunes have them); build 1 is silent
+; the music: Soran Bushi for 8 SIDs, a register stream from the REU (music.py makes it): every frame 256 bytes (8 SIDs x 32) at
+; R_MUS + frame * 256, 4 DMA transfers of 64 bytes into the SIDs' windows (SID 0,1 at $D400/$D420, 4,5 at $D480/$D4A0,
+; 2,3 at $D500/$D520, 6,7 at $D580/$D5A0). 2550 frames, the length of the camera's loop; the camera's wrap restarts it.
         * = $1000
-music_init  rts
-        !byte 0,0
-music_play  rts
+MFR     = $9F00         ; 2: the music's frame
+NMUS    = 2550
+!zone music
+music_init
+        lda #0
+        sta MFR
+        sta MFR+1
+        rts
+        !byte 0
+music_play
+        lda MFR+1               ; past the last frame (the camera has not wrapped yet): hold
+        cmp #>NMUS
+        bcc .go
+        bne .x
+        lda MFR
+        cmp #<NMUS
+        bcs .x
+.go     ldx #3
+.l      lda .dst,x
+        sta REU+2
+        lda .dsth,x
+        sta REU+3
+        lda .off,x
+        sta REU+4
+        clc
+        lda MFR
+        adc #>R_MUS
+        sta REU+5
+        lda MFR+1
+        adc #^R_MUS
+        sta REU+6
+        lda #64
+        sta REU+7
+        lda #0
+        sta REU+8
+        sta REU+10
+        lda #$91                ; now, REU to C64
+        sta REU+1
+        dex
+        bpl .l
+        inc MFR
+        bne .x
+        inc MFR+1
+.x      rts
+.dst    !byte $00, $80, $00, $80
+.dsth   !byte $d4, $d4, $d5, $d5
+.off    !byte $00, $40, $80, $c0
+; silence: music_mute = volume 0 on all 8 SIDs (the pause; the next frame's registers bring it back), music_off = every register 0 (F7)
+music_mute
+        lda #$18
+        bne +
+music_off
+        lda #0
++       sta tp+2                ; the first register to clear
+        ldx #7
+.s      lda .dst4,x
+        sta ptr
+        lda .dsth4,x
+        sta ptr+1
+        ldy #$18
+        lda #0
+.z      sta (ptr),y
+        cpy tp+2
+        beq .zd
+        dey
+        bne .z
+.zd     dex
+        bpl .s
+        rts
+        !byte 0
+.dst4   !byte $00, $20, $00, $20, $80, $a0, $80, $a0
+.dsth4  !byte $d4, $d4, $d5, $d5, $d4, $d4, $d5, $d5
 
         * = $4000
 start   cld
@@ -672,6 +743,9 @@ keys    lda #$fe
 pause   lda paused
         eor #1
         sta paused
+        beq +
+        jsr music_mute
++
         lda wmode
         beq .x
         jmp cop_run             ; the copper's animation stops / goes on at the frame it is at
@@ -831,7 +905,8 @@ nextrow ldx #8                  ; the last target is where this row starts
         iny
         ora (rp),y
         bne .rd
-.wrap   lda #<rows              ; the end of the list: round again
+.wrap   jsr music_init          ; the end of the list: round again, and the music with it
+        lda #<rows
         sta rp
         lda #>rows
         sta rp+1
@@ -1371,6 +1446,7 @@ t_dbg   !scr "late 00000 max 00000 tot 00000 ovr 00000"
 ; ======================================================================================================== quit
 !zone quit
 quit    sei
+        jsr music_off
         lda #0
         sta $d01a
         lda #$ff
