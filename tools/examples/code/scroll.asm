@@ -14,9 +14,9 @@
 
 ; ======== change these ===============
 
-message !scr "hello from octocode! "
-        !scr "this scroller is one "
-        !scr "octovic layer...   "
+message !scr "edit me!  change this "
+        !scr "text in octocode, then "
+        !scr "press f1 to run it...   "
         !byte 0
 
 speed   = 2     ; pixels a frame (1-4)
