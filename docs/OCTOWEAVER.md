@@ -172,8 +172,8 @@ it does not touch the VIC, the screen or the stack beyond 8 bytes.
 
 A tiny demo that does it is `tools/octoweaver/example_demo.asm`: put `NAME.OWP` beside it, `acme -f cbm -o demo.prg example_demo.asm`. It
 sets up its own raster interrupt and calls the player; **the border colour is the player's cost** (its band is as tall as the play
-routine). An exported song played by it produced exactly the same SID writes as the editor playing the same song (184,974 writes
-over DARK DRIVE, no difference).
+routine). An exported song played by it produced exactly the same SID writes as the editor playing the same song (67,140 writes
+over the first minute of DARK DRIVE, all 8 SIDs in, no difference).
 
 ### What the player costs
 

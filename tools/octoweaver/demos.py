@@ -178,8 +178,8 @@ def skip_rope():
     """C major, 150 bpm, C Am F G.  SID 1 and 2 are the two ropes (noise slaps between each other's beats), then the rest join.  48 bars = 77 s."""
     s = Song('SKIP ROPE'); s.b[H_SPEED] = 5; s.b[H_KEY] = 0; s.b[H_SCALE] = 0; s.b[H_CHORDS:H_CHORDS + 4] = bytes([0, 5, 3, 4]); s.b[H_LEN] = 48
     ROPEL, ROPER, BASS, CLAP, CHANT, STAB, BELL, BLIP, KICK, WHIS = range(1, 11)
-    s.sound(ROPEL, wave=NOISE, ad=0x03, sr=0x00, voicing=UNISON, detune=6)
-    s.sound(ROPER, wave=NOISE, ad=0x04, sr=0x00, voicing=UNISON, detune=9)
+    s.sound(ROPEL, wave=NOISE, ad=0x04, sr=0x00, voicing=UNISON, detune=6)
+    s.sound(ROPER, wave=NOISE, ad=0x05, sr=0x00, voicing=UNISON, detune=9)
     s.sound(BASS, wave=PULSE, ad=0x06, sr=0xb5, pw=6, voicing=UNISON, detune=2)
     s.sound(CLAP, wave=NOISE, ad=0x05, sr=0x00, voicing=DRUMS, detune=5, wp=(NOISE, 0, 0, 0))
     s.sound(CHANT, wave=PULSE, ad=0x05, sr=0xa6, pw=7, pwm=2, voicing=UNISON, detune=3)

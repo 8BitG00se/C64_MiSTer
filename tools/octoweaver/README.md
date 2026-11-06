@@ -25,6 +25,6 @@ Build: `python3 build.py OUT` (needs acme, c1541, python3). `python3 demos.py OU
 Testing was done in the headless Octophonic emulator with scripted keys and the audio dumped and measured: the editor plays a song, the eq
 follows each SID; scale-locked entry; sound editor, dials, mute / solo; ROLL / SHAPE; save and load with the guard (the saved `.OWS`
 equals `owsong.py`'s file byte for byte; after a change and a load the exported `.OWP` equals the original); the exported `.OWP`
-played by `example_demo.asm` writes exactly the same SID registers as the editor (184,974 writes of DARK DRIVE, no difference); the player's
+played by `example_demo.asm` writes exactly the same SID registers as the editor (67,140 writes of the first minute of DARK DRIVE, no difference); the player's
 cost measured as the border band over a whole song; per-SID levels with each track played alone, the whole-mix peak and the
 entrance bar of each SID.
