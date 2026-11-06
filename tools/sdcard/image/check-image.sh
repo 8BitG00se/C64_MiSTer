@@ -88,9 +88,11 @@ TPATS='C:\\|\\\\[A-Za-z0-9]|cifs_mount'
 HITS=0
 while IFS= read -r f; do
     [ -f "$W/card/$f" ] || continue
-    if grep -a -q -E "$PATS" "$W/card/$f" 2>/dev/null || grep -I -q -E "$TPATS" "$W/card/$f" 2>/dev/null; then
+    # PC-path patterns only for real text files: a .reu/.prg/.d64 is random bytes that can contain "\\x" by chance
+    case "$f" in *.reu|*.REU|*.prg|*.PRG|*.d64|*.crt|*.CHP|*.chp|*.rbf|*.img) TP='';; *) TP="$TPATS";; esac
+    if grep -a -q -E "$PATS" "$W/card/$f" 2>/dev/null || { [ -n "$TP" ] && grep -I -q -E "$TP" "$W/card/$f"; } 2>/dev/null; then
         echo "    HIT in $f:"; grep -a -o -E ".{0,30}($PATS).{0,30}" "$W/card/$f" | head -3 | sed 's/^/      /'
-        grep -I -o -E ".{0,30}($TPATS).{0,30}" "$W/card/$f" 2>/dev/null | head -3 | sed 's/^/      /'; HITS=1
+        { [ -n "$TP" ] && grep -I -o -E ".{0,30}($TP).{0,30}" "$W/card/$f"; } 2>/dev/null | head -3 | sed 's/^/      /'; HITS=1
     fi
 done < "$W/added.txt"
 [ "$HITS" = 0 ] && okk "no SSH key, share, IP address or PC path in any of them" || bad "personal strings found (above)"
