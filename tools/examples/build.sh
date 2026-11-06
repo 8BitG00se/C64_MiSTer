@@ -20,19 +20,19 @@ if [ -z "$OC" ]; then acme -f cbm -o "$W/octocode.prg" "$REPO/tools/octoos/octoc
 cp "$OC" "$G/Apps/OCTOCODE.PRG"
 
 # Code: the OCTOCODE examples - each .asm (as OCTOCODE's F2 leaves it in Code) and its program
-# Disks: the same, a .d64 each - the program first (LOAD"*",8,1 and RUN), its source as a SEQ file
-#        (OCTOCODE's F3 loads it from the disk in drive 8)
-declare -A DISK=( [raster]="Raster Bars" [scroll]="Big Scroller" [sprites]="64 Sprites" [plasma]="Plasma"
-                  [bounce]="Bouncing Logo" [split]="Split Screens" [parallax]="Parallax" )
 for a in hello stock raster scroll sprites plasma bounce split parallax; do
     cp "$HERE/code/$a.asm" "$G/Code/$a.asm"
     acme -f cbm -o "$G/Code/$a.prg" "$HERE/code/$a.asm"
-    if [ -n "${DISK[$a]:-}" ]; then
-        python3 -I "$REPO/tools/octoos/octocode/a2p.py" "$HERE/code/$a.asm" "$W/$a.seq"
-        n=$(printf '%s' "${DISK[$a]}" | tr 'A-Z' 'a-z')
-        c1541 -format "${n:0:16},oc" d64 "$W/d.d64" -write "$G/Code/$a.prg" "$a" -write "$W/$a.seq" "$a.asm,s" >/dev/null 2>&1
-        cp "$W/d.d64" "$G/Disks/${DISK[$a]}.d64"
-    fi
+done
+# Disks: NEW small effects (not the Code examples again), a .d64 each - the program first
+# (LOAD"*",8,1 and RUN), its source as a SEQ file (OCTOCODE's F3 loads it from the disk in drive 8)
+declare -A DISK=( [starfield]="Starfield" [logo]="Colour Logo" [pillar]="Wavy Pillar" )
+for a in starfield logo pillar; do
+    acme -f cbm -o "$W/$a.prg" "$HERE/disks/$a.asm"
+    python3 -I "$REPO/tools/octoos/octocode/a2p.py" "$HERE/disks/$a.asm" "$W/$a.seq"
+    n=$(printf '%s' "${DISK[$a]}" | tr 'A-Z' 'a-z')
+    c1541 -format "${n:0:16},fx" d64 "$W/d.d64" -write "$W/$a.prg" "$a" -write "$W/$a.seq" "$a.asm,s" >/dev/null 2>&1
+    cp "$W/d.d64" "$G/Disks/${DISK[$a]}.d64"
 done
 # OCTOCODE Examples.d64: OCTOCODE first (RETURN on the disk starts it, and it opens HELLO.ASM from
 # the disk), then every example's source for its F3
