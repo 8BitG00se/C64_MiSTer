@@ -71,11 +71,13 @@ import sys
 rows = [l.center(40)[:40] for l in sys.argv[1:]] + [' ' * 40] * 12
 print('\n'.join('        !scr "%s"' % r.replace('"', "'") for r in rows[:12]))
 PY
-    sed "s/INIT/$init/; s/PLAY/$play/; s/FX\*3/$((fx * 3))/; s|TUNE|\"$HERE/music/$tune\"|; s|!source \"text.inc\"|!source \"$W/text.inc\"|" \
-        "$HERE/music/player.asm" > "$W/player.asm"
+    sed "s/INIT/$init/; s/PLAY/$play/; s/FX\*3/$((fx * 3))/; s|TUNE|\"${TUNEPATH:-$HERE/music/$tune}\"|; s|!source \"text.inc\"|!source \"$W/text.inc\"|; s|!source \"mixstubs.inc\"|!source \"$W/mixstubs.inc\"|" \
+        "$HERE/music/${PLAYER:-player.asm}" > "$W/player.asm"
     acme -f cbm -o "$out" "$W/player.asm"
 }
-mkplayer "$G/Music/Crystal Harbour.prg" '$1006' '$1003' 1 harbour.bin "crystal harbour" "" "a sidweaver tune" "octophonic 64 / mong00se" "" "" "octosid fx: chorus and echo" "spread over four sids, in stereo"
+# Crystal Harbour on all eight SIDs, with an equaliser (mkmix.py makes the tune write to SIDs 5-8 as well)
+python3 -I "$HERE/music/mkmix.py" "$HERE/music/harbour.bin" "$W/harbour_mix.bin" "$W/mixstubs.inc"
+PLAYER=player_mix.asm TUNEPATH="$W/harbour_mix.bin" mkplayer "$G/Music/Crystal Harbour.prg" '$1006' '$1003' 1 harbour.bin "crystal harbour" "" "a sidweaver tune on all eight sids" "octophonic 64 / mong00se" "" "" "sid 1 plays it, octosid fx make 2-4," "sids 5, 6, 7 take one voice each," "sid 8 plays it all, a little softer"
 mkplayer "$G/SIDs/Neal Plays.prg" '$1000' '$1013' 0 nealplays.bin "neal plays" "" "by mong00se" "made with sidweaver, 2026" "" "" "one sid, as a stock c64 has it"
 
 # My Chips: Mong00se's own measured SIDs
