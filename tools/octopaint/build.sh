@@ -19,7 +19,7 @@ python3 "$HERE/mkpal.py" "$W/palette.inc"
 cmp -s "$W/palette.inc" "$HERE/palette.inc" || { echo "palette.inc is out of date: run mkpal.py" >&2; exit 1; }
 python3 "$HERE/mkoct.py" check
 
-acme -f cbm -o "$OUT/OCTOPAINT.PRG" "$HERE/octopaint.asm"
+acme -I "$HERE" -f cbm -o "$OUT/OCTOPAINT.PRG" "$HERE/octopaint.asm"
 python3 "$HERE/mkoct.py" examples "$W/ex"
 c1541 -format "octopaint,op" d64 "$OUT/OctoPaint Disk build $N.d64" \
     -write "$OUT/OCTOPAINT.PRG" "octopaint" \
