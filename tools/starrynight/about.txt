@@ -1,0 +1,35 @@
+STARRY NIGHT build 1  -  a picture show for the Octophonic 64
+================================================================
+
+The Starry Night, Vincent van Gogh, 1889 - public domain; scan of the painting, via Wikimedia Commons.
+
+What it is. The whole painting as one 256-colour picture, 1024 x 816 pixels, on an OctoVIC bitmap layer that is turned and
+sized (zoomed) by the machine itself. The show loops, about 50 seconds, with no music (build 1 is silent):
+
+  - black screen, then a raster wipe: the painting appears from the top behind a band of colour bars
+  - 4 seconds on the whole painting, with the title
+  - a glide to the left stars, then a slow pan over the big swirl to the moon (22 seconds)
+  - zoom into the moon (2x), hold, zoom back out to the whole painting
+  - the credit line, then a wipe out, and round again
+
+Keys:  SPACE pauses and goes on.   D shows the debug line (LATE = OctoVIC lines that were late last frame, 0 is right;
+MAX, TOT (since reset), OVR = frames the 6502 was too slow for).   F7 quits to BASIC.
+
+PUTTING IT ON THE MISTER (FILEZILLA)
+------------------------------------
+1. Find the MiSTer's IP address (the MiSTer menu, or your router's list).
+2. Open FileZilla: protocol SFTP, host = the MiSTer's IP, user root, password 1, port 22.
+3. On the MiSTer side open /media/fat/games/C64/Demos/ and make a new folder there, for example "Starry Night build 1".
+4. Put "Starry Night.prg" and "Starry Night.reu" together in that folder (the same name, so the Octophonic browser
+   puts the .reu into the REU first, then runs the .prg).
+5. Start the Octophonic 64 core, F1 (the browser), Demos, the folder, RETURN on "Starry Night.prg".
+
+The .reu is 1.3 MB: the browser shows a load bar, then the screen stays black for about a second while the 6502 copies
+the picture into OctoVIC's memory, and the show begins.
+
+"OctoPaint Pictures build 1.d64" has the same painting as "STARRY NIGHT.OCT", a 320 x 200 picture with black bars at
+the sides, for OctoPaint: put it in /media/fat/games/C64/Disks/, mount it in the OSD (drive 8) and Open in OctoPaint.
+
+Needs the Octophonic 64 core with OctoVIC 2 or later; a stock C64 gets a message and nothing else.
+
+Made by Mong00se. 6502 (ACME); gen.py prepares the data on a PC. github.com/8BitG00se/C64_MiSTer, tools/starrynight.
