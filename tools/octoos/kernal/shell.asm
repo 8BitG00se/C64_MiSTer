@@ -1,9 +1,11 @@
 ; OCTOPHONIC OS 1 - the browser (SHELL.PRG). The F keys at READY load it to $C000 and run it: the
 ; ROM types @@ and a letter (wedge2.asm), still in the input buffer at $0202 when we start, and the
 ; letter says what for:
-;   F1 "B" BROWSE  the drives: SD CARD / NETWORK         F3 "C" LOAD  the folder you were last in
-;   F5 "D" SIDS    the settings, on the SID lines        F7 "A" DUAL  the settings, on SPLIT SCREENS
-;   F8 "E" SET     the settings                          (F2/F4/F6 as F1/F3/F5; @@ typed: as F1)
+;   F1 "B" BROWSE  the drives (SD CARD / NETWORK), then run anything: its own titled page
+;   F3 "C" LOAD    the disk in drive 8: LOAD"*",8,1 typed for you and RUN after it (build 4)
+;   F5 "D" SIDS    a page of its own: SID CHIPS (preset, my chips, 6581/8580, 8 SIDS, FX)
+;   F7 "A" DUAL    a page of its own: DUAL SCREEN (the split-screen setting)
+;   F8 "E" SET     a page of its own: SETTINGS (everything)   (F2/F4/F6 as F1/F3/F5; @@ typed: as F1)
 ; By Mong00se.
 ;   cursor up/down (or joystick port 2)  move          RETURN (or fire)  run / into a folder
 ;   F5 / F6   page down / up                            SHIFT+RETURN      a disk: just put it in
@@ -84,16 +86,17 @@ start   lda $0202               ; the letter after @@: what the browser is opene
         beq mload               ; "C" F3
         bcs msids               ; "D" F5
 mbrowse jmp drives              ; "B" F1
-mdual   lda #2                  ; the settings, the bar on SPLIT SCREENS
+mdual   lda #2                  ; its own page: DUAL SCREEN
         !byte $2C
-msids   lda #1                  ; the settings, the bar on the first SID line (MY CHIP LEFT)
+msids   lda #1                  ; its own page: SID CHIPS
         !byte $2C
-mset    lda #0
-        sta sfind
+mset    lda #0                  ; SETTINGS, everything
+        sta view
         lda #1                  ; F7 there goes back to READY, not to the files
         sta setonly
         jmp settings
-mload   jsr netwait             ; a share still connecting: wait for it (any key: the SD card)
+mload   jmp f3load              ; (build 4) F3: the disk in drive 8, not the browser
+mbrows  jsr netwait             ; a share still connecting: wait for it (any key: the SD card)
 reload  jsr dolist
         jsr drawall
         jsr hilite
@@ -296,14 +299,19 @@ open    sta mountonly
         bne -
         jmp quit
 
+f3load  lda #0                  ; F3 LOAD: LOAD"*",8,1 and RUN, a title first
+        sta mountonly
+        jsr FRAME
+        ldx #m_f3-m_disk
+        bne dmsg
 disk    jsr FRAME
         ldx #0
--       lda m_disk,x
-        beq +
+dmsg    lda m_disk,x
+        beq dtype
         jsr CHROUT
         inx
-        bne -
-+       lda mountonly
+        bne dmsg
+dtype   lda mountonly
         bne +
         ldx #0                  ; LOAD"*",8,1 typed on the screen (too long for the keyboard buffer),
 -       lda autold,x            ; then RETURN on it, and RUN after the load (AUTORUN, as SHIFT+RUN/STOP)
@@ -604,7 +612,10 @@ fixed   lda #0                  ; (the help's first page)
         rts
 
 ; the path and the page
-drawall ldx #39
+drawall ldx #s_browse-strs      ; (build 4) the page's own title, F1
+        lda #6
+        jsr putrow
+        ldx #39
 -       lda LBUF,x
         jsr scr
         sta SCR + 5*40,x
@@ -811,11 +822,7 @@ settings
         lda #0
         sta sline
         ldx #39
--       lda stitle,x            ; the title, the help
-        sta SCR + 5*40,x
-        lda #3
-        sta COL + 5*40,x
-        lda #$20
+-       lda #$20                ; the help (row 7 blank)
         sta SCR + 7*40,x
         lda shelp,x
         sta SCR + 24*40,x
@@ -823,7 +830,17 @@ settings
         sta COL + 24*40,x
         dex
         bpl -
-        jsr corenm              ; the running core's name and build date, right of SETTINGS
+        ldx view                ; this page's own title and its line under it
+        lda vtitle,x
+        tax
+        lda #5
+        jsr putrow
+        ldx view
+        lda vsub,x
+        tax
+        lda #6
+        jsr putrow
+        jsr corenm              ; the running core's name and build date, right of the title
 sreload lda #<LBUF
         sta MB_AL
         lda #>LBUF
@@ -837,10 +854,8 @@ sreload lda #<LBUF
         beq sdraw
 +       lda MB_RL
         sta count
-        lda sfind               ; opened for a line (F5 SIDS, F7 DUAL): the bar onto it, once
-        beq +
-        jsr findln
-+       lda #m_none-msgs
+        jsr compact             ; (build 4) F5 / F7: only their own lines
+        lda #m_none-msgs
         tax
         jsr status
 sdraw   lda #0
@@ -895,7 +910,7 @@ sloop   jsr getkey
         jmp sstep
 +       cmp #13
         bne +
-        lda sline
+        jsr actual
         bne ++
         lda #$0A                ; RETURN on the chip preset: start it
         jsr call
@@ -918,7 +933,7 @@ sback   lda setonly         ; opened from READY (F5, F7, F8): back to READY
         jmp reload
 
 sstep   sta MB_VAL
-        lda sline
+        jsr actual
         sta MB_ARG
         lda #$09                ; SETSTEP
         jsr call
@@ -975,46 +990,94 @@ sline40 lda row
         bne -
         rts
 
-; the settings line whose label starts with ftab's 4 letters for sfind (1 SIDS, 2 DUAL) -> sline
-findln  sec
-        sbc #1
-        asl
-        asl
-        sta tmp+1               ; the 4 letters' place in ftab
+; (build 4) the settings pages: Main's list has 12 lines (0 CHIP PRESET, 1-2 MY CHIP LEFT/RIGHT, 3 START IN,
+; 4-5 LEFT/RIGHT SIDS, 6 MY CHIPS, 7 OCTOPHONIC, 8 OCTOSID FX, 9 SPLIT SCREENS, 10-11 TURBO). The pages
+; keep their own: view 1 (F5) SID CHIPS: 0 1 2 4 5 6 7 8   view 2 (F7) DUAL SCREEN: 9   view 0 (F8): all
+compact ldx view
+        beq cpdone
+        lda vcnt,x
+        sta count
+        lda vbase,x
+        sta cv
         lda #0
-        sta sfind
-        lda #<LBUF
+        sta ck
+cploop  ldy cv
+        lda vmap,y
+        tax
+        lda lbl,x
+        sta P
+        lda lbh,x
+        sta P+1
+        ldx ck
+        lda lbl,x
         sta Q
-        lda #>LBUF
+        lda lbh,x
         sta Q+1
-        ldx #0
-fl1     ldy #3
-fl2     lda (Q),y
-        sta tmp
-        tya
-        clc
-        adc tmp+1
-        sty rp
-        tay
-        lda ftab,y
-        ldy rp
-        cmp tmp
-        bne flnext
+        ldy #39
+-       lda (P),y
+        sta (Q),y
         dey
-        bpl fl2
-        stx sline
+        bpl -
+        inc cv
+        inc ck
+        lda ck
+        cmp count
+        bcc cploop
+cpdone  rts
+; the line (of Main's 12) the bar is on: A, Z set when it is line 0
+actual  lda sline
+        ldx view
+        beq +
+        clc
+        adc vbase,x
+        tay
+        lda vmap,y
++       cmp #0
         rts
-flnext  clc
-        lda Q
-        adc #40
+lbl     !for i, 0, 11 { !byte <(LBUF + i*40) }
+lbh     !for i, 0, 11 { !byte >(LBUF + i*40) }
+vmap    !byte 0, 1, 2, 4, 5, 6, 7, 8, 9
+vbase   !byte 0, 0, 8
+vcnt    !byte 12, 8, 1
+vtitle  !byte s_set-strs, s_sids-strs, s_dual-strs
+vsub    !byte s_setu-strs, s_sidsu-strs, s_dualu-strs
+; a string (X in strs, 0 at its end) on screen row A, yellow, the rest of the row blank
+putrow  tay
+        lda rowlo,y
         sta Q
-        bcc +
-        inc Q+1
-+       inx
-        cpx count
-        bcc fl1
-        rts
-ftab    !pet "my c", "spli"     ; (PETSCII capitals, $41-$5A, as Main writes the labels)
+        lda rowhi,y
+        sta Q+1
+        sta P+1
+        lda Q
+        sta P
+        lda P+1
+        clc
+        adc #>(COL-SCR)
+        sta P+1
+        ldy #0
+-       lda strs,x
+        beq +
+        sta (Q),y
+        lda #7
+        sta (P),y
+        inx
+        iny
+        bne -
++       lda #$20
+-       cpy #40
+        beq +
+        sta (Q),y
+        iny
+        bne -
++       rts
+strs
+s_browse !scr "f1 browse - return runs anything here", 0
+s_set   !scr "settings", 0
+s_sids  !scr "sid chips", 0
+s_dual  !scr "dual screen", 0
+s_setu  !scr "everything, in one list", 0
+s_sidsu !scr "which sids play, and which chips", 0
+s_dualu !scr "c64 on the crt, octovic on hdmi", 0
 
 hirow   jsr rowptr              ; the bar on settings line A
         ldy #39
@@ -1255,7 +1318,6 @@ corenm  ldx #4
         bpl -
         rts
 t_core  !scr "core "
-stitle  !scr "settings                                "
 shelp   !scr "up/down pick  left/right change  f7 back"
 hdr     !scr " name                         type size "
 help    !scr "f1 drives f3 up f5/6 page f7 back f8 set"
@@ -1277,6 +1339,7 @@ m_nd      !scr "?not a folder", 0
 m_cant    !scr "?can't run that type of file", 0
 m_preset  !scr "starting the chip preset...", 0
 m_disk    !pet 13, "disk in drive 8", 13, 0
+m_f3      !pet 13, "f3 load - the disk in drive 8", 13, 0
 
 first   !word 0
 total   !word 0
@@ -1301,7 +1364,9 @@ sline   !byte 0
 joyold  !byte 0
 joyt    !byte 0
 mode    !byte 0
-sfind   !byte 0
+view    !byte 0
+cv      !byte 0
+ck      !byte 0
 setonly !byte 0
 ; the jingle's tune (read by its player from here: SHELL.PRG stays in RAM while it plays)
 ; C4 D4 E4 F4 G4 A4 B4 C5 E5 (PAL: Hz x 17.0284)
