@@ -1,7 +1,6 @@
 #!/bin/bash
 # STARRY NIGHT - builds the package into OUT:
 #   Starry Night.prg  +  Starry Night.reu       (the same base name: the Octophonic browser loads the .reu first)
-#   OctoPaint Pictures build N.d64              "starry night.oct" for OctoPaint (320 x 200, letterbox bars of colour 1)
 #   About.txt, Starry Night build N.zip
 #   tools/starrynight/build.sh SOURCE.jpg OUT   (SOURCE.jpg: the scan, 1920 x 1520; kept out of git)
 # Needs acme, c1541 (VICE's), zip, python3 with numpy, PIL, scipy, scikit-learn, opencv. N is BUILD in starry.asm.
@@ -15,19 +14,21 @@ W=$(mktemp -d)
 trap 'rm -rf "$W"' EXIT
 mkdir -p "$OUT"
 
-python3 "$HERE/../octopaint/mkoct.py" check
 python3 "$HERE/gen.py" "$SRC" "$W" ${DITHER:+--dither "$DITHER"}
+# the music (music.py -> 2520 frames x 256 bytes), appended to the .reu on a 64 KB boundary: R_MUS
+python3 "$HERE/music.py" "$W/music.bin"
+python3 - "$W" <<'PY'
+import sys
+w = sys.argv[1]; reu = open(w + '/Starry Night.reu', 'rb').read(); mus = open(w + '/music.bin', 'rb').read()
+r = (len(reu) + 0xFFFF) & ~0xFFFF       # 64 KB boundary; every frame (256 bytes, 4 DMAs of 64) lies inside one 512 KB window
+open(w + '/Starry Night.reu', 'wb').write(reu + bytes(r - len(reu)) + mus)
+open(w + '/data.inc', 'a').write('R_MUS = $%06x\n' % r)
+print('music at REU $%06x, %d bytes; the .reu is now %d bytes' % (r, len(mus), r + len(mus)))
+PY
 acme -I "$W" -f cbm -o "$OUT/Starry Night.prg" -l "$W/starry.lbl" "$HERE/starry.asm"
 cp "$W/Starry Night.reu" "$OUT/Starry Night.reu"
 
-# the picture for OctoPaint: read back with mkoct.py (it must decode, and the checksum is the one OctoPaint's debug overlay shows)
-python3 "$HERE/../octopaint/mkoct.py" to-png "$W/Starry Night.oct" "$W/check.png"
-python3 "$HERE/../octopaint/mkoct.py" csum "$W/Starry Night.oct"
-rm -f "$OUT/OctoPaint Pictures build $N.d64"
-c1541 -format "octopaint pics,sn" d64 "$OUT/OctoPaint Pictures build $N.d64" -write "$W/Starry Night.oct" "starry night.oct,s" >/dev/null 2>&1
-c1541 "$OUT/OctoPaint Pictures build $N.d64" -list | head -5
-
 cp "$HERE/about.txt" "$OUT/About.txt"
 rm -f "$OUT/Starry Night build $N.zip"
-(cd "$OUT" && zip -q "Starry Night build $N.zip" "Starry Night.prg" "Starry Night.reu" "OctoPaint Pictures build $N.d64" About.txt)
+(cd "$OUT" && zip -q "Starry Night build $N.zip" "Starry Night.prg" "Starry Night.reu" About.txt)
 ls -l "$OUT"
