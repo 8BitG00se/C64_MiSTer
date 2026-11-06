@@ -1,11 +1,13 @@
-; NOTE CATCHER - a small game for the
-; Octophonic 64. Catch the falling
-; notes with the bar: each one you
-; catch plays, on one of the eight
-; SIDs, so you make a tune as you go.
-; Miss three and it is over.
-; Keys: Z left, X right (or a joystick
-; in port 2), SPACE / fire to start.
+; NOTE BOUNCER - a small game for the
+; Octophonic 64. Balls bounce off the
+; walls and the ceiling; keep them up
+; with the bar. Every bounce plays its
+; own sound (left wall, right wall,
+; ceiling, and the bar - by where it
+; hits), on the eight SIDs.
+; Let three go past the bar and it is
+; over. Joystick in port 2 (or Z left,
+; X right), SPACE / fire to start.
 ; Run from its disk, it keeps the best
 ; score on the disk (file HISCORE).
 ; By Octophonic 64 / Mong00se.
@@ -20,7 +22,7 @@ p       = $fb           ; a pointer
 gfx     = $05           ; sprite pictures
 table   = $06           ; sprite tables
 list    = $020000       ; the sky
-notes   = 6             ; falling at once
+notes   = 3             ; balls at once
 bary    = 196           ; the bar's line
 
 start   sei
@@ -192,18 +194,52 @@ right   lda barx
         sta barx
 +       rts
 
-; ---- the notes fall; a note on the
-; bar is caught, one past it is lost
+; ---- the balls bounce: off the left and right walls and the ceiling, and off the bar;
+; each kind of bounce has its own sound. One that goes past the bar is lost.
 fall    ldx #0
 --      lda ny,x
-        beq next        ; 0: not in use
+        bne +
+        jmp next        ; 0: not in use
++       lda nx,x        ; sideways
         clc
-        adc speed
+        adc vx,x
+        sta nx,x
+        lda vx,x
+        bmi goleft
+        lda nx,x
+        cmp #224
+        bcc xok
+        lda #224        ; the right wall: SID 1, high, sawtooth
+        sta nx,x
+        jsr negx
+        lda #$21
+        sta wv
+        lda #1
+        ldy #11
+        jsr bsnd
+        jmp xok
+goleft  lda nx,x
+        cmp #232        ; (gone below 0)
+        bcc xok
+        lda #0          ; the left wall: SID 0, low, sawtooth
+        sta nx,x
+        jsr negx
+        lda #$21
+        sta wv
+        lda #0
+        ldy #3
+        jsr bsnd
+xok     lda ny,x        ; up and down
+        clc
+        adc vy,x
         sta ny,x
+        lda vy,x
+        bmi goup
+        lda ny,x
         cmp #bary-12
         bcc next
         cmp #bary+4
-        bcs miss
+        bcs below
         lda nx,x        ; on the bar?
         sec
         sbc barx
@@ -211,62 +247,108 @@ fall    ldx #0
         adc #14
         cmp #42
         bcs next
-        lda #0          ; caught!
-        sta ny,x
-        jsr play
+        lda #0          ; the bar: up again, the note by where it hit
+        sec
+        sbc vy,x
+        sta vy,x
         inc points
-        lda points
-        and #7
-        bne next
-        inc speed       ; faster every 8
-        lda speed
-        cmp #6
-        bcc next
-        lda #6
-        sta speed
+        lda #$11
+        sta wv
+        lda nx,x
+        lsr
+        lsr
+        lsr
+        lsr
+        tay             ; note 0-14
+        lda nx,x
+        lsr
+        lsr
+        lsr
+        lsr
+        lsr             ; 0-7
+        sta t2
+        lda #4
+        clc
+        adc t2
+        and #7          ; SIDs 4-7 are the bar's
+        ora #4
+        jsr bsnd
         jmp next
-miss    cmp #230
+below   cmp #230
         bcc next
-        lda #0          ; gone
+        lda #0          ; lost
         sta ny,x
+        lda #50
+        sta dly,x
         dec lives
         jsr buzz
+        jmp next
+goup    lda ny,x
+        cmp #11
+        bcs next
+        lda #11         ; the ceiling: SID 2, the top, triangle
+        sta ny,x
+        lda #0
+        sec
+        sbc vy,x
+        sta vy,x
+        lda #$11
+        sta wv
+        lda #2
+        ldy #14
+        jsr bsnd
 next    inx
         cpx #notes
-        bne --
+        beq +
+        jmp --
++       rts
+
+negx    lda #0
+        sec
+        sbc vx,x
+        sta vx,x
         rts
 
-; ---- a new note now and then
-spawn   dec wait
-        bne ++
-        lda #36
-        sec
-        sbc speed
-        sbc speed
-        sbc speed
-        sta wait
+; ---- balls: one to start, a second at 6 points, a third at 12; a lost one comes back
+spawn   lda #1
+        ldx points
+        cpx #6
+        bcc +
+        lda #2
+        cpx #12
+        bcc +
+        lda #3
++       sta t2
         ldx #0
--       lda ny,x        ; a free one
-        beq +
-        inx
-        cpx #notes
+-       cpx t2
+        bcs ++
+        lda ny,x
+        bne +
+        lda dly,x
+        beq launch
+        dec dly,x
++       inx
         bne -
-        rts
-+       jsr random
+++      rts
+launch  jsr random
         and #127
-        sta t
-        jsr random
-        and #63
         clc
-        adc t
-        adc #16
+        adc #40
         sta nx,x
-        lda #8
+        lda #14
         sta ny,x
+        lda #3
+        sta vy,x
         jsr random
         and #3
-        sta nc,x        ; its colour
-++      rts
+        tay
+        lda vxt,y
+        sta vx,x
+        txa
+        sta nc,x
+        inx
+        jmp -
+vxt     !byte 2,$fe,3,$fd
 
 random  lda seed        ; 8-bit LFSR
         asl
@@ -275,34 +357,23 @@ random  lda seed        ; 8-bit LFSR
 +       sta seed
         rts
 
-; ---- a caught note: the bar's place
-; picks the note, the colour the SID
-play    stx t
-        lda nx,x
-        lsr
-        lsr
-        lsr
-        lsr             ; 0-15
-        tay
-        lda nc,x
-        asl             ; colour*2 (+1 on
-        ora tick        ; odd frames) =
-        and #7          ; SID 0-7
+; ---- a bounce: A = the SID 0-7, Y = the note 0-15, wv = the waveform + gate
+bsnd    stx t
         tax
         lda sidlo,x
         sta p
         lda sidhi,x
         sta p+1
-        tya
-        tax
+        lda freqhi,y
+        pha
+        lda freqlo,y
         ldy #0
-        lda freqlo,x
         sta (p),y
         iny
-        lda freqhi,x
+        pla
         sta (p),y
         ldy #4
-        lda #$11        ; triangle, gate
+        lda wv
         sta (p),y
         ldx t
         rts
@@ -365,10 +436,13 @@ newgame lda #3
 -       sta ny,x
         dex
         bpl -
-        lda #2
-        sta speed
-        lda #20
-        sta wait
+        ldx #notes-1
+-       sta dly,x
+        txa
+        sta nc,x
+        lda #0
+        dex
+        bpl -
         lda #110
         sta barx
         jsr screen
@@ -420,8 +494,8 @@ number  ldy #$2f
 +       rts
 
 m_score !scr " score 000  best 000  lives 3            "
-m_title !scr "n o t e   c a t c h e r", 0
-m_keys  !scr "z x move, space to start", 0
+m_title !scr "n o t e   b o u n c e r", 0
+m_keys  !scr "joystick 2 (or z x) moves the bar", 0
 m_over  !scr "game over - well played", 0
 m_demo  !scr "demo - space to play", 0
 
@@ -760,3 +834,8 @@ rgb     !byte 0,0,0,0
 nx      !fill notes,0
 ny      !fill notes,0
 nc      !fill notes,0
+vx      !fill notes,0
+vy      !fill notes,0
+dly     !fill notes,0
+wv      !byte 0
+t2      !byte 0

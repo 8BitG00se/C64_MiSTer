@@ -54,10 +54,10 @@ printf '10 print "hello from the disk!"\n20 print "a basic program on a .d64,"\n
 petcat -w2 -o "$W/hello.prg" -- "$W/hello.bas" >/dev/null 2>&1
 c1541 -format "hello disk,hd" d64 "$G/Disks/Hello Disk.d64" -write "$W/hello.prg" "hello" >/dev/null 2>&1
 
-# Games and Saves: NOTE CATCHER, and its save disk (the game and its best score, HISCORE)
-acme -f cbm -o "$G/Games/Note Catcher.prg" "$HERE/game/notecatcher.asm"
-printf '\x0c' > "$W/hiscore"
-c1541 -format "note catcher,nc" d64 "$G/Saves/Note Catcher Save Disk.d64" -write "$G/Games/Note Catcher.prg" "note catcher" -write "$W/hiscore" "hiscore,s" >/dev/null 2>&1
+# Games and Saves: NOTE BOUNCER, and its save disk (the game and its best score, HISCORE)
+acme -f cbm -o "$G/Games/Note Bouncer.prg" "$HERE/game/notebouncer.asm"
+printf '\x0a' > "$W/hiscore"
+c1541 -format "note bouncer,nb" d64 "$G/Saves/Note Bouncer Save Disk.d64" -write "$G/Games/Note Bouncer.prg" "note bouncer" -write "$W/hiscore" "hiscore,s" >/dev/null 2>&1
 c1541 -format "blank disk,bd" d64 "$G/Saves/Blank Disk.d64" >/dev/null 2>&1
 
 # Pictures
