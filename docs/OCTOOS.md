@@ -185,6 +185,12 @@ the menu's "Reset & Detach Cartridge" and the core starts again on the V1.1 star
 is kept, so F1 opens the browser where it was. The REU keeps its contents (as with the menu's reset):
 the next demo's own .reu goes in over it when it is run, the way the menu attaches a .reu.
 
+**One key from any program: hold Esc (RUN/STOP on a Keyrah) for about 1.5 seconds.** It does the same
+as CTRL+F12 (back to the start screen), without needing a second key. A short tap of Esc/RUN-STOP is
+still passed to the C64 as usual, so only a deliberate hold leaves. Main sees the key at the USB/Keyrah
+level, so it works even when a demo has taken over the C64's keyboard and RESTORE. Not tested on real
+hardware yet.
+
 ## The pieces
 
 - **The core** (`rtl/octovic/octo_os.sv`): the mailbox, 16 registers at `$D6F0-$D6FF` in OctoVIC's

@@ -1,5 +1,5 @@
 ; TAKE A SCREENSHOT - SPACE asks Octophonic Main for a screenshot (mailbox command $10, SHOT):
-; it is saved as Screenshots/SHOT-n.png on the SD card (or the network share's
+; it is saved as games/C64/Screenshots/SHOT-n.png on the SD card (always; the F1 browser lists it) and also on the network share's
 ; Octophonic/Screenshots). Rainbow blocks to have something to take. Octophonic 64 / Mong00se.
 * = $0801
         !byte $0b,$08,$0a,$00,$9e
@@ -137,6 +137,12 @@ ok      ldx #0
         inx
         cpx #40
         bne -
+        ldx #0
+-       lda m4,x
+        sta $0400+24*40,x
+        inx
+        cpx #40
+        bne -
         lda count
         ora #$30
         sta $0400+23*40+26
@@ -145,6 +151,7 @@ ok      ldx #0
 name    !pet "SHOT-"
 m1      !scr "  space: take a screenshot of this      "
 m2      !scr "  saved: screenshots/shot-1.png         "
+m4      !scr "  sd card: games/c64/screenshots  (f1)  "
 m3      !scr "  no answer from octophonic main        "
 phase   !byte 0
 rowc    !byte 0

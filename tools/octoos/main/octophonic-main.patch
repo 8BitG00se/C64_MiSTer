@@ -52,10 +52,10 @@ index 6991398..299637f 100644
  #endif
 diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
 new file mode 100644
-index 0000000..981245a
+index 0000000..680100e
 --- /dev/null
 +++ b/support/octo/octo.cpp
-@@ -0,0 +1,1425 @@
+@@ -0,0 +1,1445 @@
 +// OCTOPHONIC OS (milestone 1, build 2) - by Mong00se.
 +//
 +// With /media/fat/octophonic/os.ini on the card, the MiSTer starts straight into the Octophonic 64
@@ -135,7 +135,7 @@ index 0000000..981245a
 +#define OS_FLAG     "/tmp/octoos_booted"
 +#define OS_CWD      "/tmp/octoos_cwd"      // the folder, kept while Main restarts with a new core
 +#define OS_TOP      "/media/fat"
-+#define OS_EXTS     "PRGCRTREUD64G64T64D81"   // the core's own menu: F1 PRGCRTREU and S0 D64G64T64D81
++#define OS_EXTS     "PRGCRTREUD64G64T64D81PNG"   // the core's own menu: F1 PRGCRTREU and S0 D64G64T64D81
 +#define CHIP_DIR    "games/C64/My Chips"
 +
 +#define UIO_OCTO_POLL  0x70
@@ -157,6 +157,7 @@ index 0000000..981245a
 +static char cwd[1024];                   // the folder, relative to /media/fat ("" is the top)
 +static unsigned long poll_timer = 0;
 +static unsigned long f12_time = 0;       // F12 held down since (the MiSTer menu after 2 s)
++static unsigned long esc_time = 0;       // Esc (RUN/STOP) held down since (back to the start screen after 1.5 s)
 +static std::string reu_in;                // the .reu last put in the REU (no second 16 MB load of it)
 +static int  last_status = 0;             // the reply of the request being logged
 +static uint8_t cur_seq = 0;              // the 6502's number for the request being answered
@@ -1273,6 +1274,15 @@ index 0000000..981245a
 +
 +// ------------------------------------------------------------------------- F12 held: the menu
 +
++// ------------------------------------------------- Esc (RUN/STOP) held 1.5 s: out of any program
++// ONE key, on every keyboard (a Keyrah's RUN/STOP is Esc too). A tap stays RUN/STOP for the C64.
++void octo_esc(int press)
++{
++	if (!os_active || user_io_osd_is_visible()) { esc_time = 0; return; }
++	if (press == 1) esc_time = GetTimer(1500);       // the first press only: repeats don't count
++	else if (!press) esc_time = 0;
++}
++
 +void octo_f12(int press)
 +{
 +	if (!os_active || user_io_osd_is_visible()) { f12_time = 0; return; }
@@ -1289,7 +1299,7 @@ index 0000000..981245a
 +// then copied to the share once it is written - the C64 never waits for any of it.
 +
 +#define SHOT_TMP   "/media/fat/screenshots"
-+struct ShotJob { std::string tmp, dest; unsigned long deadline; };
++struct ShotJob { std::string tmp, dest, dest2; unsigned long deadline; };
 +static std::vector<ShotJob> shots;
 +static unsigned long shot_timer = 0;
 +static int shot_n = 0;
@@ -1353,7 +1363,10 @@ index 0000000..981245a
 +	if (dest.size() < 4 || strcasecmp(dest.c_str() + dest.size() - 4, ext)) dest += ext;
 +	screenshot_quiet = 1;
 +	request_screenshot(tmp, 0);                               // native size, as the core draws it
-+	shots.push_back({ std::string(SHOT_TMP "/") + tmp, dest, GetTimer(15000) });
++	// always a copy on the SD card too, in the folder the browser shows (games/C64/Screenshots)
++	std::string sd = std::string(OS_TOP "/games/C64/Screenshots/") + rel;
++	if (sd.size() < 4 || strcasecmp(sd.c_str() + sd.size() - 4, ext)) sd += ext;
++	shots.push_back({ std::string(SHOT_TMP "/") + tmp, dest, sd == dest ? std::string() : sd, GetTimer(15000) });
 +	return 1;
 +}
 +
@@ -1366,6 +1379,7 @@ index 0000000..981245a
 +	if (!stat(j.tmp.c_str(), &st) && st.st_size > 0)
 +	{
 +		make_dirs(j.dest);
++		if (!j.dest2.empty()) { make_dirs(j.dest2); copy_file(j.tmp.c_str(), j.dest2.c_str()); }
 +		if (copy_file(j.tmp.c_str(), j.dest.c_str())) { unlink(j.tmp.c_str()); os_log("shot: %s", j.dest.c_str()); }
 +		else os_log("shot: could not copy %s to %s", j.tmp.c_str(), j.dest.c_str());
 +		shots.erase(shots.begin());
@@ -1417,6 +1431,12 @@ index 0000000..981245a
 +void octo_poll()
 +{
 +	if (!os_active) return;
++	if (esc_time && CheckTimer(esc_time))
++	{
++		esc_time = 0;
++		os_log("Esc held: back to the start screen");
++		octo_exit();
++	}
 +	if (f12_time && CheckTimer(f12_time))
 +	{
 +		f12_time = 0;
@@ -1483,10 +1503,10 @@ index 0000000..981245a
 +}
 diff --git a/support/octo/octo.h b/support/octo/octo.h
 new file mode 100644
-index 0000000..c810072
+index 0000000..5ef25f1
 --- /dev/null
 +++ b/support/octo/octo.h
-@@ -0,0 +1,23 @@
+@@ -0,0 +1,24 @@
 +// OCTOPHONIC OS - the parts of Main that make a MiSTer boot straight into Octophonic 64 and
 +// answer the 6502's requests (list a folder, change folder, load, load-and-run).
 +// Everything here is switched off unless /media/fat/octophonic/os.ini exists.
@@ -1502,6 +1522,7 @@ index 0000000..c810072
 +void octo_poll();
 +// F12 pressed (1) or let go (0): held for 2 s, it opens the MiSTer menu
 +void octo_f12(int press);
++void octo_esc(int press);
 +// CTRL+F12: reset the core to the V1.1 start screen (out of a running demo)
 +void octo_exit();
 +// CTRL+F11: a screenshot of whatever is running, into the share's Octophonic/Screenshots/Manual
@@ -1511,7 +1532,7 @@ index 0000000..c810072
 +
 +#endif
 diff --git a/user_io.cpp b/user_io.cpp
-index 0717aa0..1b9563e 100644
+index 0717aa0..9f28a44 100644
 --- a/user_io.cpp
 +++ b/user_io.cpp
 @@ -42,6 +42,7 @@
@@ -1556,7 +1577,7 @@ index 0717aa0..1b9563e 100644
  	user_io_send_buttons(0);
  
  	mac_poll();   // Mac SCSI family: Toolbox slot announce + deferred CD work
-@@ -4438,9 +4443,26 @@ void user_io_osd_key_enable(char on)
+@@ -4438,9 +4443,27 @@ void user_io_osd_key_enable(char on)
  	input_switch(-1);
  }
  
@@ -1580,6 +1601,7 @@ index 0717aa0..1b9563e 100644
 +		return;
 +	}
 +	if (key == KEY_F12) octo_f12(press);           // OCTOPHONIC OS: hold F12 for the menu
++	if (key == KEY_ESC) octo_esc(press);           // OCTOPHONIC OS: hold Esc (RUN/STOP) for the start screen
  
  	if(is_menu()) spi_uio_cmd(UIO_KEYBOARD); //ping the Menu core to wakeup
  
