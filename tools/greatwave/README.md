@@ -52,7 +52,14 @@ SPACE pause, D the debug line (LATE, MAX, TOT, OVR), F7 quit.
 
 ## Checks (headless emulator + OctoVIC's RTL)
 
-The show was run in the headless emulator (frames dumped, compared with the scan), the camera's numbers taken from the
-register log (no jump but the picture swap, the acceleration under 0.2 px a frame squared), SPACE (also during a wipe),
-D and F7 tried, and the register log replayed through OctoVIC's own RTL with a busy DDR3 (octokit `octo_rtl.py`, memory
-build): LATE 0 in every window tried (see the report that came with the build).
+* The show was run in the headless emulator (frames of the whole 51 s loop drawn from the register log with the VIC's caption text
+  composited, compared with the scan): wipe in, title, glide, pan, Fuji, 2x zoom, zoom out, credit, wipe out, black, loop.
+  Found and fixed on the way: the wipe's last list left the backdrop at the last bar colour, so the margins around the whole
+  print were dark navy instead of black (the lists now end with a black write on the last line).
+* Keys (emulator, the real Octophonic OS drop of the .prg and .reu): D shows the debug line, SPACE freezes the picture (also in
+  the glide) and a second SPACE goes on, F7 returns to BASIC.
+* The register log replayed through OctoVIC's own RTL (octokit `octo_rtl.py`, memory build) with a busy DDR3 (80 % busy,
+  40-120 clocks): 26 windows of 100 frames covering the wipe in, glide, the whole pan, the Fuji pause, zoom in and out and the
+  wipe out: 2,600 frames, LATE 0, REPEAT 0, BLANK 0, LEAD 3 (the best) in every frame, the slowest line 1,231 of 2,016 clocks. The
+  picture was identical line for line to the one from an idle DDR3, but for line 18 of the first frame of some windows (the
+  replay's own start-up).

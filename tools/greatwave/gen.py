@@ -106,8 +106,8 @@ def cop_list(ytop, f, out_mode):
         L = ytop + k
         if 0 <= L < 300:
             for c, v in zip((0x1B, 0x1C, 0x1D), bar_colour(k, f, BL)): Wr(L, c, v)
-    if 0 <= yb < 300:
-        for c in (0x1B, 0x1C, 0x1D): Wr(yb, c, 0)
+    for c in (0x1B, 0x1C, 0x1D): Wr(min(yb, 299), c, 0)      # black again below the band (and on the last line, so the backdrop
+                                                            # is black when the lists stop: it stays as the last write left it)
     e.sort(key=lambda t: t[0])                              # (stable: the writes of a line stay in order)
     b = bytearray()
     for line, reg, v in e: b += bytes([line & 255, line >> 8, reg, v])

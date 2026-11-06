@@ -38,7 +38,7 @@ done
 rm -f "$OUT/OctoPaint Pictures build $PICS.d64"
 c1541 -format "octopaint pics,sn" d64 "$OUT/OctoPaint Pictures build $PICS.d64" \
   -write "$W/starry night.oct" "starry night.oct,s" -write "$W/great wave.oct" "great wave.oct,s" >/dev/null 2>&1
-c1541 "$OUT/OctoPaint Pictures build $PICS.d64" -list | head -6
+c1541 "$OUT/OctoPaint Pictures build $PICS.d64" -list 2>/dev/null | sed -n 1,6p
 
 cp "$HERE/about.txt" "$OUT/About.txt"
 rm -f "$OUT/Great Wave build $N.zip"
