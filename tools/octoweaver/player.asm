@@ -41,6 +41,12 @@ pl_init sta T0                  ; the start bar
         sta VARS+512,x
         inx
         bne -
+        ldx #7
+        lda #1
+-       sta fdt,x
+        dex
+        bpl -
+        sta fany
         jsr pl_quiet            ; wakes every SID (a volume write and a control write) and silences it
         lda T0
         cmp SONG+H_LEN
@@ -87,48 +93,82 @@ setzs   lda sidlo,x
         rts
 
 ; ------------------------------------------------------------------------------------------------ once a frame
-pl_play jsr fx_all
+!macro MARK c {
+!ifdef PROFILE {
+        lda #c
+        sta $d020
+}
+}
+pl_play +MARK 2
+        jsr fx_all
+        +MARK 5
         jsr filters
+        +MARK 1
         lda playing
         beq @r
         inc tick
-        lda tick                ; phase 1 (two frames before the step): work out the notes of tracks 0-3
+        lda tick                ; four chunks of work in the four frames before the strike: the notes of two tracks each (frame N-4 .. N-1);
+        clc                     ; the last also does the hard restart of the voices to be struck.  (At speed < 4 they bunch up.)
+        adc #4
+        cmp SONG+H_SPEED
+        bcc @r
+        lda #1
+        ldx #0
+        jsr chunk
+        lda tick
+        clc
+        adc #3
+        cmp SONG+H_SPEED
+        bcc @r
+        lda #2
+        ldx #2
+        jsr chunk
+        lda tick
         clc
         adc #2
         cmp SONG+H_SPEED
         bcc @r
-        lda phase
-        and #1
-        bne +
-        ldx #0
-        ldy #4
-        jsr compute_range
-        lda phase
-        ora #1
-        sta phase
-+       lda tick                ; phase 2 (the frame before): tracks 4-7, and the hard restart of the voices to be struck
+        lda #4
+        ldx #4
+        jsr chunk
+        lda tick
         clc
         adc #1
         cmp SONG+H_SPEED
         bcc @r
-        lda phase
-        and #2
-        bne +
-        ldx #4
-        ldy #8
-        jsr compute_range
-        jsr hr_all
-        lda phase
-        ora #2
-        sta phase
-+       lda tick                ; phase 3: strike
+        lda #8
+        ldx #6
+        jsr chunk
+        lda tick                ; the strike
         cmp SONG+H_SPEED
         bcc @r
+        +MARK 4
         jsr commit_all
+        +MARK 1
         lda #0
         sta tick
         sta phase
+        +MARK 8
         jsr advance
+        +MARK 1
+@r      rts
+
+; chunk A (the phase bit) = the notes of tracks X, X+1, once
+chunk   sta chbit
+        and phase
+        bne @r
+        txa
+        clc
+        adc #2
+        tay
+        jsr compute_range
+        lda chbit
+        cmp #8
+        bne +
+        jsr hr_all
++       lda phase
+        ora chbit
+        sta phase
 @r      rts
 
 ; the song position moves on: what was "next" is now playing; work out the next one
@@ -181,6 +221,13 @@ refresh ldx #7
 ; ------------------------------------------------------------------------------------------------ phase 1: the next notes
 ; the next notes of tracks X .. Y-1
 compute_range
+!ifdef PROFILE {
+        lda #6
+        cpx #4
+        bcc +
+        lda #7
++       sta $d020
+}
         sty cend
 @t      lda #0
         sta pend,x
@@ -372,6 +419,9 @@ parse   lda sndlo,y
         beq +
         lda #7
 +       sta tr_route,x
+        lda #1                  ; the routing changed: this SID's filter registers are written at once
+        sta fdt,x
+        sta fany
         ldy #S_WP               ; a wave program (any of its four bytes)
         lda (ZQ),y
         iny
@@ -795,6 +845,12 @@ pl_inval
 -       sta tr_ck,x
         dex
         bpl -
+        ldx #7
+        lda #1
+-       sta fdt,x
+        dex
+        bpl -
+        sta fany
         rts
 
 ; the macros that write one track's buffer to its SID
@@ -1173,24 +1229,32 @@ fx_pwm  ldx CT
         sta (ZS),y
 @r      rts
 
-; ------------------------------------------------------------------------------------------------ every frame: the dials
-!macro FILT N, SIDA {
-        ldx #N
+; ------------------------------------------------------------------------------------------------ the dials
+; Each SID's filter registers ($16 cutoff, $17 resonance + routing, $18 mode + volume) are written once every 4 frames (SID n in
+; frame group n & 3), at once after a start, a stop, a sound change that changes the routing (fdt), or the editor's pl_inval.
+; X = track: write its three registers (X kept)
+filt_one
+        jsr setzs
         jsr lfo_cut             ; A = the cutoff: the dial, plus a slow triangle sweep if the track has an LFO
-        sta SIDA+$16
-        lda SONG+H_DRES+N
-        ora tr_route+N
-        sta SIDA+$17
-        lda SONG+H_DMV+N
-        sta SIDA+$18
-}
+        ldy #$16
+        sta (ZS),y
+        lda SONG+H_DRES,x
+        ora tr_route,x
+        iny
+        sta (ZS),y
+        lda SONG+H_DMV,x
+        iny
+        sta (ZS),y
+        rts
 ; X = track -> A = the cutoff now.  H_LFO: rate in the low nibble (phase step a frame), depth in the high nibble:
-; cutoff = dial + triangle (0-127) * depth / 16, at most 255.  X is kept.
+; cutoff = dial + triangle (0-127) * depth / 16, at most 255.  X is kept.  (Called every 4 frames: the phase moves 4 x the rate.)
 lfo_cut lda SONG+H_LFO,x
         bne @on
         lda SONG+H_DCUT,x
         rts
 @on     and #15
+        asl
+        asl
         clc
         adc lfop,x
         sta lfop,x              ; the phase 0-255
@@ -1219,11 +1283,28 @@ lfo_cut lda SONG+H_LFO,x
         lda #255
 @r      rts
 
-filters
-!for N, 0, 7 {
-        +FILT N, $D400 + (N & 1)*$20 + (N & 4)*$20 + (N & 2)*$80
-}
-        rts
+filters inc fcnt
+        lda fcnt
+        and #3
+        tax
+        jsr filt_one            ; SID n & 3 ...
+        txa
+        ora #4
+        tax
+        jsr filt_one            ; ... and the one 4 above it
+        lda fany
+        beq @r
+        lda #0
+        sta fany
+        ldx #7
+@l      lda fdt,x
+        beq @n
+        lda #0
+        sta fdt,x
+        jsr filt_one
+@n      dex
+        bpl @l
+@r      rts
 
 ; ------------------------------------------------------------------------------------------------ tables
 !source "ftab.inc"
@@ -1308,6 +1389,7 @@ ev      !fill 8, 0              ; events for the eq, per track: 1 struck, 2 gate
 playing !byte 0
 tick    !byte 0
 phase   !byte 0
+chbit   !byte 0
 pos     !byte 0                 ; the bar and step now sounding
 step    !byte 0
 npos    !byte 0                 ; the next
@@ -1333,6 +1415,9 @@ cD      !word 0
 cend    !byte 0
 YR      !byte 0
 lfop    !fill 8, 0              ; the filter LFO phases
+fdt     !fill 8, 0              ; 1: write this SID's filter registers now
+fcnt    !byte 0
+fany    !byte 0
 VARS_END
 tmute   !fill 8, 0              ; nonzero: the track does not strike (the editor's mute / solo)
 PLAYER_END = *
