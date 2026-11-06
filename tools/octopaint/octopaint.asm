@@ -302,6 +302,9 @@ init    lda #$7f                ; no CIA interrupts (the keys are read by the ma
         sta OKEY
         jsr tb_draw
         jsr ui_all
+        ldx #<m_title
+        ldy #>m_title
+        jsr msg
         ; the raster interrupt: one per frame, at line 252 (below the picture)
         lda #<irq
         sta $0314
@@ -2048,9 +2051,6 @@ c_quit  ldx #<m_quit
 .n      rts
 
 ; ---- not yet: (replaced step by step)
-!zone c_help
-c_help
-        rts
 
 ; ================================================================================================ data
 !zone rowlo
@@ -4904,6 +4904,89 @@ m_noimp !scr "not imported (no disk used)", $ff
 !zone m_imported
 m_imported !scr "imported ", $ff
 
+; ================================================================================================ H: the help page
+; VIC text, full screen: OctoVIC is switched off (CTRL = 0) while it shows, any key brings the picture back.
+
+!zone c_help
+c_help  lda OCTRL
+        sta hsave
+        lda #0
+        sta OCTRL
+        jsr clrscreen
+        lda #<helptab
+        sta ptr
+        lda #>helptab
+        sta ptr+1
+.l      ldy #0
+        lda (ptr),y
+        cmp #$ff
+        beq .done
+        pha
+        iny
+        lda (ptr),y
+        tax
+        iny
+        lda (ptr),y
+        sta tcol
+        pla
+        tay
+        jsr txtpos
+        clc                     ; the text follows the three bytes
+        lda ptr
+        adc #3
+        sta str
+        lda ptr+1
+        adc #0
+        sta str+1
+        jsr puts
+        ldy #3                  ; on to the next line: past the $ff
+.s      lda (ptr),y
+        cmp #$ff
+        beq .e
+        iny
+        bne .s
+.e      iny
+        tya
+        clc
+        adc ptr
+        sta ptr
+        bcc .l
+        inc ptr+1
+        jmp .l
+.done   jsr kclear
+        jsr waitkey
+        lda hsave
+        sta OCTRL
+        jsr clrscreen
+        jsr ui_all
+        jmp kclear
+
+!zone helptab
+helptab !byte 0,11,7 : !scr "octopaint build 1" : !byte $ff
+        !byte 1,1,15 : !scr "256-colour paint for the octophonic 64" : !byte $ff
+        !byte 3,0,7 : !scr "pointer" : !byte $ff
+        !byte 4,0,1 : !scr "mouse in port 1 (osd: pot 1/2 = mouse)" : !byte $ff
+        !byte 5,0,1 : !scr "joystick 1/2 or cursor keys (shift = 8)" : !byte $ff
+        !byte 6,0,1 : !scr "return = draw   space = rubber" : !byte $ff
+        !byte 8,0,7 : !scr "tools" : !byte $ff
+        !byte 9,0,1 : !scr "p pencil  b brush  1-4 = size 1 2 4 8" : !byte $ff
+        !byte 10,0,1 : !scr "l line  r rect  c circle  f flood fill" : !byte $ff
+        !byte 11,0,1 : !scr "shift+r / shift+c = filled shapes" : !byte $ff
+        !byte 12,0,1 : !scr "k pick the colour under the pointer" : !byte $ff
+        !byte 13,0,1 : !scr "+ - colour up/down   < > palette window" : !byte $ff
+        !byte 14,0,1 : !scr "e edit colour: q/a w/s e/d = r g b" : !byte $ff
+        !byte 15,0,1 : !scr "(shift = 1) return keeps, stop undoes" : !byte $ff
+        !byte 16,0,1 : !scr "u undo  z zoom 1x 2x 4x  tab bar on/off" : !byte $ff
+        !byte 18,0,7 : !scr "files (drive 8)" : !byte $ff
+        !byte 19,0,1 : !scr "n new  s save  o open  i import koala" : !byte $ff
+        !byte 20,0,1 : !scr "m mouse on/off   d debug   f7 quit" : !byte $ff
+        !byte 21,0,1 : !scr "every disk action asks disk in drive 8?" : !byte $ff
+        !byte 23,7,7 : !scr "any key: back to the picture" : !byte $ff
+        !byte $ff
+
+!zone m_title
+m_title !scr "octopaint build 1 - h for help", $ff
+
 ; ================================================================================================ variables (zero at start)
 !zone qe
 qe      !fill 2
@@ -5066,4 +5149,5 @@ kcy     !fill 1
 kcx     !fill 1
 kbyte   !fill 1
 ctab    !fill 4
+hsave   !fill 1
 progend
