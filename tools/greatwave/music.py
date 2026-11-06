@@ -117,7 +117,7 @@ def build():
     S.route[:, 2] = 3; S.mode[:, 2] = LP; S.res[:, 2] = 3; S.cut[:, 2] = 520 + 200 * np.sin(t / 60.0)
     # ----- SID 4: koto
     def pluck(f, n, ln=9, v=0):
-        S.note(3, v, f, f + ln, lambda k: nhz(n) * 2 ** (0.45 / 12 * max(0, 1 - k / 4.0)), PUL, 0x07, 0x05,
+        S.note(3, v, f, f + ln, nhz(n), PUL, 0x07, 0x05,                      # build 3: no pitch bend on the pluck
                pw=lambda k: 900 + 500 * min(1, k / 12.0), tail=14)
     KSET = {'d': [62, 65, 69, 74], 'g': [67, 69, 74, 79], 'c': [67, 72, 74, 79], 'a': [65, 69, 72, 77]}
     kn = lambda n: n + 12 if n < 72 else n
@@ -133,16 +133,15 @@ def build():
     # ----- SID 5 / 6: leads
     def lead(c, f0, ln, n, prev, vib=True, v=0, breath=True, ad=0x35, sr=0xA6, wave=PUL, pwb=1700, gl=2):
         f1 = f0 + max(5, int(ln * BEAT) - 3)
-        start = prev if (prev is not None and abs(n - prev) <= 7) else n - .6
+        start = n                                                       # build 3: no slides into notes (they read as out of tune)
         def hz(k):
             sl = (n - start) * (1 - min(1, k / 3.0)) if start != n else 0
-            vb = (1 + 0.0050 * math.sin(2 * math.pi * k / 9.0) * min(1, max(0, (k - 12) / 14.0))) if vib else 1
+            vb = (1 + 0.0025 * math.sin(2 * math.pi * k / 9.0) * min(1, max(0, (k - 12) / 14.0))) if vib else 1
             return nhz(n - sl) * vb
         S.note(c, v, f0, f1, hz, wave, ad, sr, pw=lambda k: pwb + 700 * math.sin(k / 7.0 + c))
         if breath and ln >= .5:
             S.note(c, 1, f0, f0 + 4, 3600, NOI, 0x04, 0x00, tail=6)
-        if c == 4:
-            S.note(c, 2, f0 + 1, f1, lambda k: hz(k) * 1.0035, TRI, 0x35, 0x66)
+        # build 3: no detuned double on the lead (it sounded sour)
     S.route[:, 4] = 2; S.mode[:, 4] = BP; S.res[:, 4] = 5; S.cut[:, 4] = 900
     S.route[:, 5] = 0
     def play_mel(bar0, mel, shift, c, harm=None, delay=0):
@@ -162,7 +161,7 @@ def build():
     CH = {'D': [50, 57, 65], 'G': [55, 62, 69], 'C': [48, 55, 62], 'Dh': [50, 57, 62]}
     def pad(b0, b1, ch):
         for v, n in enumerate(CH[ch]):
-            S.note(6, v, b0 * BAR + 2, b1 * BAR - 4, lambda k, n=n, v=v: nhz(n) * (1 + 0.0035 * (v - 1)), SAW, 0x98, 0xE8, tail=40)
+            S.note(6, v, b0 * BAR + 2, b1 * BAR - 4, nhz(n), SAW, 0x98, 0xE8, tail=40)
     # ----- SID 8: the sea
     S.route[:, 7] = 3; S.mode[:, 7] = LP; S.res[:, 7] = 0
     S.note(7, 0, 0, N, 3300, NOI, 0x00, 0xF0)
@@ -194,7 +193,9 @@ def build():
     # -- A, B, A', B' : bars 4-7, 8-11, 13-16, 17-20
     rows = [(4, 'A', 0), (8, 'B', 0), (13, 'A', 1), (17, 'B', 1)]
     chordsA = ['D', 'D', 'G', 'D']; chordsB = ['D', 'G', 'D', 'D']
-    kA = ['d', 'g', 'd', 'a']; kB = ['d', 'g', 'd', 'a']
+    # build 3: every SID on the same chord in each bar (the koto played G and F chords over the pad's D before)
+    chordsA = ['D', 'D', 'G', 'D']; chordsB = ['D', 'G', 'D', 'D']
+    kA = ['d', 'd', 'g', 'd']; kB = ['d', 'g', 'd', 'd']
     for b0, part, second in rows:
         mel = A_MEL if part == 'A' else B_MEL
         shift = 12 if (second and part == 'A') else 0
@@ -207,7 +208,8 @@ def build():
             bb = b0 + b
             # rowing bass: D and A on the beat (A on beats 2 and 4 of the call, D on 1 and 3)
             for i in range(4):
-                bass(ef(bb, i), 38 if i % 2 == 0 else 45, 19)
+                g = ch[b] == 'G'
+                bass(ef(bb, i), (43 if g else 38) if i % 2 == 0 else (50 if g else 45), 19)
             if b % 2 == 0 and not second:
                 pass
             # taiko / small drums
@@ -219,7 +221,7 @@ def build():
             # koto
             dens = 'h' if (part == 'A' and not second) else ('q' if part == 'A' else 'e')
             koto_bar(bb, (kA if part == 'A' else kB)[b], dens)
-        pad(b0, b0 + 2, 'D' if part == 'A' else 'D'); pad(b0 + 2, b0 + 4, 'G' if part == 'A' else 'D')
+        for b in range(4): pad(b0 + b, b0 + b + 1, ch[b])
     # -- chants: bar 12, and bars 22-23 (the credit), a shout in both channels
     def chant(bar, big=False):
         for b in CHANT:

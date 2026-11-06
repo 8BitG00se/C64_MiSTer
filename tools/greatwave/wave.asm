@@ -13,7 +13,7 @@
 ; The VIC text, in front (KEY = black is see-through), carries the captions, faded with the VIC palette.
 ; SPACE pauses, D shows the debug line (LATE and friends), F7 quits to BASIC.
 !cpu 6502
-BUILD   = 2
+BUILD   = 3
 !src "data.inc"
 
 OV      = $D600
