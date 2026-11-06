@@ -12,7 +12,7 @@
 ; SPACE pauses (the music goes quiet), D shows the debug line (LATE and friends), F7 silences the SIDs and quits to BASIC.
 ; The music (build 2): Satie's Gymnopedie No. 1 for 8 SIDs, played from the REU every frame (see music.py, music_play).
 !cpu 6502
-BUILD   = 3
+BUILD   = 4
 !src "data.inc"
 
 OV      = $D600

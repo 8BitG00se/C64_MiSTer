@@ -145,10 +145,12 @@ def build():
     c = 3
     S.route[:, c] = 0x07; S.mode[:, c] = LP; S.res[:, c] = 4
     swell = np.interp(t, [0, 400, 1300, 1500, 1700, 1935, 2185, 2400, 2519], [0, 0, .25, .7, 1.0, 1.0, .35, 0, 0])
-    S.cut[:, c] = 760 + 260 * np.sin(2 * np.pi * t / 252.0 - 1.2) + 450 * swell       # the filter breathes once every two bars
+    # build 4 (Neal: a slight 'drilling' on the right): the filter was nearly open, so the saws' upper harmonics beat against
+    # each other ~12 Hz (D4's 5th vs F#4's 4th harmonic). The filter now sits low (about 1-2 kHz) and still breathes.
+    S.cut[:, c] = 200 + 70 * np.sin(2 * np.pi * t / 252.0 - 1.2) + 160 * swell
     # D4 and F#4 are in both chords, so two voices hold them all through; the third voice breathes the bar's colour (B3 / A3)
     S.note(c, 0, 96, 2430, lambda k: nhz(62), SAW, 0xB0, 0xA0 | 0xB, tail=90)
-    S.note(c, 1, 100, 2430, lambda k: nhz(66), SAW, 0xB0, 0xA0 | 0xB, tail=90)
+    S.note(c, 1, 100, 2430, lambda k: nhz(66), TRI, 0xB0, 0xA0 | 0xB, tail=90)           # build 4: triangle (fewer harmonics to beat)
     for bar in range(1, 20):
         f0 = bf(bar) + 2
         if bar < 2: continue
