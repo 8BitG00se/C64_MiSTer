@@ -194,7 +194,8 @@ init    lda #$7f                ; no CIA interrupts (the keys are read by the ma
         lda #0
 .z      sta OCTRL,x
         dex
-        bpl .z
+        cpx #$ff
+        bne .z
         lda #1
         sta DUX+2
         sta DVY+2
@@ -356,7 +357,8 @@ quit    sei
         lda #0
 .z      sta OCTRL,x
         dex
-        bpl .z
+        cpx #$ff
+        bne .z
         sta $d030
         lda #0
         sta $d03f               ; OctoVIC away
@@ -2030,14 +2032,8 @@ c_quit  ldx #<m_quit
 .n      rts
 
 ; ---- not yet: (replaced step by step)
-!zone tools
-tools
-!zone c_pick
-c_pick
 !zone c_edit
 c_edit
-!zone c_undo
-c_undo
 !zone c_zoom
 c_zoom
 !zone c_new
@@ -2142,6 +2138,879 @@ spr_cross:
         !byte 0,0,0,0,0,0,0,C_BLACK,C_WHITE,C_BLACK,0,0,0,0,0,0
         !byte 0,0,0,0,0,0,0,C_BLACK,C_WHITE,C_BLACK,0,0,0,0,0,0
 
+
+; ================================================================================================ the tools (main side)
+; A stroke begins when a button goes down on the canvas (the picture is copied to the undo copy first), carries on while it is
+; held, and ends when it is let go. The left button draws in the current colour, the right button in colour 0 (a rubber).
+!zone tools
+tools   lda stroke
+        bne .stroke
+        lda inbar               ; not drawing: a click on the toolbar?
+        beq .canvas
+        lda btn
+        and #1
+        beq .end
+        lda btnp
+        and #1
+        bne .end
+        jsr bar_click
+        jmp .end
+.canvas lda btn
+        and #3
+        beq .end
+        jsr tool_press
+        jmp .end
+.stroke lda btn
+        and #3
+        bne .held
+        jsr tool_release
+        lda #0
+        sta stroke
+        sta mkon
+        jmp .end
+.held   jsr tool_move
+.end    lda btn
+        sta btnp
+        rts
+
+!zone tool_press
+tool_press
+        jsr save_undo
+        lda #1
+        sta stroke
+        lda #0                  ; the right button alone: colour 0
+        ldx btn
+        txa
+        and #1
+        beq .c
+        lda col
+.c      sta scolr
+        lda cx
+        sta sx0
+        sta lastx
+        lda cx+1
+        sta sx0+1
+        sta lastx+1
+        lda cy
+        sta sy0
+        sta lasty
+        lda cy+1
+        sta sy0+1
+        sta lasty+1
+        lda tool
+        cmp #T_PENCIL
+        beq .pen
+        cmp #T_BRUSH
+        beq .brush
+        cmp #T_FILL
+        beq .fill
+        lda cx                  ; line, box, circle: mark where it began
+        sta mkx
+        lda cx+1
+        sta mkx+1
+        lda cy
+        sta mky
+        lda cy+1
+        sta mky+1
+        lda #1
+        sta mkon
+        rts
+.pen    lda cx
+        sta p_x
+        lda cx+1
+        sta p_x+1
+        lda cy
+        sta p_y
+        lda cy+1
+        sta p_y+1
+        lda scolr
+        sta p_col
+        jmp plot
+.brush  jmp stamp_last
+.fill   lda #0                  ; one fill per click
+        sta mkon
+        jmp do_fill
+
+!zone tool_move
+tool_move
+        lda tool
+        cmp #T_PENCIL
+        beq .pen
+        cmp #T_BRUSH
+        beq .brush
+        rts
+.moved  lda cx                  ; carry set: the pointer is on another canvas pixel than last frame
+        cmp lastx
+        bne .y
+        lda cx+1
+        cmp lastx+1
+        bne .y
+        lda cy
+        cmp lasty
+        bne .y
+        lda cy+1
+        cmp lasty+1
+        bne .y
+        clc
+        rts
+.y      sec
+        rts
+.pen    jsr .moved
+        bcc .r
+        lda lastx
+        sta l_x0
+        lda lastx+1
+        sta l_x0+1
+        lda lasty
+        sta l_y0
+        lda lasty+1
+        sta l_y0+1
+        lda cx
+        sta l_x1
+        lda cx+1
+        sta l_x1+1
+        lda cy
+        sta l_y1
+        lda cy+1
+        sta l_y1+1
+        lda scolr
+        sta p_col
+        jsr drawline
+        jmp .last
+.brush  jsr .moved
+        bcc .r
+        lda bsize
+        cmp #1
+        beq .pen                ; size 1 is the pencil
+        jsr brushline
+.last   lda cx
+        sta lastx
+        lda cx+1
+        sta lastx+1
+        lda cy
+        sta lasty
+        lda cy+1
+        sta lasty+1
+.r      rts
+
+!zone tool_release
+tool_release
+        lda tool
+        cmp #T_LINE
+        beq .line
+        cmp #T_RECT
+        beq .rect
+        cmp #T_CIRCLE
+        beq .circ
+        rts
+.line   lda scolr
+        sta p_col
+        lda sx0
+        sta l_x0
+        lda sx0+1
+        sta l_x0+1
+        lda sy0
+        sta l_y0
+        lda sy0+1
+        sta l_y0+1
+        lda cx
+        sta l_x1
+        lda cx+1
+        sta l_x1+1
+        lda cy
+        sta l_y1
+        lda cy+1
+        sta l_y1+1
+        jmp drawline
+.rect   jmp p_rect
+.circ   jmp p_circle
+
+save_undo
+        ldx #VR_CAN
+        ldy #VR_UNDO
+        jmp hw_copy
+
+!zone c_undo
+c_undo  ldx #VR_UNDO
+        ldy #VR_CAN
+        jmp hw_copy
+
+!zone c_pick
+c_pick  lda inbar
+        bne .r
+        lda cx+1                ; (the pointer is always on the canvas, but be safe)
+        sta p_x+1
+        lda cx
+        sta p_x
+        lda cy
+        sta p_y
+        lda cy+1
+        sta p_y+1
+        jsr readpixel
+        jmp setcol
+.r      rts
+
+; a click on a colour swatch on the toolbar
+!zone bar_click
+bar_click
+        lda sy                  ; rows TBTOP..TBTOP+15, columns 24..151
+        sec
+        sbc #TBTOP
+        cmp #16
+        bcs .r
+        lsr
+        lsr
+        lsr
+        sta t4                  ; row 0 or 1
+        lda sx+1
+        bne .r
+        lda sx
+        sec
+        sbc #24
+        bcc .r
+        cmp #128
+        bcs .r
+        lsr
+        lsr
+        lsr
+        sta t5                  ; column 0-15
+        lda t4
+        asl
+        asl
+        asl
+        asl
+        clc
+        adc t5
+        clc
+        adc palwin
+        jmp setcol
+.r      rts
+
+; ================================================================================================ PAINT: brush, box, circle
+; (these take their coordinates and colour in variables and draw through the hooks: plot, fillrect, drawline)
+
+; the brush stamp at (lastx, lasty)
+!zone stamp_last
+stamp_last
+        lda lastx
+        sta bx
+        lda lastx+1
+        sta bx+1
+        lda lasty
+        sta by
+        lda lasty+1
+        sta by+1
+        ; falls on into stamp
+; a bsize x bsize square centred on (bx, by), in colour scolr
+stamp   lda bsize
+        lsr                     ; half the size
+        sta t4
+        sec
+        lda bx
+        sbc t4
+        sta f_x
+        lda bx+1
+        sbc #0
+        sta f_x+1
+        sec
+        lda by
+        sbc t4
+        sta f_y
+        lda by+1
+        sbc #0
+        sta f_y+1
+        lda bsize
+        sta f_w
+        sta f_h
+        lda #0
+        sta f_w+1
+        sta f_h+1
+        lda scolr
+        sta f_c
+        lda #VR_CAN
+        sta f_hb
+        jmp fillrect
+
+!macro scmp .a, .b {            ; signed 16-bit: N set afterwards if a < b
+        sec
+        lda .a
+        sbc .b
+        lda .a+1
+        sbc .b+1
+        bvc .v
+        eor #$80
+.v
+}
+
+; Bresenham from (lastx, lasty) to (cx, cy), a stamp at every step
+!zone brushline
+brushline
+        lda lastx
+        sta bx
+        lda lastx+1
+        sta bx+1
+        lda lasty
+        sta by
+        lda lasty+1
+        sta by+1
+        lda cx
+        sta ex
+        lda cx+1
+        sta ex+1
+        lda cy
+        sta ey
+        lda cy+1
+        sta ey+1
+        sec                     ; dx = |ex - bx|, step x = +-1
+        lda ex
+        sbc bx
+        sta bdx
+        lda ex+1
+        sbc bx+1
+        sta bdx+1
+        bpl .xp
+        lda #$ff
+        sta bsx
+        sec
+        lda #0
+        sbc bdx
+        sta bdx
+        lda #0
+        sbc bdx+1
+        sta bdx+1
+        jmp .dy
+.xp     lda #1
+        sta bsx
+.dy     sec                     ; dy = -|ey - by|, step y = +-1
+        lda ey
+        sbc by
+        sta bdy
+        lda ey+1
+        sbc by+1
+        sta bdy+1
+        bpl .yp
+        lda #$ff
+        sta bsy
+        jmp .e
+.yp     lda #1
+        sta bsy
+        sec
+        lda #0
+        sbc bdy
+        sta bdy
+        lda #0
+        sbc bdy+1
+        sta bdy+1
+.e      clc                     ; err = dx + dy
+        lda bdx
+        adc bdy
+        sta berr
+        lda bdx+1
+        adc bdy+1
+        sta berr+1
+.loop   jsr stamp
+        lda bx
+        cmp ex
+        bne .go
+        lda bx+1
+        cmp ex+1
+        bne .go
+        lda by
+        cmp ey
+        bne .go
+        lda by+1
+        cmp ey+1
+        bne .go
+        rts
+.go     lda berr                ; e2 = 2 err
+        asl
+        sta be2
+        lda berr+1
+        rol
+        sta be2+1
+        +scmp be2, bdy          ; e2 >= dy ?
+        bmi .no1
+        clc                     ; err += dy, x += step
+        lda berr
+        adc bdy
+        sta berr
+        lda berr+1
+        adc bdy+1
+        sta berr+1
+        lda bsx
+        bmi .xm
+        inc bx
+        bne .no1
+        inc bx+1
+        jmp .no1
+.xm     lda bx
+        bne +
+        dec bx+1
++       dec bx
+.no1    +scmp bdx, be2          ; e2 <= dx ?
+        bmi .no2
+        clc                     ; err += dx, y += step
+        lda berr
+        adc bdx
+        sta berr
+        lda berr+1
+        adc bdx+1
+        sta berr+1
+        lda bsy
+        bmi .ym
+        inc by
+        bne .no2
+        inc by+1
+        jmp .no2
+.ym     lda by
+        bne +
+        dec by+1
++       dec by
+.no2    jmp .loop
+
+; ---- a box from the press point (stx, sty) to (cx, cy): outline (4 lines) or filled (one FILL)
+!zone p_rect
+p_rect  lda sx0                 ; x0, x1 = the smaller, the larger
+        sta bx
+        lda sx0+1
+        sta bx+1
+        lda cx
+        sta ex
+        lda cx+1
+        sta ex+1
+        +scmp bx, ex
+        bmi .xo
+        lda bx
+        ldx ex
+        sta ex
+        stx bx
+        lda bx+1
+        ldx ex+1
+        sta ex+1
+        stx bx+1
+.xo     lda sy0
+        sta by
+        lda sy0+1
+        sta by+1
+        lda cy
+        sta ey
+        lda cy+1
+        sta ey+1
+        +scmp by, ey
+        bmi .yo
+        lda by
+        ldx ey
+        sta ey
+        stx by
+        lda by+1
+        ldx ey+1
+        sta ey+1
+        stx by+1
+.yo     lda flags
+        and #$10
+        beq .outl
+        jmp .fill
+.outl   lda scolr
+        sta p_col
+        ldx #0                  ; top: (bx,by)-(ex,by); right: (ex,by)-(ex,ey); bottom: (ex,ey)-(bx,ey); left: (bx,ey)-(bx,by)
+        lda bx
+        sta l_x0
+        lda bx+1
+        sta l_x0+1
+        lda by
+        sta l_y0
+        lda by+1
+        sta l_y0+1
+        lda ex
+        sta l_x1
+        lda ex+1
+        sta l_x1+1
+        lda by
+        sta l_y1
+        lda by+1
+        sta l_y1+1
+        jsr drawline
+        lda ex                  ; right
+        sta l_x0
+        lda ex+1
+        sta l_x0+1
+        lda ey
+        sta l_y1
+        lda ey+1
+        sta l_y1+1
+        jsr drawline
+        lda ey                  ; bottom
+        sta l_y0
+        lda ey+1
+        sta l_y0+1
+        lda bx
+        sta l_x1
+        lda bx+1
+        sta l_x1+1
+        jsr drawline
+        lda by                  ; left
+        sta l_y1
+        lda by+1
+        sta l_y1+1
+        lda bx
+        sta l_x0
+        lda bx+1
+        sta l_x0+1
+        jmp drawline
+.fill   lda bx
+        sta f_x
+        lda bx+1
+        sta f_x+1
+        lda by
+        sta f_y
+        lda by+1
+        sta f_y+1
+        sec
+        lda ex
+        sbc bx
+        sta f_w
+        lda ex+1
+        sbc bx+1
+        sta f_w+1
+        inc f_w
+        bne +
+        inc f_w+1
++       sec
+        lda ey
+        sbc by
+        sta f_h
+        lda ey+1
+        sbc by+1
+        sta f_h+1
+        inc f_h
+        bne +
+        inc f_h+1
++       lda scolr
+        sta f_c
+        lda #VR_CAN
+        sta f_hb
+        jmp fillrect
+
+; ---- a circle: centre = the press point, radius = the distance to (cx, cy), by the midpoint method
+!zone p_circle
+p_circle
+        sec                     ; |dx|, |dy|
+        lda cx
+        sbc sx0
+        sta t0
+        lda cx+1
+        sbc sx0+1
+        sta t1
+        bpl +
+        sec
+        lda #0
+        sbc t0
+        sta t0
+        lda #0
+        sbc t1
+        sta t1
++       sec
+        lda cy
+        sbc sy0
+        sta t2
+        lda cy+1
+        sbc sy0+1
+        sta t3
+        bpl +
+        sec
+        lda #0
+        sbc t2
+        sta t2
+        lda #0
+        sbc t3
+        sta t3
++       lda t0                  ; d2 = dx*dx + dy*dy with the maths unit
+        sta $d650
+        sta $d652
+        lda t1
+        sta $d651
+        sta $d653
+        lda $d654
+        sta d2
+        lda $d655
+        sta d2+1
+        lda $d656
+        sta d2+2
+        lda t2
+        sta $d650
+        sta $d652
+        lda t3
+        sta $d651
+        sta $d653
+        clc
+        lda $d654
+        adc d2
+        sta d2
+        lda $d655
+        adc d2+1
+        sta d2+1
+        lda $d656
+        adc d2+2
+        sta d2+2
+        ; r = floor(sqrt(d2)): bit by bit, from 256 down
+        lda #0
+        sta cr
+        sta cr+1
+        lda #<256
+        sta t0
+        lda #>256
+        sta t1
+.sq     lda cr                  ; t = r | bit
+        ora t0
+        sta t2
+        lda cr+1
+        ora t1
+        sta t3
+        lda t2
+        sta $d650
+        sta $d652
+        lda t3
+        sta $d651
+        sta $d653
+        sec                     ; d2 >= t*t ?
+        lda d2
+        sbc $d654
+        lda d2+1
+        sbc $d655
+        lda d2+2
+        sbc $d656
+        bcc .no                 ; (d2 is 24 bits: t*t < 2^24 as r < 512; the top byte of MULR is 0 then)
+        lda t2
+        sta cr
+        lda t3
+        sta cr+1
+.no     lsr t1
+        ror t0
+        lda t0
+        ora t1
+        bne .sq
+        ; the circle: x = 0, y = r, d = 3 - 2r
+        lda #0
+        sta ccx
+        sta ccx+1
+        lda cr
+        sta ccy
+        lda cr+1
+        sta ccy+1
+        lda cr                  ; d = 3 - 2r
+        asl
+        sta t0
+        lda cr+1
+        rol
+        sta t1
+        sec
+        lda #3
+        sbc t0
+        sta cd
+        lda #0
+        sbc t1
+        sta cd+1
+.cl     +scmp ccy, ccx          ; while x <= y (stop when y < x)
+        bpl .draw
+        rts
+.draw   jsr c_points
+        inc ccx                 ; x++
+        bne +
+        inc ccx+1
++       lda cd+1                ; d > 0 ?
+        bmi .neg
+        ora cd
+        beq .neg
+        lda ccy                 ; y--
+        bne +
+        dec ccy+1
++       dec ccy
+        sec                     ; d += 4 (x - y) + 10
+        lda ccx
+        sbc ccy
+        sta t0
+        lda ccx+1
+        sbc ccy+1
+        sta t1
+        asl t0
+        rol t1
+        asl t0
+        rol t1
+        clc
+        lda cd
+        adc t0
+        sta cd
+        lda cd+1
+        adc t1
+        sta cd+1
+        clc
+        lda cd
+        adc #10
+        sta cd
+        bcs +
+        jmp .cl
++       inc cd+1
+        jmp .cl
+.neg    lda ccx                 ; d += 4 x + 6
+        sta t0
+        lda ccx+1
+        sta t1
+        asl t0
+        rol t1
+        asl t0
+        rol t1
+        clc
+        lda cd
+        adc t0
+        sta cd
+        lda cd+1
+        adc t1
+        sta cd+1
+        clc
+        lda cd
+        adc #6
+        sta cd
+        bcs +
+        jmp .cl
++       inc cd+1
+        jmp .cl
+
+; the eight symmetric points of the circle at (ccx, ccy): outline plots, filled spans
+!zone c_points
+c_points
+        lda ccx
+        sta ax
+        lda ccx+1
+        sta ax+1
+        lda ccy
+        sta ay
+        lda ccy+1
+        sta ay+1
+        jsr c_four
+        lda ccy
+        sta ax
+        lda ccy+1
+        sta ax+1
+        lda ccx
+        sta ay
+        lda ccx+1
+        sta ay+1
+        ; falls on
+
+; (stx + ax, sty + ay) and its mirrors; filled: the two rows stx - ax .. stx + ax at sty +- ay
+c_four  lda flags
+        and #$10
+        bne .fill
+        lda scolr
+        sta p_col
+        ; outline: four plots
+        jsr c_p1                ; (+, +)
+        jsr c_negax
+        jsr c_p1                ; (-, +)
+        jsr c_negay
+        jsr c_p1                ; (-, -)
+        jsr c_negax
+        jsr c_p1                ; (+, -)
+        jsr c_negay             ; (restore)
+        rts
+.fill   lda scolr
+        sta f_c
+        lda #VR_CAN
+        sta f_hb
+        ; row sty + ay
+        sec
+        lda sx0
+        sbc ax
+        sta f_x
+        lda sx0+1
+        sbc ax+1
+        sta f_x+1
+        lda ax
+        asl
+        sta f_w
+        lda ax+1
+        rol
+        sta f_w+1
+        inc f_w
+        bne +
+        inc f_w+1
++       lda #1
+        sta f_h
+        lda #0
+        sta f_h+1
+        clc
+        lda sy0
+        adc ay
+        sta f_y
+        lda sy0+1
+        adc ay+1
+        sta f_y+1
+        jsr fillrect
+        sec                     ; row sty - ay
+        lda sx0
+        sbc ax
+        sta f_x
+        lda sx0+1
+        sbc ax+1
+        sta f_x+1
+        lda ax
+        asl
+        sta f_w
+        lda ax+1
+        rol
+        sta f_w+1
+        inc f_w
+        bne +
+        inc f_w+1
++       lda #1
+        sta f_h
+        lda #0
+        sta f_h+1
+        sec
+        lda sy0
+        sbc ay
+        sta f_y
+        lda sy0+1
+        sbc ay+1
+        sta f_y+1
+        jmp fillrect
+
+; plot (stx + ax, sty + ay)
+c_p1    clc
+        lda sx0
+        adc ax
+        sta p_x
+        lda sx0+1
+        adc ax+1
+        sta p_x+1
+        clc
+        lda sy0
+        adc ay
+        sta p_y
+        lda sy0+1
+        adc ay+1
+        sta p_y+1
+        jmp plot
+c_negax sec
+        lda #0
+        sbc ax
+        sta ax
+        lda #0
+        sbc ax+1
+        sta ax+1
+        rts
+c_negay sec
+        lda #0
+        sbc ay
+        sta ay
+        lda #0
+        sbc ay+1
+        sta ay+1
+        rts
+
+; the flood fill (a later step)
+do_fill rts
+
 ; ================================================================================================ variables (zero at start)
 !zone f_x
 f_x     !fill 2                 ; fillrect: x, y, width, height (in this order)
@@ -2225,5 +3094,27 @@ pdig    !fill 1
 ptmp    !fill 1
 !zone dcomma
 dcomma  !fill 1
-!zone progend
+stroke  !fill 1
+scolr   !fill 1
+sx0     !fill 2
+sy0     !fill 2
+lastx   !fill 2
+lasty   !fill 2
+bx      !fill 2
+by      !fill 2
+ex      !fill 2
+ey      !fill 2
+bdx     !fill 2
+bdy     !fill 2
+berr    !fill 2
+be2     !fill 2
+bsx     !fill 1
+bsy     !fill 1
+d2      !fill 3
+cr      !fill 2
+ccx     !fill 2
+ccy     !fill 2
+cd      !fill 2
+ax      !fill 2
+ay      !fill 2
 progend
