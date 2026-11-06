@@ -22,7 +22,7 @@
 
 !cpu 6502
 
-BUILD   = 1
+BUILD   = 1             ; the build number (1-9): on the help page and at start; build.sh reads it
 
 ; ------------------------------------------------------------------------------------------------ OctoVIC
 VADDR   = $D600
@@ -4962,7 +4962,7 @@ c_help  lda OCTRL
         jmp kclear
 
 !zone helptab
-helptab !byte 0,11,7 : !scr "octopaint build 1" : !byte $ff
+helptab !byte 0,11,7 : !scr "octopaint build " : !byte $30+BUILD : !byte $ff
         !byte 1,1,15 : !scr "256-colour paint for the octophonic 64" : !byte $ff
         !byte 3,0,7 : !scr "pointer" : !byte $ff
         !byte 4,0,1 : !scr "mouse in port 1 (osd: pot 1/2 = mouse)" : !byte $ff
@@ -4985,7 +4985,7 @@ helptab !byte 0,11,7 : !scr "octopaint build 1" : !byte $ff
         !byte $ff
 
 !zone m_title
-m_title !scr "octopaint build 1 - h for help", $ff
+m_title !scr "octopaint build " : !byte $30+BUILD : !scr " - h for help", $ff
 
 ; ================================================================================================ variables (zero at start)
 !zone qe
