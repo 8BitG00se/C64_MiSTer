@@ -1,11 +1,13 @@
 ; SPLIT.ASM - split screens: three
 ; bands, each set up differently by
 ; OctoVIC's copper as the beam gets
-; there. Top: the VIC's text on a
-; dark sky. Middle: a layer scrolling
-; left, in FRONT of the VIC. Bottom:
-; the same layer scrolling right, two
-; times faster, BEHIND the VIC's text.
+; there. Each band says what it shows.
+; Band 1: the VIC's text on a dark sky.
+; Band 2: a layer scrolling left, in
+; FRONT of the text (a fence: you see
+; the text through its gaps). Band 3:
+; the same layer scrolling right, 3
+; times faster, behind the text.
 ; RUN/STOP+RESTORE: back to the editor.
 
 * = $0801
@@ -16,19 +18,26 @@
 
 ; ======== change these ===============
 
-split1  = 110   ; raster line: band 2
-split2  = 200   ; raster line: band 3
+; the splits sit BETWEEN text rows:
+; the first row starts on line 51 and
+; a row is 8 lines, so 51 + 8 * row
+split1  = 115   ; band 2 starts: row 8
+split2  = 187   ; band 3 starts: row 17
 speed1  = 1     ; band 2 speed (left)
 speed2  = 3     ; band 3 speed (right)
 
-; the stripes' colours: red, green, blue
-cols    !byte 255,80,60, 255,200,60
-        !byte 60,140,255, 60,230,200
+; the colours 1-8: red, green, blue
+; 1-2 the fence, 3-8 the soft bars
+cols    !byte 255,170,60, 200,90,30
+        !byte 140,230,235, 100,200,225
+        !byte 70,160,210, 50,120,190
+        !byte 35,85,160, 25,55,125
 
 ; ======== the program ================
 
 list    = $020000       ; copper list
 p       = $fb           ; a pointer
+q       = $fd           ; another
 
 start   sei
         jsr screen
@@ -80,7 +89,7 @@ poke    pha
         sta $d604
         rts
 
-; ---- text on every row, white
+; ---- white text, and a label for each band
 screen  lda #0
         sta $d020
         sta $d021
@@ -90,29 +99,69 @@ screen  lda #0
         sta $d900,x
         sta $da00,x
         sta $dae8,x
+        lda #32         ; a blank screen
+        sta $0400,x
+        sta $0500,x
+        sta $0600,x
+        sta $06e8,x
         inx
         bne -
-        lda #<$0400
-        sta p
-        lda #>$0400
-        sta p+1
-        ldx #25
+        lda #<labels    ; the labels: an
+        sta q           ; address, then
+        lda #>labels    ; the text up to
+        sta q+1         ; a 0
 --      ldy #0
--       lda msg,y
+        lda (q),y
+        sta p
+        iny
+        lda (q),y
+        beq ++          ; address 0: done
+        sta p+1
+        lda q           ; past the address
+        clc
+        adc #2
+        sta q
+        bcc +
+        inc q+1
++       ldy #0
+-       lda (q),y       ; the text
+        beq +
         sta (p),y
         iny
-        cpy #40
         bne -
-        lda p
++       iny             ; past the 0
+        tya
         clc
-        adc #40
-        sta p
-        bcc +
-        inc p+1
-+       dex
+        adc q
+        sta q
+        bcc --
+        inc q+1
         bne --
-        rts
-msg     !scr "  split screens with octovic's copper   "
+++      rts
+; row r starts at $0400 + 40 * r
+labels  !word $0400+40*1+2
+        !scr "band 1: the vic's own text",0
+        !word $0400+40*2+2
+        !scr "the copper has the layer off here",0
+        !word $0400+40*3+2
+        !scr "just a dark blue sky behind",0
+        !word $0400+40*5+2
+        !scr "change split1 and split2 to",0
+        !word $0400+40*6+2
+        !scr "move the bands (51 + 8 * row)",0
+        !word $0400+40*9+2
+        !scr "band 2: a layer in front of text",0
+        !word $0400+40*10+2
+        !scr "a fence scrolling left, 1 pixel",0
+        !word $0400+40*11+2
+        !scr "a frame. the text is behind it",0
+        !word $0400+40*18+2
+        !scr "band 3: the same layer behind",0
+        !word $0400+40*19+2
+        !scr "the text, as soft bars scrolling",0
+        !word $0400+40*20+2
+        !scr "right, three times faster",0
+        !word 0
 
 ; ---- OctoVIC on, everything off
 octoon  lda #$4f
@@ -126,7 +175,7 @@ octoon  lda #$4f
         bpl -
         lda #9
         sta $d605
-        lda #0          ; palette 1-4
+        lda #0          ; palette 1-8
         sta $d619
         lda #1
         sta $d61a
@@ -140,7 +189,7 @@ octoon  lda #$4f
         lda cols,x
         sta $d61d
         inx
-        cpx #12
+        cpx #24
         bne -
         lda #2          ; the copper sets
         sta $d619       ; the backdrop
@@ -148,49 +197,93 @@ octoon  lda #$4f
         sta $d603
         rts
 
-; ---- two 16-colour tiles: stripes
-; colour ((x+y)/4 and 1) + 1 (tile 1),
-; the other way + 3 (tile 2), at
-; VRAM $040020 (tile 0 is blank)
+; ---- five 16-colour tiles at VRAM
+; $040020 (tile 0 is blank): tile 1
+; the fence, tiles 2-5 one soft bar
+; (colours 3 bright to 8 dark)
 tiles   lda #$20
         sta $d600
         lda #0
         sta $d601
         lda #4
         sta $d602
-        ldx #0          ; 64 bytes:
--       lda stripes,x   ; both tiles
+        ldx #0          ; 160 bytes:
+-       lda stripes,x   ; five tiles
         sta $d604
         inx
-        cpx #64
+        cpx #160
         bne -
         rts
-stripes !byte $11,$22,$22,$11, $12,$22,$21,$11
-        !byte $22,$22,$11,$11, $22,$21,$11,$12
-        !byte $22,$11,$11,$22, $21,$11,$12,$22
-        !byte $11,$11,$22,$22, $11,$12,$22,$21
-        !byte $33,$44,$44,$33, $34,$44,$43,$33
-        !byte $44,$44,$33,$33, $44,$43,$33,$34
-        !byte $44,$33,$33,$44, $43,$33,$34,$44
-        !byte $33,$33,$44,$44, $33,$34,$44,$43
+; tile 1: the fence - two bars in eight
+; pixels, the rest colour 0 (see-through)
+stripes !byte $12,$00,$00,$00
+        !byte $12,$00,$00,$00
+        !byte $12,$00,$00,$00
+        !byte $12,$00,$00,$00
+        !byte $12,$00,$00,$00
+        !byte $12,$00,$00,$00
+        !byte $12,$00,$00,$00
+        !byte $12,$00,$00,$00
+        ; tile 2: soft bar, columns 0-7 of 32
+        !byte $87,$77,$66,$65
+        !byte $87,$77,$66,$65
+        !byte $87,$77,$66,$65
+        !byte $87,$77,$66,$65
+        !byte $87,$77,$66,$65
+        !byte $87,$77,$66,$65
+        !byte $87,$77,$66,$65
+        !byte $87,$77,$66,$65
+        ; tile 3: soft bar, columns 8-15 of 32
+        !byte $55,$44,$43,$33
+        !byte $55,$44,$43,$33
+        !byte $55,$44,$43,$33
+        !byte $55,$44,$43,$33
+        !byte $55,$44,$43,$33
+        !byte $55,$44,$43,$33
+        !byte $55,$44,$43,$33
+        !byte $55,$44,$43,$33
+        ; tile 4: soft bar, columns 16-23 of 32
+        !byte $33,$34,$44,$55
+        !byte $33,$34,$44,$55
+        !byte $33,$34,$44,$55
+        !byte $33,$34,$44,$55
+        !byte $33,$34,$44,$55
+        !byte $33,$34,$44,$55
+        !byte $33,$34,$44,$55
+        !byte $33,$34,$44,$55
+        ; tile 5: soft bar, columns 24-31 of 32
+        !byte $56,$66,$77,$78
+        !byte $56,$66,$77,$78
+        !byte $56,$66,$77,$78
+        !byte $56,$66,$77,$78
+        !byte $56,$66,$77,$78
+        !byte $56,$66,$77,$78
+        !byte $56,$66,$77,$78
+        !byte $56,$66,$77,$78
 
-; ---- the map: rows 0-15 tile 1,
-; rows 16-31 tile 2 (64 wide)
+; ---- the map: rows 0-15 the fence
+; (tile 1 every other tile), rows 16-31 the soft bar
+; (tiles 2-5 side by side), 64 wide
 map     lda #0
         sta $d600
         sta $d601
         lda #3          ; $030000
         sta $d602
         ldy #0          ; row
---      ldx #64
--       lda #1          ; tile 1 or 2
+--      ldx #0          ; column
+-       txa
         cpy #16
-        bcc +
-        lda #2
-+       sta $d604
+        bcs +
+        and #1          ; the fence: tile 1
+        jmp ++          ; and a blank tile
++       and #3          ; tile 2 + column
+        clc             ; mod 4
+        adc #2
+++      sta $d604
         lda #0
         sta $d604
-        dex
+        inx
+        cpx #64
         bne -
         iny
         cpy #32
