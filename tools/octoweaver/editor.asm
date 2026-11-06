@@ -182,6 +182,7 @@ lanestab
         !byte '3' : !word d_resm
         !byte '4' : !word d_resp
         !byte '5' : !word d_mode
+        !byte '6' : !word d_lfo
         !byte '7' : !word d_volm
         !byte '8' : !word d_volp
         !byte 'P' : !word d_paddle
@@ -686,8 +687,6 @@ draw_dials
         ldx #0
         ldy #20
         jsr txtpos
-        lda #1
-        sta tcol
         ldx ctrk
         lda vcol,x
         sta tcol
@@ -700,12 +699,12 @@ draw_dials
         lda #1
         sta tcol
         jsr pstr
-        !scr "  cut ", 0
+        !scr " cut ", 0
         ldx ctrk
         lda SONG+H_DCUT,x
         jsr pdec3
         jsr pstr
-        !scr "  res ", 0
+        !scr " res ", 0
         ldx ctrk
         lda SONG+H_DRES,x
         lsr
@@ -714,7 +713,7 @@ draw_dials
         lsr
         jsr pdec2
         jsr pstr
-        !scr "  ", 0
+        !scr " ", 0
         ldx ctrk
         lda SONG+H_DMV,x
         lsr
@@ -723,11 +722,26 @@ draw_dials
         lsr
         jsr modename
         jsr pstr
-        !scr "  vol ", 0
+        !scr " vol ", 0
         ldx ctrk
         lda SONG+H_DMV,x
         and #15
         jsr pdec2
+        jsr pstr
+        !scr " lfo ", 0
+        ldx ctrk
+        lda SONG+H_LFO,x
+        beq @l0
+        ldy #1
+@lf     cmp lfopre,y
+        beq @lo
+        iny
+        cpy #4
+        bcc @lf
+@lo     tya
+        jmp @lp
+@l0     lda #0
+@lp     jsr pdig
         lda padon
         beq @np
         jsr pstr
@@ -1296,6 +1310,23 @@ d_volp  ldx ctrk
 d_done  lda #1
         sta dirty
         rts
+d_lfo   ldx ctrk                ; the filter sweep: off, then four presets
+        lda SONG+H_LFO,x
+        ldy #0
+@f      cmp lfopre,y
+        beq @g
+        iny
+        cpy #5
+        bne @f
+        ldy #4                  ; (an odd value from a song: treat as the last)
+@g      iny
+        cpy #5
+        bcc @s
+        ldy #0
+@s      lda lfopre,y
+        sta SONG+H_LFO,x
+        jmp d_done
+lfopre  !byte 0, $82, $f3, $f6, $8c
 d_paddle
         lda padon
         eor #1
@@ -1797,14 +1828,14 @@ fldname !scr "wave"
 fldtype !byte 1, 3, 3, 0, 0, 0, 2, 0, 0, 0, 0, 1, 1, 1, 1, 0
 fldmax  !byte 0, 0, 0, 15, 15, 15, 6, 15, 7, 15, 1, 0, 0, 0, 0, 15
 voicnames
-        !scr "one   "
-        !scr "unison"
-        !scr "octave"
-        !scr "power "
-        !scr "major "
-        !scr "minor "
-        !scr "drums "
-        !scr "      "
+        !scr "one     "
+        !scr "unison  "
+        !scr "octave  "
+        !scr "power   "
+        !scr "major   "
+        !scr "minor   "
+        !scr "drums   "
+        !scr "        "
 
 sndptr  ldx ssel
         lda sndlo,x

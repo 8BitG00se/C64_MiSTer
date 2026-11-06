@@ -5,7 +5,7 @@ The Windows version will start from this."""
 import struct
 
 SONGSIZE = 14080
-H_SPEED, H_KEY, H_SCALE, H_CHORDS, H_LEN, H_ROLE, H_NAMES, H_DCUT, H_DRES, H_DMV, H_TSND, H_SNAME = 0, 1, 2, 3, 7, 8, 16, 64, 72, 80, 88, 96
+H_SPEED, H_KEY, H_SCALE, H_CHORDS, H_LEN, H_ROLE, H_NAMES, H_DCUT, H_DRES, H_DMV, H_TSND, H_SNAME, H_LFO = 0, 1, 2, 3, 7, 8, 16, 64, 72, 80, 88, 96, 112
 SND, PAT, BAR = 256, 768, 768 + 12288
 TRI, SAW, PULSE, NOISE, RING, SYNC = 0x10, 0x20, 0x40, 0x80, 4, 2
 ONE, UNISON, OCTAVES, POWER, MAJOR, MINOR, DRUMS = range(7)
@@ -33,7 +33,8 @@ class Song:
     # --- header
     def set_name(s, t, n): s.b[H_NAMES + 6 * t:H_NAMES + 6 * t + 6] = n.upper().ljust(6)[:6].encode()
     def name(s, t): return s.b[H_NAMES + 6 * t:H_NAMES + 6 * t + 6].decode().rstrip()
-    def dial(s, t, cut=None, res=None, mode=None, vol=None):
+    def dial(s, t, cut=None, res=None, mode=None, vol=None, lfo=None):
+        if lfo is not None: s.b[H_LFO + t] = (lfo[1] << 4) | lfo[0]     # (rate 0-15, depth 0-15)
         if cut is not None: s.b[H_DCUT + t] = cut
         if res is not None: s.b[H_DRES + t] = res << 4
         if mode is not None or vol is not None:

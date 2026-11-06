@@ -1175,7 +1175,8 @@ fx_pwm  ldx CT
 
 ; ------------------------------------------------------------------------------------------------ every frame: the dials
 !macro FILT N, SIDA {
-        lda SONG+H_DCUT+N
+        ldx #N
+        jsr lfo_cut             ; A = the cutoff: the dial, plus a slow triangle sweep if the track has an LFO
         sta SIDA+$16
         lda SONG+H_DRES+N
         ora tr_route+N
@@ -1183,6 +1184,41 @@ fx_pwm  ldx CT
         lda SONG+H_DMV+N
         sta SIDA+$18
 }
+; X = track -> A = the cutoff now.  H_LFO: rate in the low nibble (phase step a frame), depth in the high nibble:
+; cutoff = dial + triangle (0-127) * depth / 16, at most 255.  X is kept.
+lfo_cut lda SONG+H_LFO,x
+        bne @on
+        lda SONG+H_DCUT,x
+        rts
+@on     and #15
+        clc
+        adc lfop,x
+        sta lfop,x              ; the phase 0-255
+        bpl @up
+        eor #$ff                ; the falling half
+@up     and #$7f
+        sta T0
+        lda SONG+H_LFO,x
+        lsr
+        lsr
+        lsr
+        lsr
+        sta T1
+        lda #0
+        ldy #4
+@m      lsr T1
+        bcc @s
+        clc
+        adc T0
+@s      lsr
+        dey
+        bne @m
+        clc
+        adc SONG+H_DCUT,x
+        bcc @r
+        lda #255
+@r      rts
+
 filters
 !for N, 0, 7 {
         +FILT N, $D400 + (N & 1)*$20 + (N & 4)*$20 + (N & 2)*$80
@@ -1296,6 +1332,7 @@ f1      !byte 0
 cD      !word 0
 cend    !byte 0
 YR      !byte 0
+lfop    !fill 8, 0              ; the filter LFO phases
 VARS_END
 tmute   !fill 8, 0              ; nonzero: the track does not strike (the editor's mute / solo)
 PLAYER_END = *

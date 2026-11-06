@@ -22,6 +22,7 @@ H_DRES   = 72           ; 8 bytes: resonance in the top nibble (SID reg $17 with
 H_DMV    = 80           ; 8 bytes: mode in the top nibble, volume in the low (SID reg $18)
 H_TSND   = 88           ; 8 bytes: the sound each track's notes use when ROLL / SHAPE write them
 H_SNAME  = 96           ; 16 bytes song name
+H_LFO    = 112          ; 8 bytes: filter sweep per SID: rate in the low nibble, depth in the high nibble (0 = none)
 SND      = SONG + 256   ; 32 slots x 16 bytes (slot 0 unused; sound n at SND + 16 n)
 PAT      = SONG + 768   ; 8 tracks x 48 patterns x 32 bytes (16 notes, then 16 sounds)
 BAR      = PAT + 12288  ; 8 x 128 bytes: the pattern number 0-48 of each bar
