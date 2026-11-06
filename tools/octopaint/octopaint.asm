@@ -1066,6 +1066,17 @@ kclear  ldx #7                  ; forget keys that are new (after a prompt)
         sta kcur
         rts
 
+; wait until RETURN is up (it closed a prompt: it must not go on as the pen going down)
+!zone relret
+relret  jsr waittick
+        jsr kscan
+        lda kb+0
+        and #2
+        bne relret
+        lda #$7f
+        sta $dc00
+        rts
+
 ; wait for a key press: A = its id (column * 8 + row), SHIFT in kshift
 !zone waitkey
 waitkey jsr waittick
@@ -3117,7 +3128,8 @@ c_edit  lda col
         bpl .rs
         lda col
         jsr pal_set1
-.keep   jsr kclear
+.keep   jsr relret
+        jsr kclear
         lda #0
         sta msgt
         jmp ui_all
@@ -3663,6 +3675,7 @@ askname stx apr
         jmp .draw
 .ret    lda flen
         beq .k
+        jsr relret
         lda #1
         sta msgt
         sec
@@ -4955,6 +4968,7 @@ c_help  lda OCTRL
         jmp .l
 .done   jsr kclear
         jsr waitkey
+        jsr relret
         lda hsave
         sta OCTRL
         jsr clrscreen
@@ -4966,7 +4980,7 @@ helptab !byte 0,11,7 : !scr "octopaint build " : !byte $30+BUILD : !byte $ff
         !byte 1,1,15 : !scr "256-colour paint for the octophonic 64" : !byte $ff
         !byte 3,0,7 : !scr "pointer" : !byte $ff
         !byte 4,0,1 : !scr "mouse in port 1 (osd: pot 1/2 = mouse)" : !byte $ff
-        !byte 5,0,1 : !scr "joystick 1/2 or cursor keys (shift = 8)" : !byte $ff
+        !byte 5,0,1 : !scr "joystick 1/2 or cursor keys (c= = 8)" : !byte $ff
         !byte 6,0,1 : !scr "return = draw   space = rubber" : !byte $ff
         !byte 8,0,7 : !scr "tools" : !byte $ff
         !byte 9,0,1 : !scr "p pencil  b brush  1-4 = size 1 2 4 8" : !byte $ff

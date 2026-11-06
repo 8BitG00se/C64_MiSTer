@@ -36,7 +36,7 @@ Everything works at once:
 - **Mouse** (see above): left button draws, right button is the rubber (draws colour 0).
 - **Joystick**, port 1 or port 2: moves the pointer one pixel a frame, four with fire held for more
   than half a second. A tap of fire is a click; hold fire to draw (pen down).
-- **Keyboard**: cursor keys move the pointer one pixel (with SHIFT, eight). `RETURN` is the left
+- **Keyboard**: cursor keys move the pointer one pixel (with the Commodore key `C=` held, eight; SHIFT turns right / down into left / up as on a C64). `RETURN` is the left
   button (draw while held), `SPACE` the right button (the rubber).
 
 The pointer does not draw until a button is down. Clicking a swatch on the toolbar picks that colour.
@@ -125,7 +125,7 @@ a repeat packet, and at the end. A worst case picture is 64000 x 129/128 + 778 b
 
 Two lines at the top of the screen: `LATE` (OctoVIC lines that were late last frame, 0 is right),
 `TOT` (late lines since reset), `CRC` (a checksum of the 320 x 200 picture, worked out when you press
-D, about a second: two pictures with the same pixels have the same CRC), `FILL` (the last flood fill's
+D, about two seconds: two pictures with the same pixels have the same CRC), `FILL` (the last flood fill's
 time in frames, 50 to the second), `PTR` (the pointer on the screen), `CVS` (the canvas pixel under it) and
 `FREE` (RAM left between the program and the buffers).
 
