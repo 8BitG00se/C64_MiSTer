@@ -1,11 +1,13 @@
 ; defs.inc - shared by weaver.asm, player.asm, play.asm.  Octo Weaver Lite build 1, by Mong00se.
 ; The memory map (one fixed layout, the same in the editor, in NAME PLAY and in a demo's NAME.OWP):
-;   $0801-$17FF  stub, the platform library (OctoVIC, the eq, text, keys) and the PLAY program - the editor uses this very code
-;   $1800-$2CFF  the player (init $1800, play $1803, stop $1806 ...)  - see player.asm
-;   SONG         the song, SONGSIZE bytes (one page-aligned block, layout below)
-;   after that   the editor
-PLAYER   = $1800
-SONG     = $2D00
+;   $0801         the BASIC stub and  jmp (entry)
+;   $1000-$24FF  the player (init $1000, play $1003, stop $1006 ...)  - see player.asm
+;   SONG ($2500) the song, SONGSIZE bytes (one page-aligned block, layout below)
+;   FRONT        the platform library (OctoVIC, the eq, text, keys) and the PLAY program, then the editor
+PLAYER   = $1000
+SONG     = $2500
+FRONT    = SONG + 14080   ; the platform library, the PLAY program and (in the editor) the editor follow the song
+STAGE    = $9000          ; the editor loads a song here first (14080 bytes) so a bad file cannot damage the song
 
 ; ---- the song: offsets from SONG (docs/OCTOWEAVER.md has every byte)
 H_SPEED  = 0            ; frames a step (1-31)
@@ -13,10 +15,12 @@ H_KEY    = 1            ; 0-11 (C..B)
 H_SCALE  = 2            ; 0-5
 H_CHORDS = 3            ; 4 bytes: scale degree 0-6 of each chord's root
 H_LEN    = 7            ; bars in the song 1-128
+H_ROLE   = 8            ; 8 bytes: what ROLL writes for each track (0 PAD 1 LEAD 2 BASS 3 REESE 4 DRUMS 5 HATS 6 BELLS 7 FX)
 H_NAMES  = 16           ; 8 x 6 bytes, job names (ASCII capitals, space padded)
 H_DCUT   = 64           ; 8 bytes: filter cutoff (SID reg $16)
 H_DRES   = 72           ; 8 bytes: resonance in the top nibble (SID reg $17 without the routing bits)
 H_DMV    = 80           ; 8 bytes: mode in the top nibble, volume in the low (SID reg $18)
+H_TSND   = 88           ; 8 bytes: the sound each track's notes use when ROLL / SHAPE write them
 H_SNAME  = 96           ; 16 bytes song name
 SND      = SONG + 256   ; 32 slots x 16 bytes (slot 0 unused; sound n at SND + 16 n)
 PAT      = SONG + 768   ; 8 tracks x 48 patterns x 32 bytes (16 notes, then 16 sounds)

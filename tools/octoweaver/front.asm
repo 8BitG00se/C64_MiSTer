@@ -1,11 +1,7 @@
-; front.asm - Octo Weaver Lite: the platform library and the PLAY program, at $0801.  ACME.  By Mong00se (Octophonic 64).
+; front.asm - Octo Weaver Lite: the platform library and the PLAY program, at FRONT (after the song).  ACME.  By Mong00se (Octophonic 64).
 ; The editor (weaver.asm) uses this code too, and NAME PLAY is this region plus the player and the song (a memory image).
 ;   start / OctoVIC check and init / the 24-bar eq (a tile layer on OctoVIC layer 1) / text / keyboard / the frame interrupt
 !zone front
-        * = $0801
-        !byte $0b,$08,$0a,$00,$9e,$32,$30,$36,$31,$00,$00,$00      ; 10 SYS2061
-        jmp (entry)             ; $080D
-entry   !word editor_start      ; $0810 (NAME PLAY has play_start here)
 
 ; ---- where the eq lives
 VR_TILES = $01                  ; VRAM $010000: the bar tiles
@@ -550,7 +546,8 @@ txtpos  lda scrlo,y
 @n      rts
 
 ; A = screen code at tp in colour tcol, tp moves on
-putc    ldy #0
+putc    ora rvf                 ; (rvf = $80 prints reversed)
+        ldy #0
         sta (tp),y
         lda tcol
         sta (cp),y
@@ -627,9 +624,9 @@ pdec3   ldx #0
 
 ; X spaces
 pspaces lda #$20
-@l      jsr putc
+        jsr putc
         dex
-        bne @l
+        bne pspaces
         rts
 
 clrscr  ldx #0
@@ -784,6 +781,7 @@ eqcol   !for V, 0, 23 { !byte 4 + (V & 7)*4 + (V >> 3) }
 ; ---- variables
 frame   !byte 0
 tcol    !byte 1
+rvf     !byte 0
 eq_rows !byte 8
 eq_top  !byte 1
 eq_px   !byte 64                ; rows * 8
@@ -950,4 +948,3 @@ quit    sei
         sta 646
         jmp ($a002)             ; BASIC's warm start: READY
 front_end
-!if front_end > PLAYER { !error "front.asm runs into the player" }
