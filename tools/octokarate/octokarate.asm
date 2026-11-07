@@ -15,7 +15,7 @@
 ; Keys: 1-8 layers off/on (1 picture, 2 glow, 3 sun, 4 corona/ring, 5 stars, 6 foam, 7 fighters, 8 HUD), L layer names (gold on, grey
 ; off), D debug line (LATE MAX TOT OVR), SPACE pause, F7 quit. Clean (no debug text) by default.
 !cpu 6502
-BUILD   = 6
+BUILD   = 7
 
 VADDR   = $D600
 VINC    = $D603
@@ -2433,12 +2433,16 @@ ai      lda st,x
         cmp t3
         bcs .other
 .att    ; attack: a random move that reaches (reach + the startup lunge)
+!ifdef FORCEMV {                ; (test builds only: acme -DFORCEMV=n - the CPU always picks move n)
+        lda #FORCEMV
+} else {
         jsr rnd
         and #7
         cmp #5
         bcc .m
         sec
         sbc #5
+}
 .m      tay                     ; Y = move 0-4
         sty t7
         tya                     ; its range for this fighter: the interleaved table at move * 2 + fighter

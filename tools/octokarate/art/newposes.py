@@ -66,5 +66,5 @@ def body_hit(deep):
                 elb_n=(14, 53, 12), wr_n=(10, 49, 11), fist_n=(8, 48, 10))
 HITB1, HITB2 = body_hit(1), body_hit(0)
 # a low blow (the shin): the front leg is knocked up off the floor and the body hunches over it, then settles
-HITL1 = setj(lean(upper(G, (-2, 0)), -8), knee_f=(12, 26, 7), ank_f=(8, 10, 5), toe_f=(15, 6, 5))
-HITL2 = lean(upper(G, (-2, 0)), -4)
+HITL1 = setj(lean(upper(G, (-3, -2)), -16), knee_f=(15, 34, 7), ank_f=(8, 20, 5), toe_f=(15, 16, 5))
+HITL2 = setj(lean(upper(G, (-2, -1)), -9), knee_f=(15, 29, 7), ank_f=(10, 12, 5), toe_f=(17, 8, 5))

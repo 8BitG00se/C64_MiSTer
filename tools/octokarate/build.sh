@@ -24,7 +24,7 @@ open(w + '/Octo Karate.reu', 'wb').write(reu + bytes(r - len(reu)) + sh)
 open(w + '/data.inc', 'a').write('R_SHOUT = $%06x\n' % r)
 print('shouts at REU $%06x' % r)
 PY
-acme -I "$W" -f cbm -o "$OUT/Octo Karate.prg" -l "$W/octokarate.lbl" "$HERE/octokarate.asm"
+acme ${ACMEX:-} -I "$W" -f cbm -o "$OUT/Octo Karate.prg" -l "$W/octokarate.lbl" "$HERE/octokarate.asm"
 cp "$W/Octo Karate.reu" "$OUT/Octo Karate.reu"
 for f in "$W"/sheets/*.oct; do python3 "$HERE/../octopaint/mkoct.py" csum "$f"; done
 python3 "$HERE/../octoos/octocode/a2p.py" "$HERE/octokarate.asm" "$W/octokarate.seq"

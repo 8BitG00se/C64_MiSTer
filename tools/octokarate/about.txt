@@ -1,4 +1,4 @@
-OCTO KARATE build 6  -  a one-on-one fighting game for the Octophonic 64
+OCTO KARATE build 7  -  a one-on-one fighting game for the Octophonic 64
 ==========================================================================================
 
 Two karate fighters, VIC (blue) and SID (white), on the beach under a 60 second solar eclipse. Everything runs as 6502 code on the
@@ -28,7 +28,7 @@ On the MiSTer: F1 (the browser), the folder, RETURN on "Octo Karate.prg" - the .
 graphics and 1500 ticks of the eclipse) goes into the REU first, the screen stays black for a few seconds while the 6502 copies it
 into OctoVIC's memory, and the attract mode starts.
 
-"Octo Karate build 6.d64" has the program, its source "OCTOKARATE.ASM" (for the OCTOCODE editor) and two OctoPaint fighter sheets (VIC 1 and SID 1)
+"Octo Karate build 7.d64" has the program, its source "OCTOKARATE.ASM" (for the OCTOCODE editor) and two OctoPaint fighter sheets (VIC 1 and SID 1)
 (the "sheets" folder in the zip has all fourteen; the "fighters" folder has the two fighter data files, VIC.OKF and SID.OKF, that the game loads from the .reu). The program on the disk still needs the .reu.
 Sound effects (whoosh, thud, clack) play on SIDs 6 and 7, so the 8-SID setup is wanted to hear them.
 
