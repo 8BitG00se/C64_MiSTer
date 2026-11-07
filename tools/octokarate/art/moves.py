@@ -3,7 +3,7 @@
 import numpy as np, sys, subprocess, time
 from PIL import Image
 sys.argv=['x']; exec(open('fighter2.py').read().split("if __name__")[0]); exec(open('footart.py').read())
-SW=128                                   # wider sprite box: kicks and punches reach out
+SW=150                                   # wider sprite box: kicks and punches reach out
 G,_=pose_guard(0)
 LEG=('ank_f','toe_f','knee_f','ank_b','toe_b','knee_b')
 def mv(J,names,d):
@@ -44,6 +44,7 @@ STRIDE=14
 P=upper(G,(2,0)); P=dict(P)
 P['sh_f']=(12,73,-9); P['elb_f']=(29,73,-7); P['wr_f']=(39,73,-5); P['fist_f']=(43,73,-4)
 P['elb_n']=(6,58,12); P['wr_n']=(11,66,11); P['fist_n']=(14,69,10)      # rear fist pulls up to the chin
+P=upper(P,(6,0))                                    # build 3: a lunging punch - the body drives 6 px forward over the planted feet (the reach the fighting distance needs)
 Pw=setj(upper(G,(-1,0)), elb_f=(19,61,-8), wr_f=(26,67,-6), fist_f=(30,69,-5))      # wind-up: the lead fist draws back
 PUNCH=[(G,3),(Pw,2),(lerpJ(Pw,P,0.5),1),(lerpJ(Pw,P,0.9),1),(P,5)]+tween(P,G,[0.3,0.55,0.75,0.9],2)
 

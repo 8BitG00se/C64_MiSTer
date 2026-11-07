@@ -1,8 +1,8 @@
-OCTO KARATE build 2  -  the first slice of a one-on-one fighting game for the Octophonic 64
+OCTO KARATE build 3  -  a one-on-one fighting game for the Octophonic 64
 ==========================================================================================
 
 Two karate fighters, VIC (blue) and SID (white), on the beach under a 60 second solar eclipse. Everything runs as 6502 code on the
-core; the PC only prepared the pictures. The game starts in attract mode: the two fighters are played by the computer.
+core; the PC only prepared the pictures. The game starts in attract mode: the two fighters are played by the computer, and the title and the control list take turns in the sky.
 
 Start:  fire on joystick port 2 = one player (you are VIC, on the left; SID is the computer)
         fire on joystick port 1 = two players (VIC on port 2, SID on port 1)
@@ -14,7 +14,8 @@ Controls (the same for both fighters; "forward" is towards the other one):
         forward + fire      body kick (middle)                   back + fire   front kick (middle, pushes far)
         down + fire         shin strike (low: block it crouching)
 Win by emptying the other's 16-segment health bar before the 60 seconds are up; at time up the one with more health wins.
-One round, then back to the attract mode.
+Best of three rounds (ROUND 1, ROUND 2, FINAL ROUND; the round-win markers sit under the health bars); two round wins give
+"VIC WINS" or "SID WINS", then back to the attract mode. The eclipse starts again from first contact in every round.
 
 Keys:   1 picture   2 sun glow   3 sun and moon   4 corona   5 stars   6 foam   7 fighters   8 HUD   switch a layer off / on
         L shows the layer names (gold = on, grey = off)    D the debug line (LATE, MAX, TOT, OVR: 0 is right)
@@ -23,12 +24,12 @@ Keys:   1 picture   2 sun glow   3 sun and moon   4 corona   5 stars   6 foam   
 PUTTING IT ON THE MISTER
 ------------------------
 Double-click "Install to MiSTer.bat": it copies this folder to C:\MiSTerBridge\Games\C64\Octophonic\Octo Karate (copies only, deletes nothing).
-On the MiSTer: F1 (the browser), the folder, RETURN on "Octo Karate.prg" - the .reu of the same name (5.4 MB: the picture, all the sprite
+On the MiSTer: F1 (the browser), the folder, RETURN on "Octo Karate.prg" - the .reu of the same name (5.3 MB: the picture, all the sprite
 graphics and 1500 ticks of the eclipse) goes into the REU first, the screen stays black for a few seconds while the 6502 copies it
 into OctoVIC's memory, and the attract mode starts.
 
-"Octo Karate build 2.d64" has the program, its source "OCTOKARATE.ASM" (for the OCTOCODE editor) and four OctoPaint fighter sheets
-(the "sheets" folder in the zip has all twelve). The program on the disk still needs the .reu.
+"Octo Karate build 3.d64" has the program, its source "OCTOKARATE.ASM" (for the OCTOCODE editor) and two OctoPaint fighter sheets (VIC 1 and SID 1)
+(the "sheets" folder in the zip has all fourteen; the "fighters" folder has the two fighter data files, VIC.OKF and SID.OKF, that the game loads from the .reu). The program on the disk still needs the .reu.
 Sound effects (whoosh, thud, clack) play on SIDs 6 and 7, so the 8-SID setup is wanted to hear them.
 
 Needs the Octophonic 64 core with OctoVIC 2 or later and the 16 MB REU; a stock C64 gets a message and nothing else.

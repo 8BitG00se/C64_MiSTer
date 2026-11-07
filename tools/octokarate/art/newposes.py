@@ -1,29 +1,34 @@
 # Octo Karate: the extra poses (block, crouch, crouch block, fall, lying), built the same way as moves.py's poses.
 # exec'd after moves.py / fight.py's first part: G, upper, lean, setj, lerpJ, mv, LEG, HIT are already defined.
-def ik(hip, ank, l1, l2, z=0.0):
-    """knee position for a leg: thigh l1, shin l2, the knee bending forward (+x)"""
+def ik(hip, ank, l1, l2, z=0.0, side=1):
+    """knee position for a leg: thigh l1, shin l2, the knee bending forward (+x) for side=1, backward for side=-1"""
     dx, dy = ank[0] - hip[0], ank[1] - hip[1]
     d = math.hypot(dx, dy); d = min(d, l1 + l2 - 0.01)
     a = (l1 * l1 - l2 * l2 + d * d) / (2 * d); h = math.sqrt(max(0.0, l1 * l1 - a * a))
     ux, uy = dx / d, dy / d
     px, py = -uy, ux                                   # perpendicular: forward when the leg points down
     if px < 0: px, py = -px, -py
-    return (hip[0] + ux * a + px * h, hip[1] + uy * a + py * h, z)
+    return (hip[0] + ux * a + side * px * h, hip[1] + uy * a + side * py * h, z)
 
 # ---- stand block: both forearms up in front of the face, the body tucked back a touch
 BLOCK = lean(upper(G, (-1, 0)), 4)
 BLOCK = setj(BLOCK, elb_f=(18, 59, -8), wr_f=(23, 74, -6), fist_f=(24, 79, -5),
              elb_n=(10, 51, 12), wr_n=(17, 68, 11), fist_n=(19, 73, 10))
-# ---- crouch: hips down, knees bent forward, guard kept up
-def crouched(base, d=17):
-    J = upper(base, (1, -d))
+# ---- crouch (build 3): the feet stay planted exactly where they are in the guard stance, the hips drop 14 px straight down,
+# the knees bend and spread (front knee forward, back knee back and out), the torso stays upright, the guard stays up
+def crouched(base, d=14, spread=0.75):
+    J = upper(base, (0, -d))
     hf, hb = J['hip_f'], J['hip_b']
-    af, ab = (25, 4, 5), (-23, 4, -5)
-    J = setj(J, ank_f=af, toe_f=(34, 1.8, 5), ank_b=ab, toe_b=(-13, 1.8, -5),
-             knee_f=ik(hf, af, 22.8, 20.6, 7), knee_b=ik(hb, ab, 22.0, 20.6, -6))
-    return J
+    af, ab = G['ank_f'], G['ank_b']
+    kf = ik(hf, af, 22.8, 20.6, 8, 1)
+    kb = ik(hb, ab, 22.0, 20.6, -8, -1)
+    kb = (kb[0] * spread + ab[0] * (1 - spread) * 0.0 + (hb[0] * (1 - spread)), kb[1], kb[2])
+    return setj(J, knee_f=kf, knee_b=kb)
 CROUCH = crouched(G)
+# crouch block: the same legs, the forearms come down in front of the body (head and chest covered from the front)
 CBLOCK = crouched(BLOCK)
+CBLOCK = setj(CBLOCK, elb_f=(15, 36, -8), wr_f=(23, 47, -6), fist_f=(25, 52, -5),
+              elb_n=(7, 31, 12), wr_n=(16, 42, 11), fist_n=(19, 47, 10))
 # ---- idle bob: the guard breathing (two more drawings)
 BOB1 = pose_guard(math.pi / 2)[0]
 BOB2 = pose_guard(-math.pi / 2)[0]

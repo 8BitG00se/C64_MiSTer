@@ -3,6 +3,7 @@
 import numpy as np, math
 from PIL import Image
 S=4; SW,SH=84,112
+exec(open('footart.py').read(),globals())      # the hand-drawn feet (standing, and the strike feet)
 RAMPS={  # dark -> light; shadows lean purple/blue, highlights warm
  'skin':  [(58,24,34),(116,54,50),(176,96,70),(222,146,104),(250,200,156)],
  'skin2': [(34,16,24),(76,36,34),(122,66,48),(166,104,70),(206,150,108)],
@@ -79,29 +80,43 @@ def render(C,J,b,flip=False,layers=False,imgflip=None):
     mat=np.full((H,W),'',object); part=np.full((H,W),'',object); tb=np.zeros((H,W),np.float32)
     LA=np.full((H,W),-99,np.float32); LC=np.zeros((H,W),np.float32)
     ox=SW/2-2
-    def sp(c,r,m,pid,t=0.0,loc=None):
+    def sp(c,r,m,pid,t=0.0,loc=None,ymax=None):
         cx=(c[0]*sc+ox)*S; cy=(SH-c[1]*sc)*S; cz=c[2]*sc*S; rr=r*sc*S
         x0,x1=int(max(0,cx-rr-1)),int(min(W,cx+rr+2)); y0,y1=int(max(0,cy-rr-1)),int(min(H,cy+rr+2))
         if x0>=x1 or y0>=y1: return
         X,Y=np.meshgrid(np.arange(x0,x1)+0.5,np.arange(y0,y1)+0.5)
         dx=X-cx; dy=Y-cy; d2=dx*dx+dy*dy; ins=d2<rr*rr
+        if ymax is not None: ins&=(Y<ymax(X))
         dz=np.sqrt(np.clip(rr*rr-d2,0,None)); z=cz+dz
         zs=zb[y0:y1,x0:x1]; upd=ins&(z>zs); zs[upd]=z[upd]
         n=N[y0:y1,x0:x1]; n[...,0][upd]=(dx/rr)[upd]; n[...,1][upd]=(-dy/rr)[upd]; n[...,2][upd]=(dz/rr)[upd]
         mat[y0:y1,x0:x1][upd]=m; part[y0:y1,x0:x1][upd]=pid; tb[y0:y1,x0:x1][upd]=t
         if loc is not None: LA[y0:y1,x0:x1][upd]=loc[0]; LC[y0:y1,x0:x1][upd]=loc[1]
     segs,sph=build(C,J,b)
+    def standing(side): return J['ank_'+side][1] < J['knee_'+side][1]-12
     for pid,a,bb,ra,rb,m in segs:
         A=np.array(J[a],float); B=np.array(J[bb],float); n=int(np.linalg.norm(B-A)*S/1.5)+2
-        for kk in range(n): t=kk/(n-1); sp(A+(B-A)*t, ra+(rb-ra)*t, m, pid, t)
+        side=pid[-1]; ym=None
+        if pid in ('foot_f','foot_b') and standing(side): continue          # standing feet are drawn by hand
+        if pid in ('shin_f','shin_b') and standing(side):
+            cut=(SH-(J['ank_'+side][1]+5.0)*sc)*S; ym=lambda X,c=cut: c                 # trouser hem above the ankle
+        for kk in range(n): t=kk/(n-1); sp(A+(B-A)*t, ra+(rb-ra)*t, m, pid, t, None, ym)
     for pid,c,r,m in sph:
         if pid in ('fist_n','fist_f') and C.get('handwraps'): continue
         sp(np.array(c,float),r,m,pid)
+    if C['jacket']:
+        # the jacket's skirt: below the belt the gi jacket hangs down over the hips like real cloth - a short,
+        # slightly flared tube from the waist to a hem about 12 px lower, in front of the tops of the legs
+        P0=np.array(J['pelvis'],float)+np.array((0,2.5,0)); P1=np.array(J['pelvis'],float)+np.array((0.5,-6.0,0))
+        hx,hy=(J['pelvis'][0]*sc+ox)*S,(SH-(J['pelvis'][1]-10.5)*sc)*S
+        hem=lambda X: hy+(X-hx)*0.10                    # a straight hem, the front panel hanging a touch lower
+        n=30
+        for kk in range(n): t=kk/(n-1); sp(P0+(P1-P0)*t, (11.4+1.2*t)*C['bulk'], C['jacket'], 'skirt', t, None, hem)
     yy,xx=np.mgrid[0:H,0:W]
     def px(p): return (p[0]*sc+ox)*S,(SH-p[1]*sc)*S
     # belt / sash: a band round the waist, a knot at the front and two tails
     wy=(SH-(J['pelvis'][1]+2.5)*sc)*S
-    waist=(np.abs(yy-wy)<(2.0 if C['bare_chest'] else 1.7)*S*sc)&np.isin(part,['torso','thigh_f','thigh_b','belly'])
+    waist=(np.abs(yy-wy)<(2.0 if C['bare_chest'] else 1.7)*S*sc)&np.isin(part,['torso','thigh_f','thigh_b','belly','skirt'])
     if C['bare_chest']: mat[(part=='torso')&(yy>wy)]=C['pants']      # below the sash the trousers, not skin
     mat[waist]=C['belt']
     kx=J['pelvis'][0]+11*C['bulk']; ky=J['pelvis'][1]+2.5; kz=12*C['bulk']
@@ -175,7 +190,15 @@ def render(C,J,b,flip=False,layers=False,imgflip=None):
     lum=np.where(np.isin(part,['thigh_b','shin_b','foot_b']),lum-0.14,lum)   # the far leg sits back: one tone darker
     cloth=np.isin(mat,[C['pants'],C['jacket'] or '-'])
     fold=np.clip(np.sin(tb*8.0+(xx/S)*0.35+(yy/S)*0.15),0,1)**8
-    lum=np.where(cloth,lum-0.22*fold,lum)
+    lum=np.where(cloth&(part!='skirt'),lum-0.22*fold,lum)
+    if C['jacket']:
+        drape=np.clip(np.sin((xx/S)*0.85+1.3),0,1)**6
+        lum=np.where(part=='skirt',lum-0.20*drape,lum)
+        hx2,hy2=(J['pelvis'][0]*sc+ox)*S,(SH-(J['pelvis'][1]-10.5)*sc)*S; hemy=hy2+(xx-hx2)*0.10
+        under=np.isin(part,['thigh_f','thigh_b','torso'])&(yy>=hemy)&(yy<hemy+1.6*S)
+        lum=np.where(under,lum-0.45,lum)                                      # the shadow the hem throws on the trousers
+        okx,_=px((J['pelvis'][0]+10*C['bulk'],0)); wyy=(SH-(J['pelvis'][1]+2.5)*sc)*S
+        lum=np.where((part=='skirt')&(np.abs(xx-okx+(yy-wyy)*0.12)<0.5*S)&(yy>wyy),lum-0.5,lum)   # where the jacket's front panels meet
     lum=np.where(lapel,lum-0.6,lum)
     turns=np.clip(np.sin(((xx+yy*0.6)/S)*1.9),0,1)**10                # the bandage's wound turns
     turns=(np.sin(((xx+yy*0.7)/S)*2.2)>0.82)
@@ -215,6 +238,17 @@ def render(C,J,b,flip=False,layers=False,imgflip=None):
     o[ey,ex,:3]=(250,240,230); o[ey,ex+1,:3]=(20,12,16)
     for d in (-1,0,1,2): o[ey-1,ex+d,:3]=RAMPS['hair'][1]
     o[int(hy+3.6),int(hx+4.4),:3]=RAMPS[C['skin']][0]
+    for side,art,pv,dim in (('b',FOOT_BACK,FOOT_BACK_PIVOT,1),('f',FOOT_FRONT,FOOT_FRONT_PIVOT,0)):
+        if not standing(side): continue
+        skr=RAMPS[C['skin']]; col={'O':outl(C['skin']),'1':skr[max(0,1-dim)],'2':skr[2-dim],'3':skr[3-dim],'4':skr[4-dim],'p':skr[3-dim]}
+        ax,ay=J['ank_'+side][0]*sc+ox, SH-J['ank_'+side][1]*sc
+        for j,row in enumerate(art):
+            for i,ch in enumerate(row):
+                if ch=='.': continue
+                bottom=SH-1-int(round((J['ank_'+side][1]-4)*sc))          # the sole sits on the ground (ankle height 4 = standing)
+                y,x=bottom-(len(art)-1)+j,int(round(ax))+i-pv[0]
+                if 0<=y<SH and 0<=x<SW and (out[y,x,3]==0 or P1[y,x] in ('foot_f','foot_b')):   # behind the trouser hem
+                    o[y,x,:3]=col[ch]; o[y,x,3]=255
     if C.get('handwraps'):     # the hand-drawn fists, wrist end on the wrist
         for e_,w_,dim in (('elb_f','wr_f',1),('elb_n','wr_n',0)):
             wx,wy=J[w_][0]*sc+ox, SH-J[w_][1]*sc

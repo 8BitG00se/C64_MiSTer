@@ -129,7 +129,7 @@ def render_pose(C, name):
     """-> (RGBA ndarray 112 x 128 as the game shows it (Sid mirrored), part map or None, origin column)"""
     J, sh = POSES[name]
     flip = C is SID
-    h = hashlib.md5(repr((C['name'], flip, _key(J), sh, 'v1')).encode()).hexdigest()
+    h = hashlib.md5(repr((C['name'], flip, _key(J), sh, 'v3-%d' % NS['SW'])).encode()).hexdigest()
     fn = os.path.join(CACHE, h + '.pkl')
     if os.path.exists(fn):
         return pickle.load(open(fn, 'rb'))

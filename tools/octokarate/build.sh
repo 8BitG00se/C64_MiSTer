@@ -1,7 +1,7 @@
 #!/bin/bash
 # OCTO KARATE - builds the package into OUT:
 #   Octo Karate.prg  +  Octo Karate.reu         (the same base name: the Octophonic browser loads the .reu first)
-#   Octo Karate build N.d64                     the program, its source (PETSCII text, for the OCTOCODE editor) and four OctoPaint fighter sheets
+#   Octo Karate build N.d64                     the program, its source (PETSCII text, for the OCTOCODE editor) and two OctoPaint fighter sheets (the source takes most of the disk); the zip also has the fighter data files (fighters/*.okf)
 #   About.txt, Octo Karate build N.zip          (with "Install to MiSTer.bat")
 #   tools/octokarate/build.sh OUT
 # Needs acme, c1541 (VICE's), zip, python3 with numpy and PIL. N is BUILD in octokarate.asm.
@@ -21,12 +21,11 @@ python3 "$HERE/../octoos/octocode/a2p.py" "$HERE/octokarate.asm" "$W/octokarate.
 D="$OUT/Octo Karate build $N.d64"
 rm -f "$D"
 c1541 -format "octo karate,ok" d64 "$D" -write "$OUT/Octo Karate.prg" "octo karate" -write "$W/octokarate.seq" "octokarate.asm,s" \
-  -write "$W/sheets/vic 1.oct" "vic 1.oct,s" -write "$W/sheets/vic 2.oct" "vic 2.oct,s" \
-  -write "$W/sheets/sid 1.oct" "sid 1.oct,s" -write "$W/sheets/sid 2.oct" "sid 2.oct,s" >/dev/null 2>&1
-c1541 "$D" -list 2>/dev/null | sed -n 1,12p
+  -write "$W/sheets/vic 1.oct" "vic 1.oct,s" -write "$W/sheets/sid 1.oct" "sid 1.oct,s" >/dev/null 2>&1
+c1541 "$D" -list 2>/dev/null | sed -n 1,12p || true
 cp "$HERE/about.txt" "$OUT/About.txt"
 printf '@echo off\r\nrem Copies this folder to the Octophonic games folder on the PC (copies only, deletes nothing).\r\nset "DEST=C:\\MiSTerBridge\\Games\\C64\\Octophonic\\Octo Karate"\r\nif not exist "%%DEST%%" mkdir "%%DEST%%"\r\nxcopy "%%~dp0*" "%%DEST%%\\" /E /I /Y /Q\r\necho Copied to %%DEST%%\r\npause\r\n' > "$OUT/Install to MiSTer.bat"
-rm -rf "$OUT/sheets"; mkdir -p "$OUT/sheets"; cp "$W"/sheets/*.oct "$OUT/sheets/"
+rm -rf "$OUT/sheets" "$OUT/fighters"; mkdir -p "$OUT/sheets" "$OUT/fighters"; cp "$W"/sheets/*.oct "$OUT/sheets/"; cp "$W"/fighters/*.okf "$OUT/fighters/"
 rm -f "$OUT/Octo Karate build $N.zip"
-(cd "$OUT" && zip -q -r "Octo Karate build $N.zip" "Octo Karate.prg" "Octo Karate.reu" "Octo Karate build $N.d64" About.txt "Install to MiSTer.bat" sheets)
+(cd "$OUT" && zip -q -r "Octo Karate build $N.zip" "Octo Karate.prg" "Octo Karate.reu" "Octo Karate build $N.d64" About.txt "Install to MiSTer.bat" sheets fighters)
 ls -l "$OUT"

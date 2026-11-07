@@ -90,6 +90,8 @@ def build():
         chars.append(glyph8(ch)); small[ch] = len(chars) - 1
     seg = len(chars)
     chars.append([0x00, 0x7E, 0x7E, 0x7E, 0x7E, 0x7E, 0x7E, 0x00])      # one health segment: 7 x 6 with a gap
+    chars.append([0x00, 0x3C, 0x42, 0x42, 0x42, 0x42, 0x3C, 0x00])      # SEG + 1: a round-win marker, empty (ring)
+    chars.append([0x00, 0x3C, 0x7E, 0x7E, 0x7E, 0x7E, 0x3C, 0x00])      # SEG + 2: a round-win marker, won (disc)
     bigm = {' ': (0, 0, 0, 0)}
     for ch in G:
         cells = big(ch); codes = []
