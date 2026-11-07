@@ -1,0 +1,28 @@
+ECLIPSE BEACH build 1  -  a backdrop demo for the Octophonic 64
+================================================================
+
+The beach stage's backdrop for Mong00se's karate game, as a real 6502 program: an afternoon sky (an 8 x 8 dithered gradient), a low sun,
+a sea with lit wave crests and the sun's glitter column, a still beach with wet sand and fine ripples - and a total solar eclipse as a
+60 second time lapse. The moon is invisible until it covers the sun (then it is a black bite out of a deep orange disc), the light fails,
+the sky goes to near-black at the top, indigo, and a band of sunset orange on the horizon; stars come out from the top down and twinkle;
+a diamond ring flashes just before and just after totality; at totality the whole moon is black inside a thin pearly corona.
+The sea and sand darken with the eclipse. After 60 seconds it starts again. No music in build 1.
+
+Keys:  1 to 6 switch a layer off / on (1 picture: sky, sea, beach;  2 sun glow;  3 sun and moon;  4 corona and ring;  5 stars;  6 foam)
+       L  shows the layer names at the bottom (gold = on, grey = off)       D  the debug line (LATE, MAX, TOT, OVR: 0 is right)
+       SPACE pauses       F7 quits to BASIC.     Nothing is on screen unless you ask for it.
+
+PUTTING IT ON THE MISTER
+------------------------
+Double-click "Install to MiSTer.bat": it copies this folder to C:\MiSTerBridge\Games\C64\Octophonic\Eclipse Beach (copies only, deletes nothing).
+On the MiSTer: F1 (the browser), the folder, RETURN on "Eclipse Beach.prg" - the .reu of the same name (4.4 MB: the picture, the sprite
+frames and 1500 ticks of palette and sprite table) goes into the REU first, the screen stays black for a second or two while the 6502
+copies it into OctoVIC's memory, and the show starts.
+
+"Eclipse Beach build 1.d64" has the program, its source "ECLIPSE.ASM" (for the OCTOCODE editor) and five OctoPaint pictures:
+SKY.OCT, SEA.OCT, BEACH.OCT (the still layers as they look at the start), SUN FRAMES.OCT (30 frames of the sun and the moon's bite)
+and CORONA.OCT (the corona and ring at three moments). The program on the disk still needs the .reu.
+
+Needs the Octophonic 64 core with OctoVIC 2 or later and the 16 MB REU; a stock C64 gets a message and nothing else.
+
+Made by Mong00se. 6502 (ACME); gen.py prepares the data on a PC. github.com/8BitG00se/C64_MiSTer, tools/eclipse.
