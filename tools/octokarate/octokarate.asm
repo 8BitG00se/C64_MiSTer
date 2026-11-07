@@ -15,7 +15,7 @@
 ; Keys: 1-8 layers off/on (1 picture, 2 glow, 3 sun, 4 corona/ring, 5 stars, 6 foam, 7 fighters, 8 HUD), L layer names (gold on, grey
 ; off), D debug line (LATE MAX TOT OVR), SPACE pause, F7 quit. Clean (no debug text) by default.
 !cpu 6502
-BUILD   = 3
+BUILD   = 4
 
 VADDR   = $D600
 VINC    = $D603
@@ -399,8 +399,15 @@ init    lda #$ff                ; the joystick ports: port A out (keyboard colum
         sta SPRCNT
         jsr setlayer            ; layer 0: the bitmap, 512 wide (64 tiles), 256 high (32 tiles), 256 colours
         ; the SIDs for sound effects: 6 and 7 (the spare ones), full volume
-        lda #$0f
+        lda #$0f                ; SID 6: full volume, no filter (the low knock of the impacts)
         sta SID6+$18
+        lda #$00                ; SID 7: its noise (the crack and the whoosh) goes through a low-pass filter so it never hisses
+        sta SID7+$15
+        lda #$28
+        sta SID7+$16
+        lda #$05                ; filter voices 1 and 3, no resonance
+        sta SID7+$17
+        lda #$1f                ; low-pass, full volume
         sta SID7+$18
         lda #0
         sta sfp
@@ -2789,34 +2796,31 @@ sf_lo   !byte <sf_whoosh,<sf_thud,<sf_clack
 sf_hi   !byte >sf_whoosh,>sf_thud,>sf_clack
 ; each script frame: n, then n x (register, value); register bit 7 = SID 7 (else SID 6); $FF ends
 !zone z38
-; build 3: loud (volume 15 on both SIDs, sustain 15, instant attack), short, the impacts layered on two SIDs
-; (SID 6 voice 1 = a pulse body whose pitch drops, SID 7 voice 1 = a noise crack on top; whoosh = SID 7 voice 3 noise)
-sf_whoosh
-        !byte 6, $8e,$00, $8f,$0a, $93,$00, $94,$f4, $92,$80, $92,$81
+; build 4: no hiss and no pings - every noise goes through SID 7's low-pass filter, the knocks are low triangle waves
+; (no high pulse tones), short decays. SID 6 voice 1 = the knock, SID 7 voice 1 = the filtered crack, SID 7 voice 3 = the whoosh
+sf_whoosh                               ; a soft rising rush of air
+        !byte 6, $8e,$00, $8f,$06, $93,$00, $94,$a6, $92,$80, $92,$81
+        !byte 1, $8f,$09
+        !byte 1, $8f,$0c
         !byte 1, $8f,$10
-        !byte 1, $8f,$1a
-        !byte 1, $8f,$26
-        !byte 1, $8f,$32
-        !byte 1, $8f,$40
+        !byte 1, $8f,$14
         !byte 1, $92,$80
         !byte $ff
 !zone z39
-sf_thud
-        !byte 14, $00,$00, $01,$18, $02,$00, $03,$08, $05,$00, $06,$f4, $04,$40, $04,$41
-        !byte      $80,$00, $81,$0c, $85,$00, $86,$f2, $84,$80, $84,$81
-        !byte 2, $01,$12, $81,$09
-        !byte 2, $01,$0c, $81,$06
-        !byte 2, $01,$08, $84,$80
-        !byte 1, $01,$05
-        !byte 1, $01,$03
-        !byte 1, $01,$02
-        !byte 1, $04,$40
+sf_thud                                 ; a deep knock that drops in pitch (a low square + a triangle an octave down on SID 6), a dull crunch on top
+        !byte 20, $00,$00, $01,$08, $02,$00, $03,$08, $05,$00, $06,$f6, $04,$40, $04,$41
+        !byte      $07,$00, $08,$04, $0c,$00, $0d,$f6, $0b,$10, $0b,$11
+        !byte      $80,$00, $81,$06, $85,$00, $86,$a4, $84,$80, $84,$81
+        !byte 3, $01,$06, $08,$03, $81,$05
+        !byte 3, $01,$04, $08,$02, $84,$80
+        !byte 2, $01,$03, $08,$02
+        !byte 2, $01,$02, $08,$01
+        !byte 2, $04,$40, $0b,$10
         !byte $ff
 !zone z40
-sf_clack
-        !byte 14, $00,$00, $01,$50, $02,$00, $03,$04, $05,$00, $06,$f2, $04,$40, $04,$41
-        !byte      $80,$00, $81,$f0, $85,$00, $86,$f1, $84,$80, $84,$81
-        !byte 2, $01,$38, $81,$d0
+sf_clack                                ; a block: a short wooden knock (a low square, quick decay) and a soft filtered tick
+        !byte 14, $00,$00, $01,$10, $02,$00, $03,$08, $05,$04, $06,$00, $04,$40, $04,$41
+        !byte      $80,$00, $81,$10, $85,$02, $86,$00, $84,$80, $84,$81
         !byte 2, $04,$40, $84,$80
         !byte $ff
 

@@ -101,6 +101,10 @@ def render(C,J,b,flip=False,layers=False,imgflip=None):
         if pid in ('shin_f','shin_b') and standing(side):
             cut=(SH-(J['ank_'+side][1]+5.0)*sc)*S; ym=lambda X,c=cut: c                 # trouser hem above the ankle
         for kk in range(n): t=kk/(n-1); sp(A+(B-A)*t, ra+(rb-ra)*t, m, pid, t, None, ym)
+    for side in 'fb':          # the bare ankle: from the foot up into the trouser leg, along the shin's own slope
+        if not standing(side): continue
+        A=np.array(J['ank_'+side],float); K=np.array(J['knee_'+side],float); d=(K-A)/np.linalg.norm(K-A)
+        for kk in range(16): sp(A+d*(8.0*kk/15), 2.5, C['skin'], 'ankle_'+side, kk/15)
     for pid,c,r,m in sph:
         if pid in ('fist_n','fist_f') and C.get('handwraps'): continue
         sp(np.array(c,float),r,m,pid)
@@ -187,7 +191,7 @@ def render(C,J,b,flip=False,layers=False,imgflip=None):
     Lw=L*np.array([-1,1,1]) if flip else L; Rw=R*np.array([-1,1,1]) if flip else R
     dif=np.clip(N@Lw,0,1); rim=np.clip(N@Rw,0,1)**4
     lum=0.12+0.85*dif
-    lum=np.where(np.isin(part,['thigh_b','shin_b','foot_b']),lum-0.14,lum)   # the far leg sits back: one tone darker
+    lum=np.where(np.isin(part,['thigh_b','shin_b','foot_b','ankle_b']),lum-0.14,lum)   # the far leg sits back: one tone darker
     cloth=np.isin(mat,[C['pants'],C['jacket'] or '-'])
     fold=np.clip(np.sin(tb*8.0+(xx/S)*0.35+(yy/S)*0.15),0,1)**8
     lum=np.where(cloth&(part!='skirt'),lum-0.22*fold,lum)
@@ -247,7 +251,7 @@ def render(C,J,b,flip=False,layers=False,imgflip=None):
                 if ch=='.': continue
                 bottom=SH-1-int(round((J['ank_'+side][1]-4)*sc))          # the sole sits on the ground (ankle height 4 = standing)
                 y,x=bottom-(len(art)-1)+j,int(round(ax))+i-pv[0]
-                if 0<=y<SH and 0<=x<SW and (out[y,x,3]==0 or P1[y,x] in ('foot_f','foot_b')):   # behind the trouser hem
+                if 0<=y<SH and 0<=x<SW and (out[y,x,3]==0 or P1[y,x] in ('foot_f','foot_b','ankle_f','ankle_b')):   # behind the trouser hem
                     o[y,x,:3]=col[ch]; o[y,x,3]=255
     if C.get('handwraps'):     # the hand-drawn fists, wrist end on the wrist
         for e_,w_,dim in (('elb_f','wr_f',1),('elb_n','wr_n',0)):

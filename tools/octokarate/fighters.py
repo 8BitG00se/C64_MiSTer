@@ -10,6 +10,7 @@ from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ART = os.path.join(HERE, 'art')
+ARTHASH = hashlib.md5(b''.join(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'art', f), 'rb').read() for f in sorted(os.listdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'art'))) if f.endswith('.py'))).hexdigest()   # art changes clear the render cache
 CACHE = os.environ.get('OCTOKARATE_CACHE', '/tmp/octokarate_cache')
 os.makedirs(CACHE, exist_ok=True)
 
@@ -129,7 +130,7 @@ def render_pose(C, name):
     """-> (RGBA ndarray 112 x 128 as the game shows it (Sid mirrored), part map or None, origin column)"""
     J, sh = POSES[name]
     flip = C is SID
-    h = hashlib.md5(repr((C['name'], flip, _key(J), sh, 'v3-%d' % NS['SW'])).encode()).hexdigest()
+    h = hashlib.md5(repr((C['name'], flip, _key(J), sh, 'v3-%d' % NS['SW'], ARTHASH)).encode()).hexdigest()
     fn = os.path.join(CACHE, h + '.pkl')
     if os.path.exists(fn):
         return pickle.load(open(fn, 'rb'))
