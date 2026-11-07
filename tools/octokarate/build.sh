@@ -14,6 +14,16 @@ trap 'rm -rf "$W"' EXIT
 mkdir -p "$OUT"
 python3 "$HERE/../octopaint/mkoct.py" check
 python3 "$HERE/export.py" "$W"
+# Neal's shouts (mkshouts.py), appended to the .reu on a 64 KB boundary: R_SHOUT and their lengths into data.inc
+(cd "$HERE" && python3 mkshouts.py "$W") >> "$W/data.inc"
+python3 - "$W" <<'PY'
+import sys
+w = sys.argv[1]; reu = open(w + '/Octo Karate.reu', 'rb').read(); sh = open(w + '/shouts.bin', 'rb').read()
+r = (len(reu) + 0xFFFF) & ~0xFFFF
+open(w + '/Octo Karate.reu', 'wb').write(reu + bytes(r - len(reu)) + sh)
+open(w + '/data.inc', 'a').write('R_SHOUT = $%06x\n' % r)
+print('shouts at REU $%06x' % r)
+PY
 acme -I "$W" -f cbm -o "$OUT/Octo Karate.prg" -l "$W/octokarate.lbl" "$HERE/octokarate.asm"
 cp "$W/Octo Karate.reu" "$OUT/Octo Karate.reu"
 for f in "$W"/sheets/*.oct; do python3 "$HERE/../octopaint/mkoct.py" csum "$f"; done

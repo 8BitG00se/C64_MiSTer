@@ -15,7 +15,7 @@
 ; Keys: 1-8 layers off/on (1 picture, 2 glow, 3 sun, 4 corona/ring, 5 stars, 6 foam, 7 fighters, 8 HUD), L layer names (gold on, grey
 ; off), D debug line (LATE MAX TOT OVR), SPACE pause, F7 quit. Clean (no debug text) by default.
 !cpu 6502
-BUILD   = 4
+BUILD   = 5
 
 VADDR   = $D600
 VINC    = $D603
@@ -225,8 +225,15 @@ hoverm6 = V+104
 vfree   = V+105         ; 2: the next free sprite graphics cell in VRAM
 lvl     = V+107         ; the light level of the tick
 lf      = V+108         ; the fighter being loaded
+shcool  = V+110         ; 2: frames until a shout is allowed again
+shtake  = V+112         ; which of Neal's two takes is next
+SHBUF   = $2900         ; the shout being played (REU -> here when it starts; free RAM below the character set)
+SHGAP   = 350           ; at least 7 s between shouts - they're special, not on every hit
 ; more zero page, for the loader
 dma_c   = $87           ; 2: DMA C64 address
+dptr    = $60           ; 2: the shout sample being played (NMI)
+dend    = $62           ; 2: where the shout ends
+dhalf   = $64           ; bit 7: the low nibble is next
 dma_n   = $89           ; 2: DMA length
 
         * = $0801
@@ -300,6 +307,19 @@ init    lda #$ff                ; the joystick ports: port A out (keyboard colum
 !ifndef SEED { SEED = $a7 }
         lda #SEED
         sta rng
+        lda #$7f                ; CIA 2: no NMIs until a shout plays; timer A = 158 cycles (6236 samples a second)
+        sta $dd0d
+        lda $dd0d
+        lda #157
+        sta $dd04
+        lda #0
+        sta $dd05
+        sta $dd0e
+        sta shcool
+        sta shcool+1
+        sta shtake
+        sta $d418               ; the two shout SIDs (1 and 2, one each side) silent
+        sta $d438
         lda #<nmi
         sta $0318
         lda #>nmi
@@ -445,7 +465,49 @@ vpal_g  !byte 0,255,200,225,225,225,220,180,135,85,45,140,70,150,240,32
 vpal_b  !byte 0,255,64,90,70,60,50,45,40,40,45,150,92,255,255,44
 
 !zone nmi
-nmi     rti
+; the shout player: every CIA 2 timer A NMI, the next 4-bit sample into the volume register of SIDs 1 and 2 (left and right) -
+; the 80s way (the core's DIGIFIX makes volume writes heard on the 8580 too). Two samples a byte, high nibble first.
+nmi     pha
+        tya
+        pha
+        lda $dd0d               ; ack
+        bpl .out                ; not the timer (RESTORE): ignore
+        ldy #0
+        lda (dptr),y
+        bit dhalf
+        bmi .lo
+        lsr
+        lsr
+        lsr
+        lsr
+        sta $d418
+        sta $d438
+        lda #$80
+        sta dhalf
+        bne .out
+.lo     and #$0f
+        sta $d418
+        sta $d438
+        sty dhalf
+        inc dptr
+        bne .c
+        inc dptr+1
+.c      lda dptr+1
+        cmp dend+1
+        bcc .out
+        lda dptr
+        cmp dend
+        bcc .out
+        lda #$7f                ; the end: timer NMIs off, the SIDs silent
+        sta $dd0d
+        lda #0
+        sta $dd0e
+        sta $d418
+        sta $d438
+.out    pla
+        tay
+        pla
+        rti
 
 !zone irq
 irq     lda $d019
@@ -833,7 +895,12 @@ pw_hi   !byte >10000, >1000, >100, >10, >1
 ; ======================================================================================================== quit
 !zone quit
 quit    sei
+        lda #$7f
+        sta $dd0d
         lda #0
+        sta $dd0e
+        sta $d418
+        sta $d438
         sta $d01a
         lda #$ff
         sta $d019
@@ -1985,8 +2052,22 @@ applyhit
         lda #2                  ; the thud
         sta sfxreq
         lda hp,y
-        bne .shk
-        ; ---- K.O.
+        bne .notko
+        jsr shout               ; the K.O.: always a shout
+        jmp .ko
+.notko  lda shcool
+        ora shcool+1
+        bne .shk                ; still cooling down
+        lda mv,x
+        beq .shk                ; punch: no
+        cmp #3
+        bcs .shk                ; front kick, shin strike: no
+        jsr rnd
+        and #3
+        bne .shk                ; head / body kick: one time in four
+        jsr shout
+        jmp .shk
+.ko     ; ---- K.O.
         lda #ST_FALL
         sta st,y
         lda #0
@@ -2741,7 +2822,14 @@ shk_y   !byte 0,0,1,$ff,1,$fe,1,$ff,0,1,0,$ff,0,1,0,0
 spk_idx !byte 0,0,0,1,1,1,2,2,2,3,3,3, 4,4,4,4,5,5,5,5,6,6,6,6
 
 !zone z35
-sfxstep lda sfxreq
+sfxstep lda shcool
+        ora shcool+1
+        beq .nc
+        lda shcool
+        bne .d
+        dec shcool+1
+.d      dec shcool
+.nc     lda sfxreq
         beq .run
         tax
         lda sf_lo-1,x
@@ -2790,6 +2878,70 @@ sfxstep lda sfxreq
         sta sfp
         sta sfp+1
         rts
+!zone shout
+; start a shout: Neal's two takes in turn; copy it from the REU into SHBUF and let the NMI play it
+shout   txa
+        pha
+        tya
+        pha
+        lda #<SHGAP
+        sta shcool
+        lda #>SHGAP
+        sta shcool+1
+        lda #$7f                ; stop any shout still playing
+        sta $dd0d
+        lda up_r                ; keep the REU address of whatever else was going on
+        pha
+        lda up_r+1
+        pha
+        lda up_r+2
+        pha
+        ldx shtake
+        lda #0
+        sta up_r
+        lda shr_m,x
+        sta up_r+1
+        lda #^R_SHOUT
+        sta up_r+2
+        lda #<SHBUF
+        sta dma_c
+        sta dptr
+        lda #>SHBUF
+        sta dma_c+1
+        sta dptr+1
+        lda shn_l,x
+        sta dma_n
+        clc
+        adc #<SHBUF
+        sta dend
+        lda shn_h,x
+        sta dma_n+1
+        adc #>SHBUF
+        sta dend+1
+        jsr dmaget
+        lda #0
+        sta dhalf
+        txa
+        eor #1
+        sta shtake
+        pla
+        sta up_r+2
+        pla
+        sta up_r+1
+        pla
+        sta up_r
+        lda #$11                ; timer A: load and run, continuous
+        sta $dd0e
+        lda #$81                ; its NMI on
+        sta $dd0d
+        pla
+        tay
+        pla
+        tax
+        rts
+shr_m   !byte >R_SHOUT, >(R_SHOUT+$1000)
+shn_l   !byte <SHOUT0_N, <SHOUT1_N
+shn_h   !byte >SHOUT0_N, >SHOUT1_N
 !zone z36
 sf_lo   !byte <sf_whoosh,<sf_thud,<sf_clack
 !zone z37
