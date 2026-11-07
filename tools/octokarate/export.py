@@ -117,7 +117,7 @@ def build_fighter(C, imgs, pal_entries, cen, asg_of, small, hudcol, boxes_fn):
     hdr[24] = gbody; hdr[25] = gfront
     for i, e in enumerate(pal_entries): hdr[32 + i] = int(e)
     for i, c in enumerate(cen): hdr[64 + i * 3:67 + i * 3] = bytes(int(v) for v in c)
-    std = ['guard', 'bob1', 'bob2', 'block', 'crouch', 'cblock', 'hit1', 'hit2', 'hit3', 'fall1', 'fall2', 'lie'] + F.WALK_NAMES
+    std = ['guard', 'bob1', 'bob2', 'block', 'crouch', 'cblock', 'hit1', 'hit2', 'hit3', 'fall1', 'fall2', 'lie'] + F.WALK_NAMES + ['hitb1', 'hitb2', 'hitl1', 'hitl2']
     for i, n in enumerate(std): hdr[160 + i] = F.DID[n]
     for i, m in enumerate(F.MOVES):
         o = 184 + i * 14; hit = box[m['strike']][1]

@@ -49,6 +49,8 @@ pose('bob1', NS['BOB1']); pose('bob2', NS['BOB2'])
 WALK_NAMES = ['guard'] + [pose('walk%d' % i, J) for i, (J, h) in enumerate(WALK[1:], 1)]
 pose('block', NS['BLOCK']); pose('crouch', NS['CROUCH']); pose('cblock', NS['CBLOCK'])
 HIT_SEQ = [pose('hit1', HIT_[0][0]), pose('hit2', HIT_[1][0]), pose('hit3', HIT_[2][0])]
+# build 6: body and low hit reactions
+pose('hitb1', NS['HITB1']); pose('hitb2', NS['HITB2']); pose('hitl1', NS['HITL1']); pose('hitl2', NS['HITL2'])
 pose('fall1', NS['FALL1'], 8); pose('fall2', NS['FALL2'], 37); pose('lie', NS['LIE'], 30)
 
 # ---- the moves. Each is a list of (drawing, frames) built from moves.py's poses; frames are game frames (50 per second).

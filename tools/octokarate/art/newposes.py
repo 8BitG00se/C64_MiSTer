@@ -54,3 +54,17 @@ def lying():
       knee_b=(9, 20, -6), ank_b=(25, 7, -5), toe_b=(32, 5, -5))
 LIE = lying()
 SHIFT = {'LIE': 26, 'FALL2': 8}          # whole-drawing shift (pixels, to the right) so the drawing fits its window; the engine undoes it
+
+# ---- build 6: the hit reaction follows where the blow lands (a head blow keeps HIT's snap back)
+# a body blow (mid): doubled over, both fists pulled in to the stomach, then half way back up
+def body_hit(deep):
+    B = lean(upper(G, (-1, -3 if deep else -2)), -24 if deep else -14)
+    if deep:
+        return setj(B, elb_f=(21, 53, -8), wr_f=(14, 47, -6), fist_f=(10, 46, -5),
+                    elb_n=(15, 51, 12), wr_n=(9, 46, 11), fist_n=(6, 45, 10))
+    return setj(B, elb_f=(21, 56, -8), wr_f=(17, 51, -6), fist_f=(14, 50, -5),
+                elb_n=(14, 53, 12), wr_n=(10, 49, 11), fist_n=(8, 48, 10))
+HITB1, HITB2 = body_hit(1), body_hit(0)
+# a low blow (the shin): the front leg is knocked up off the floor and the body hunches over it, then settles
+HITL1 = setj(lean(upper(G, (-2, 0)), -8), knee_f=(12, 26, 7), ank_f=(8, 10, 5), toe_f=(15, 6, 5))
+HITL2 = lean(upper(G, (-2, 0)), -4)

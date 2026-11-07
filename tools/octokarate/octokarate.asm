@@ -15,7 +15,7 @@
 ; Keys: 1-8 layers off/on (1 picture, 2 glow, 3 sun, 4 corona/ring, 5 stars, 6 foam, 7 fighters, 8 HUD), L layer names (gold on, grey
 ; off), D debug line (LATE MAX TOT OVR), SPACE pause, F7 quit. Clean (no debug text) by default.
 !cpu 6502
-BUILD   = 5
+BUILD   = 6
 
 VADDR   = $D600
 VINC    = $D603
@@ -94,6 +94,10 @@ S_FALL1 = 9
 S_FALL2 = 10
 S_LIE   = 11
 S_WALK  = 12            ; 6 drawings (the first is the guard)
+S_HITB1 = 18            ; build 6: a body blow - doubled over
+S_HITB2 = 19
+S_HITL1 = 20            ; build 6: a low blow - the front leg knocked up
+S_HITL2 = 21
 DT0     = $8000         ; the loaded drawing records (64 bytes each) and move sequences of fighter 0 / 1
 DT1     = $8F00
 HDRBUF  = $9E00         ; the fighter file header while it is read
@@ -227,6 +231,7 @@ lvl     = V+107         ; the light level of the tick
 lf      = V+108         ; the fighter being loaded
 shcool  = V+110         ; 2: frames until a shout is allowed again
 shtake  = V+112         ; which of Neal's two takes is next
+hkd     = V+114         ; 2: where the last blow landed on fighter X (the attacker's move level: 0 high, 1 mid, 2 low)
 SHBUF   = $2900         ; the shout being played (REU -> here when it starts; free RAM below the character set)
 SHGAP   = 350           ; at least 7 s between shouts - they're special, not on every hit
 ; more zero page, for the loader
@@ -1728,10 +1733,30 @@ choosedr
         lda tm,x
         cmp #4
         bcc .h3
-        lda stdt+S_HIT2*2,x
+        lda hkd,x               ; build 6: the second drawing by where it landed
+        beq .h2
+        cmp #1
+        beq .hb2
+        lda stdt+S_HITL2*2,x
         sta dr,x
         rts
-.h1     lda stdt+S_HIT1*2,x
+.hb2    lda stdt+S_HITB2*2,x
+        sta dr,x
+        rts
+.h2     lda stdt+S_HIT2*2,x
+        sta dr,x
+        rts
+.h1     lda hkd,x               ; the first drawing: the head snaps back, the body doubles over, or the leg goes up
+        beq .hh1
+        cmp #1
+        beq .hb1
+        lda stdt+S_HITL1*2,x
+        sta dr,x
+        rts
+.hb1    lda stdt+S_HITB1*2,x
+        sta dr,x
+        rts
+.hh1    lda stdt+S_HIT1*2,x
         sta dr,x
         rts
 .h3     lda stdt+S_HIT3*2,x
@@ -2029,7 +2054,9 @@ applyhit
         sta t1
         lda mv_pushh,y
         sta t2
+        lda mv_level,y          ; build 6: the reaction follows where it lands
         ldy t5
+        sta hkd,y
         lda hp,y
         sec
         sbc t0
@@ -3371,7 +3398,7 @@ loadf   stx lf
         lda HDRBUF+160,y
         sta stdt,x
         iny
-        cpy #18
+        cpy #22
         bne .sd
         ldy lf                  ; palette: entry numbers (32) and colours (32 x 3)
         lda off32,y
@@ -3982,7 +4009,7 @@ mv_reach = MVT+110
 mv_seq_lo = MVT+120
 mv_seq_hi = MVT+130
 mv_areach = MVT+140     ; reach + startup frames: how far a lunging attack gets (the CPU's range)
-stdt    !fill 36,0      ; standard drawings: [k * 2 + fighter]
+stdt    !fill 44,0      ; standard drawings: [k * 2 + fighter]
 hudc    !fill 2,0
 npal    !fill 2,0
 ndr     !fill 2,0

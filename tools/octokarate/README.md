@@ -90,7 +90,7 @@ Header (256 bytes at 0):
 | 25 | 1 | guard front reach: how far the front hand extends forward, px |
 | 32 | 32 | the palette entries (OctoVIC palette indexes) this fighter owns |
 | 64 | 96 | the N palette colours, 3 bytes each (R, G, B 0-255) at full light |
-| 160 | 24 | standard drawing ids: guard, bob1, bob2, block, crouch, cblock, hit1, hit2, hit3, fall1, fall2, lie, then the walk cycle |
+| 160 | 24 | standard drawing ids: guard, bob1, bob2, block, crouch, cblock, hit1, hit2, hit3, fall1, fall2, lie, then the walk cycle (6), then hitb1, hitb2 (a body blow), hitl1, hitl2 (a low blow) - build 6 |
 | 184 | 5 x 14 | the move table, one 14-byte row per move (below) |
 
 Move row: sequence length (frames), startup, last active frame, damage, hitstop, hitstun, blockstun, pushback on hit, pushback on block,
