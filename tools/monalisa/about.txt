@@ -1,0 +1,16 @@
+MONA LISA - for the Octophonic 64 (OctoVIC 2+, 8 SIDs, REU). By Mong00se.
+
+Leonardo da Vinci's Mona Lisa (c. 1503-1519) as one 256-colour picture, revealed by a raster wipe, then the camera
+glides in to her face, her eyes and the smile, tours the landscape behind her - the winding road, the lake, the crags,
+over her veil to the far lake and the bridge - comes down to her hands and back out to the whole painting. All of it is
+done live by the 6502 and OctoVIC's turned-and-sized bitmap layer.
+
+The music: "Mille regretz" by Josquin des Prez (early 16th century), arranged for 8 SIDs by Mong00se from Josquin's own
+four voices - a bowed lira da braccio (Leonardo's own instrument) on the top line, a recorder, a viol and a bass viol,
+a lute picking the harmony, a quiet organ, an echo and a harp - building one instrument at a time.
+
+Run it: put Mona Lisa.prg and Mona Lisa.reu in the same folder (or run "Install to MiSTer.bat"), then pick
+Mona Lisa.prg in the Octophonic browser - it loads the .reu with it.
+
+The painting: public domain (the C2RMF photograph, via Wikimedia Commons). The notes of Mille regretz: the Josquin
+Research Project's transcription (New Josquin Edition 28.25), https://josquin.stanford.edu, CC BY-NC 4.0.
