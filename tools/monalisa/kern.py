@@ -4,9 +4,12 @@ def parse(path):
     lines = [l.rstrip('\n') for l in open(path)]
     spines = None; names = []
     for l in lines:
-        if l.startswith('**'): spines = l.split('\t'); out = [[] for _ in spines]; t = [0.0] * len(spines); tie = [None] * len(spines); continue
+        if l.startswith('**'):
+            spines = l.split('\t'); keep = [i for i, x in enumerate(spines) if x == '**kern']
+            out = [[] for _ in keep]; t = [0.0] * len(keep); sections = []; continue
+        if l.startswith('!!section:') and spines is not None: sections.append((t[0], l.split(':', 1)[1].strip())); continue
         if spines is None or l.startswith('!') or not l.strip(): continue
-        toks = l.split('\t')
+        toks = [l.split('\t')[i] for i in keep]
         if toks[0].startswith('*'):
             for i, tk in enumerate(toks):
                 if tk.startswith('*I"'): pass
@@ -31,9 +34,10 @@ def parse(path):
             if ']' in tk or '_' in tk:
                 if out[i] and out[i][-1][2] == midi: s0, l0, _ = out[i][-1]; out[i][-1] = (s0, l0 + d, midi); t[i] += d; continue
             out[i].append((t[i], d, midi)); t[i] += d
+    parse.sections = sections
     return out, t
 if __name__ == '__main__':
     import sys
     out, t = parse(sys.argv[1])
     for i, s in enumerate(out): print('spine', i, 'notes', len(s), 'length', t[i], 'range', min(m for _, _, m in s if m), max(m for _, _, m in s if m))
-    print(out[3][:12])
+    print(parse.sections)

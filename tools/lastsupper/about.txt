@@ -1,0 +1,18 @@
+THE LAST SUPPER - for the Octophonic 64 (OctoVIC 2+, 8 SIDs, REU). By Mong00se.
+
+Leonardo da Vinci's Last Supper (1495-1498, the wall of Santa Maria delle Grazie in Milan) as one 256-colour picture,
+revealed by a raster wipe in the fresco's colours. The camera goes in to Christ framed by the window, to his face, then
+walks slowly along the table past the twelve - three by three either side of him - comes back to Judas with his money
+bag, down to the bread on the table, up to the coffered ceiling, and back out to the whole wall. All of it done live by
+the 6502 and OctoVIC's turned-and-sized bitmap layer.
+
+The music: "Ave Maria ... virgo serena" by Josquin des Prez (c. 1485; Josquin was in Milan in those years), its first
+two verses, arranged for 8 SIDs by Mong00se from Josquin's own four voices: a small chapel - a choir of pulse waves
+(each voice two singers), a chamber organ and its pedal, recorders, a small bell. The voices come in one after another,
+as Josquin wrote them.
+
+Run it: put The Last Supper.prg and The Last Supper.reu in the same folder (or run "Install to MiSTer.bat"), then pick
+The Last Supper.prg in the Octophonic browser - it loads the .reu with it.
+
+The painting: public domain (the high-resolution photograph, via Wikimedia Commons). The notes of the Ave Maria: the
+Josquin Research Project's transcription (New Josquin Edition 23.6), https://josquin.stanford.edu, CC BY-NC 4.0.
