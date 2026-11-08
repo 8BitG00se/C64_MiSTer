@@ -15,9 +15,9 @@
 
 ; ======== change these ===============
 
-nbars   = 6     ; how many bars (1-8)
-gap     = 30    ; the space between them
-speed   = 1     ; how fast they swing
+nbars   = 8     ; how many bars (1-8)
+gap     = 5     ; the space between them
+speed   = 3     ; how fast they swing
 height  = 20    ; each bar's height
 
 ; a bar: its red, green, blue (0-255)
@@ -49,7 +49,9 @@ lines   = 200           ; how many lines
 red     = $3000         ; this frame's
 green   = $3100         ; colours, line
 blue    = $3200         ; by line
-ptr     = $fb           ; (2 bytes)
+pr      = $f7           ; the bar's red,
+pg      = $f9           ; green and
+pb      = $fb           ; blue (2 bytes)
 
 start   lda #147
         jsr $ffd2       ; clear the screen
@@ -58,6 +60,13 @@ start   lda #147
         sta $d020
         sta $d021
         jsr barson
+        ldx #0          ; all black
+        txa
+-       sta red,x
+        sta green,x
+        sta blue,x
+        inx
+        bne -
         jsr draw
 
 main    lda #250        ; wait for the
@@ -116,6 +125,8 @@ barson  lda #$4f        ; OctoVIC on:
         rts
 
 ; ---- this frame's colours into the list
+; (and each line black again behind it,
+; ready for the next frame's bars)
 upload  lda #3
         sta $d600
         lda #0
@@ -125,67 +136,68 @@ upload  lda #3
         lda #4
         sta $d603       ; every 4th byte
         ldx #0
--       lda #0
-        sta $d604       ; colour 0
+        ldy #0
+-       sty $d604       ; colour 0
         lda red,x
         sta $d604
         lda green,x
         sta $d604
         lda blue,x
         sta $d604
+        tya             ; black again
+        sta red,x
+        sta green,x
+        sta blue,x
         inx
         cpx #lines
         bne -
         rts
 
 ; ---- the bars into red, green, blue
-draw    ldx #0
-        txa             ; all black
--       sta red,x
-        sta green,x
-        sta blue,x
-        inx
-        cpx #lines
-        bne -
-        lda #<bars
-        sta ptr
+draw    lda #<bars
+        sta pr
         lda #>bars
-        sta ptr+1
+        sta pr+1
         lda phase
         sta pos
         lda #nbars
         sta left
-onebar  ldx pos
+onebar  lda pr          ; its green and
+        clc             ; blue come after
+        adc #height     ; its red
+        sta pg
+        lda pr+1
+        adc #0
+        sta pg+1
+        lda pg
+        clc
+        adc #height
+        sta pb
+        lda pg+1
+        adc #0
+        sta pb+1
+        ldx pos
         lda sine,x
         tax             ; its top line
         ldy #0
--       lda (ptr),y     ; red
+-       lda (pr),y      ; line by line
         sta red,x
-        tya
-        clc
-        adc #height
-        tay
-        lda (ptr),y     ; green
+        lda (pg),y
         sta green,x
-        tya
-        adc #height
-        tay
-        lda (ptr),y     ; blue
+        lda (pb),y
         sta blue,x
-        tya
-        sec
-        sbc #height*2-1
-        tay
         inx
+        iny
         cpy #height
         bne -
-        lda ptr         ; the next bar
+        lda pb          ; the next bar
         clc
-        adc #height*3
-        sta ptr
-        bcc +
-        inc ptr+1
-+       lda pos
+        adc #height
+        sta pr
+        lda pb+1
+        adc #0
+        sta pr+1
+        lda pos
         clc
         adc #gap
         sta pos

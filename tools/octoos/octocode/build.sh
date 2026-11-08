@@ -14,6 +14,6 @@ ls -la octocode.prg "$D"
 # the raster bars disk: RASTER first (LOAD"*",8,1 then RUN), RASTER.ASM for F3 in OCTOCODE
 acme -f cbm -o raster.prg -Wno-label-indent raster.asm
 python3 a2p.py raster.asm raster.seq
-rm -f "Raster Bars build 1.d64"
-c1541 -format "raster bars 1,rb" d64 "Raster Bars build 1.d64" -write raster.prg raster -write raster.seq "raster.asm,s" > /dev/null
+rm -f "Raster Bars build 2.d64"
+c1541 -format "raster bars 2,rb" d64 "Raster Bars build 2.d64" -write raster.prg raster -write raster.seq "raster.asm,s" > /dev/null
 rm -f raster.seq
