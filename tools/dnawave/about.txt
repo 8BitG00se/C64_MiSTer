@@ -1,0 +1,16 @@
+DNA WAVE - for the Octophonic 64 (OctoVIC 2+, 8 SIDs, REU). By Mong00se.
+
+Pendulum Wave's maths and music, seen as a double helix. 24 base pairs turn about the helix's axis, each like one of
+the 24 pendulums: rung i turns 30 + i times a minute. Because each turns a little faster than the last, the ladder
+twists - flat at the start, a slow twist, tighter and tighter, a tangle - and after exactly 60 seconds it is flat again.
+
+Each rung is one of the 24 SID voices (8 SIDs x 3) and rings its note as it turns edge-on, where the two strands cross:
+a glow flashes there and the rung lights up. One great chord when they line up, then ripples, cascades and shimmer.
+
+All live on the 6502: the turning (24-bit phases, so the minute comes round exactly), the sound, the beads of the two
+strands (sprites, shaded and sized by depth - the near side in front of the rungs, the far side behind them), the
+striped rungs (the blitter, into the back of two layers) and the glows (sprites added to what is under them). The REU
+brings the graphics, the palette and the background - a night of out-of-focus lights.
+
+Run it: put DNA Wave.prg and DNA Wave.reu in the same folder (or run "Install to MiSTer.bat"), then pick DNA Wave.prg
+in the Octophonic browser.
