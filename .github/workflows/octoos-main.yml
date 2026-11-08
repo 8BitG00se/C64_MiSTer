@@ -33,6 +33,7 @@ jobs:
           git apply ../tools/octoos/main/octophonic-main.patch
           # build 6: .reu loads with no MiSTer OSD bar (the C64 draws its own), no OSD bar at all while the OS runs
           git apply ../tools/octoos/main/octophonic-quiet-load.patch
+          git apply ../tools/octoos/main/octophonic-compile.patch
 
       - name: Build
         run: |
@@ -40,11 +41,17 @@ jobs:
           make -j$(nproc) 2>&1 | tee ../build.log
           ls -la bin/MiSTer bin/MiSTer.elf
 
+      - name: ACME for the MiSTer (OCTOCODE's F2 COMPILE runs it on the card)
+        run: |
+          git clone -q https://github.com/meonwax/acme acme-src
+          arm-none-linux-gnueabihf-gcc -O2 -s -static -o acme $(ls acme-src/src/*.c | grep -v '/_') -lm
+          ls -la acme
       - name: Keep it
         if: always()
         run: |
           mkdir -p /tmp/out
           cp main/bin/MiSTer main/bin/MiSTer.elf /tmp/out/ 2>/dev/null || true
+          cp acme /tmp/out/ 2>/dev/null || true
           cp build.log /tmp/out/ 2>/dev/null || true
           arm-none-linux-gnueabihf-objdump -T main/bin/MiSTer.elf 2>/dev/null | grep -o 'GLIBC_[0-9.]*' | sort -uV > /tmp/out/glibc.txt || true
           echo "$(git rev-parse --short HEAD) $(date -u +%Y-%m-%dT%H:%MZ) upstream $(cat tools/octoos/main/UPSTREAM)" > /tmp/out/result.txt

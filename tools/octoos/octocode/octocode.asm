@@ -54,7 +54,7 @@ CHKIN   = $FFC6
 CHKOUT  = $FFC9
 CLRCHN  = $FFCC
 READYV  = $A474
-TXT     = $2400         ; the source
+TXT     = $2600         ; the source (build 5: $2600, room for the F3 picker)
 TXTMAX  = $CE00         ; (its end, exclusive)
 LOGBUF  = $CE00         ; Main's log lines come here
 ROWS    = 20            ; the code: rows 2-21
@@ -74,6 +74,7 @@ SP      = $5F
 CP      = $61
 T1      = $63
 P       = $FB
+dptr    = $22           ; the F3 picker's pointer (BASIC's temporary: free while the editor runs)
 Q       = $FD
 
 ; colours
@@ -2172,14 +2173,260 @@ gofail  cld
         jmp loop
 
 ; ============================================================================ F3 F5 F7
+; F3: LOAD - the disk's source files (SEQ) as a list to pick from: cursor up/down, RETURN loads,
+; N types a name instead, RUN/STOP goes back. No list (no disk, or no SEQ files): type the name.
 k_load  jsr commit
-        ldx #<m_lname
+        jsr dirread
+        lda dcount
+        bne kl_pick
+kl_type ldx #<m_lname
         ldy #>m_lname
         jsr askname
         bcs +
         jsr loadfile
 +       jsr drawall
         jmp loop
+kl_pick lda #0
+        sta dsel
+kl_draw jsr dirdraw
+kl_key  jsr GETIN
+        beq kl_key
+        cmp #$11                ; cursor down
+        bne +
+        ldx dsel
+        inx
+        cpx dcount
+        bcs kl_key
+        stx dsel
+        jmp kl_draw
++       cmp #$91                ; cursor up
+        bne +
+        lda dsel
+        beq kl_key
+        dec dsel
+        jmp kl_draw
++       cmp #3                  ; RUN/STOP: back to the code
+        bne +
+        jsr drawall
+        jmp loop
++       cmp #'N'
+        bne +
+        lda #0
+        sta fnlen
+        jmp kl_type
++       cmp #13
+        bne kl_key
+        jsr dentry              ; the picked name into fname
+        ldy #0
+-       cpy #16
+        bcs +
+        lda (dptr),y
+        beq +
+        sta fname,y
+        iny
+        bne -
++       sty fnlen
+        jsr loadfile
+        jsr drawall
+        jmp loop
+
+; the directory of drive 8: its SEQ files' names into dnames (16 bytes each, 0 after a short one)
+dirread lda #0
+        sta dcount
+        sta dline
+        lda #1
+        ldx #<dollar
+        ldy #>dollar
+        jsr SETNAM
+        lda #2
+        ldx #8
+        ldy #0
+        jsr SETLFS
+        jsr OPEN
+        bcs dr_x
+        ldx #2
+        jsr CHKIN
+        bcs dr_x
+        jsr CHRIN               ; the load address
+        jsr CHRIN
+        lda $90
+        beq dr_line
+dr_x    jmp dr_end
+dr_line jsr CHRIN               ; the link (0 0: the end)
+        sta T1
+        jsr CHRIN
+        ora T1
+        beq dr_x
+        lda $90
+        bne dr_x
+        jsr CHRIN               ; the blocks
+        jsr CHRIN
+        lda #0
+        sta dq
+        sta dn
+        sta dt
+        jsr dentry0             ; dptr: the next free entry (scratch when the list is full)
+dr_ch   jsr CHRIN
+        ldx $90
+        bne dr_x
+        cmp #0
+        beq dr_eol
+        cmp #$22                ; a quote
+        bne +
+        inc dq
+        jmp dr_ch
++       ldx dq
+        cpx #1
+        bne +
+        ldy dn                  ; inside the quotes: the name
+        cpy #16
+        bcs dr_ch
+        sta (dptr),y
+        inc dn
+        jmp dr_ch
++       cpx #2
+        bne dr_ch
+        cmp #' '                ; after them: the type (skip spaces and a splat)
+        beq dr_ch
+        cmp #'*'
+        beq dr_ch
+        ldy dt
+        cpy #3
+        bcs dr_ch
+        sta dtype,y
+        inc dt
+        jmp dr_ch
+dr_eol  inc dline
+        lda dline
+        cmp #1                  ; line 1 is the disk's own name
+        beq dr_nx
+        lda dt
+        cmp #3
+        bcc dr_nx
+        lda dtype
+        cmp #'S'
+        bne dr_nx
+        lda dtype+1
+        cmp #'E'
+        bne dr_nx
+        lda dn
+        beq dr_nx
+        ldy dn
+        cpy #16
+        bcs +
+        lda #0
+        sta (dptr),y
++       lda dcount
+        cmp #DMAX
+        bcs dr_nx
+        inc dcount
+dr_nx   jmp dr_line
+dr_end  jsr CLRCHN
+        lda #2
+        jmp CLOSE
+
+dentry  lda dsel                ; dptr = dnames + 16 * dsel
+        jmp +
+dentry0 lda dcount              ; dptr = dnames + 16 * dcount
++       sta dptr
+        lda #0
+        sta dptr+1
+        ldx #4
+-       asl dptr
+        rol dptr+1
+        dex
+        bne -
+        lda dptr
+        clc
+        adc #<dnames
+        sta dptr
+        lda dptr+1
+        adc #>dnames
+        sta dptr+1
+        rts
+
+; the list on the code rows, the picked one marked
+dirdraw ldx #TOPROW
+-       jsr dclrow
+        inx
+        cpx #TOPROW+ROWS
+        bcc -
+        lda #0
+        sta dk
+dd_one  lda dk
+        cmp dcount
+        bcs dd_end
+        pha
+        lda dsel
+        pha
+        lda dk
+        sta dsel
+        jsr dentry
+        pla
+        sta dsel
+        pla
+        clc
+        adc #TOPROW
+        tax
+        jsr drowad              ; T1/T1+1: the row's screen address, T1+2/T1+3 its colours
+        ldy #1
+        lda dk
+        cmp dsel
+        bne +
+        lda #$3E                ; ">"
+        sta (T1),y
++       ldy #0
+-       lda (dptr),y
+        beq +
+        jsr p2s
+        iny
+        sty T1+4
+        iny
+        sta (T1),y
+        lda #1
+        ldx dk
+        cpx dsel
+        beq ++
+        lda #C_LABEL
+++      sta (T1+2),y
+        ldy T1+4
+        cpy #16
+        bcc -
++       inc dk
+        jmp dd_one
+dd_end  ldx #<m_pick
+        ldy #>m_pick
+        jmp status
+
+dclrow  jsr drowad              ; row X blank
+        ldy #39
+        lda #' '
+-       sta (T1),y
+        dey
+        bpl -
+        rts
+drowad  lda #<SCR                ; T1 = SCR + 40 X, T1+2 = COL + 40 X (keeps X)
+        sta T1
+        lda #>SCR
+        sta T1+1
+        txa
+        tay
+        beq +
+-       lda T1
+        clc
+        adc #40
+        sta T1
+        bcc ++
+        inc T1+1
+++      dey
+        bne -
++       lda T1
+        sta T1+2
+        lda T1+1
+        clc
+        adc #>(COL-SCR)
+        sta T1+3
+        rts
 
 k_save  jsr commit
         ldx #<m_sname
@@ -2713,6 +2960,18 @@ m_nocomp !scr "Not compiled - see the box.", 0
 m_gofail !scr "Couldn't start the program.", 0
 m_comp  !scr "Compiling...", 0
 m_lname !scr "Load: ", 0
+m_pick  !scr "Up/down, RETURN load. N name. STOP back", 0
+dollar  !pet "$"
+DMAX    = 20
+dcount  !byte 0
+dsel    !byte 0
+dline   !byte 0
+dq      !byte 0
+dn      !byte 0
+dt      !byte 0
+dk      !byte 0
+dtype   !byte 0, 0, 0
+dnames  = LOGBUF        ; the picker's names (the log's room: not in use while picking)
 m_sname !scr "Save as: ", 0
 m_saving !scr "Saving to the disk...", 0
 m_saved !scr "Saved. F2 first, then F5 saves the prg.", 0

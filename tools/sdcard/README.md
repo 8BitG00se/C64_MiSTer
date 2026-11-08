@@ -17,6 +17,7 @@ tools/sdcard/
     030-core.sh         the core (hidden .rbf) + the launchers
     040-main.sh         Octophonic Main
     050-shell-prg.sh    octophonic/SHELL.PRG
+    055-code-tools.sh   octophonic/acme (OCTOCODE's F2 COMPILE on the MiSTer) and Apps/OCTOCODE.PRG
     060-mister-ini.sh   makes sure a MiSTer.ini exists; sets no video
     070-migrate-drop-octophonic-folder.sh   the old games/C64/Octophonic folders, if empty
     080-bootcore.sh     MiSTer.ini: bootcore=Octophonic 64.mgl, every bootcore_timeout off

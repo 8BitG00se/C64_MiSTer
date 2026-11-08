@@ -143,9 +143,16 @@ else
     [ -n "$C" ] || die "no Octophonic Main on octoos-main-build"
     same_src "$C" tools/octoos/main .github/workflows/octoos-main.yml || die "Octophonic Main on octoos-main-build was built from $C, whose patch differs from $HEADC - wait for its build (or set OCTO_MAIN)"
     git -C "$REPO" show origin/octoos-main-build:MiSTer > "$PAY/MiSTer"
+    git -C "$REPO" show origin/octoos-main-build:acme > "$PAY/acme" || die "no acme on octoos-main-build (OCTOCODE's compiler)"
     echo "Main: built from $C (same patches as $HEADC), $(md5sum < "$PAY/MiSTer" | cut -c1-8)"
 fi
 grep -q 'Octophonic OS' "$PAY/MiSTer" || die "that MiSTer is not Octophonic Main"
+[ -s "$PAY/acme" ] || { [ -n "${OCTO_ACME:-}" ] && cp "$OCTO_ACME" "$PAY/acme"; }
+[ -s "$PAY/acme" ] || die "no acme for step 055 (set OCTO_ACME)"
+grep -q 'COMPILE' "$PAY/MiSTer" || die "that Main has no COMPILE (octophonic-compile.patch)"
+# OCTOCODE, the code editor, from this commit's source (step 055 puts it in Apps)
+acme -f cbm -o "$PAY/OCTOCODE.PRG" "$REPO/tools/octoos/octocode/octocode.asm"
+echo "OCTOCODE.PRG: $(stat -c %s "$PAY/OCTOCODE.PRG") bytes"
 # no menu core in the payload: since build 4 the stock (white noise) menu.rbf stays; step 095 puts
 # it back on a card that had the navy one
 rm -f "$PAY/menu.rbf"
