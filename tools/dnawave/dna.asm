@@ -1,17 +1,13 @@
-; DNA WAVE build 2 - Pendulum Wave's maths and music as a double helix, in chrome and metal, with an equaliser and three
-; looks, for the Octophonic 64 (OctoVIC 2+, 8 SIDs, REU). By Mong00se.
-; 24 base pairs turn about the helix's axis, rung i 30 + i times a minute, so the ladder twists tighter and tighter and
-; after exactly 60 seconds it is flat again; each rung rings its SID voice (8 SIDs x 3) as it turns edge-on, where the
-; strands cross. Each minute, as the ladder goes flat, the look changes:
-;   GOLD AND STEEL  a studio, the screen split: the helix on a mirror floor above, its full reflection below - the copper
-;                   re-reads both layers upside down line by line under the floor, mixed half and half with the dark
-;   CHROME IN DEEP SPACE  a nebula and stars          CHROME SYNTHWAVE  a striped sun, a neon grid
-; The 6502 does it all live, every frame: the turning (24-bit phases), the sound, the chrome beads (the blitter copies
-; them see-through onto the rung layer in depth order: the far ones, the rungs, the near ones), the rungs (steel rods
-; with coloured glass, lit up when they ring), the equaliser (a bar per voice under its rung, jumping when it rings), and
-; a glow where the strands cross (added sprites). The REU brings the three looks: backgrounds, palettes, chrome beads.
+; DNA WAVE build 3 (build 1's helix on black) - Pendulum Wave's maths and music as a double helix, for the Octophonic 64 (OctoVIC 2+, 8 SIDs,
+; REU). By Mong00se. 24 base pairs turn about the helix's axis, rung i 30 + i times a minute, so the ladder twists
+; tighter and tighter as the minute goes on - flat at the start, a slow twist, a tight one, a tangle - and after exactly
+; 60 seconds it is flat again. Each rung is one of the 24 SID voices and rings its note as it turns edge-on (where the
+; two strands cross). The 6502 does it all live: the phases (24 bits), the sound, the beads of the two strands (sprites,
+; shaded and sized by depth: the near side in front of the rungs, the far side behind them), the rungs (the blitter, in
+; stripes, into the back of two layers; they light up when they ring) and a glow where the strands cross (added
+; sprites). The REU brings the sprite graphics, the palette and the background (a night of out-of-focus lights).
 !cpu 6502
-BUILD   = 2
+BUILD   = 3
 VADDR   = $D600
 VINC    = $D603
 VDATA   = $D604
@@ -20,9 +16,7 @@ OKEY    = $D606
 OSTATUS = $D608
 OLINE   = $D609
 OFRAME  = $D60B
-COPCTL  = $D60E
 SPRCOUNT= $D60F
-COPBASE = $D610
 SATBASE = $D613
 SPRGFX  = $D616
 PALSEL  = $D619
@@ -34,11 +28,9 @@ OID     = $D61E
 OVER    = $D61F
 L0      = $D620
 L1      = $D630
-BSRC    = $D670
 BDST    = $D673
 BW      = $D676
 BH      = $D678
-BSSTR   = $D67A
 BDSTR   = $D67C
 BFILL   = $D67E
 BCTRL   = $D67F
@@ -46,34 +38,22 @@ REU     = $DF00
 CHROUT  = $FFD2
 SCREEN  = $0400
 COLRAM  = $D800
-V_BG    = $000000       ; the three backgrounds at 0, $04, $08 (banks)
-V_RGA   = $0C0000       ; the rung layer, drawn into the one not shown
-V_RGB   = $100000
-V_BEADS = $140000       ; the chrome beads, 16 x 16: look l, strand s, depth d at + 2048 l + 256 (4 s + d)
-V_GLOW  = $150000       ; the sprites' graphics: the glow
-V_SATA  = $160000
-V_SATB  = $160400
-V_COP   = $170000
+V_BG    = $000000       ; layer 0: the night (from the REU)
+V_RGA   = $040000       ; layer 1: the rungs, drawn into the one not shown
+V_RGB   = $080000
+V_GFX   = $0C0000       ; sprites: bead (hue h, depth d) at GFX 8 (4 h + d), the glow at 256
+V_SATA  = $0D0000
+V_SATB  = $0D0400
 PALBUF  = $C800
-GEO     = $C400         ; this look's numbers (from the REU)
-YCOS    = GEO
-DEP     = GEO+256
-AYB     = GEO+512
-AYR     = GEO+576
-EQYL    = GEO+608
-EQYH    = GEO+609
-EQH     = GEO+610
-BACK    = GEO+611
 PH0     = $C300
 PH1     = $C318
 PH2     = $C330
 OLDP    = $C348
-FLASH   = $C360
-EQL     = $C378
-BP      = $C390         ; 47
+FLASH   = $C360         ; a rung's light after it rings (frames)
+BP      = $C380         ; the beads' phases (top byte), 47
 frame   = $50
 back    = $51
-nspr    = $52
+nspr    = $52           ; sprites in the table being written
 nsprA   = $53
 nsprB   = $54
 lastf   = $55
@@ -83,18 +63,13 @@ t1      = $58
 t2      = $59
 vp      = $5a           ; 2
 pass    = $5c
-ya      = $5d
+ya      = $5d           ; a rung's ends
 yb      = $5e
 ax      = $5f
 yy      = $60
 j       = $61
 bank    = $62
 xh      = $63
-look    = $64
-newlook = $65
-minute  = $66           ; 2
-by      = $68           ; a bead's top row
-bs      = $69           ; its image (4 s + d)
 
         * = $0801
         !byte $0b,$08,$0a,$00,$9e,$32,$30,$36,$31,$00,$00,$00
@@ -152,91 +127,113 @@ init    lda #$7f
         sta SCREEN+$100,x
         sta SCREEN+$200,x
         sta SCREEN+$2e8,x
+        lda #1
+        sta COLRAM,x
+        sta COLRAM+$100,x
+        sta COLRAM+$200,x
+        sta COLRAM+$2e8,x
         inx
         bne .cl
+        ldx #39
+-       lda t_top,x
+        sta SCREEN,x
+        lda #15
+        sta COLRAM,x
+        dex
+        bpl -
+        ldy #^V_BG
+        jsr clear512
         ldy #^V_RGA
         jsr clear512
         ldy #^V_RGB
         jsr clear512
         ldy #^V_SATA
         jsr clear512
-        ; the three backgrounds, the beads, the glow, the copper: REU -> VDATA
-        ldx #0
-.bgs    stx look
+        ; the palette
+        lda #<PALBUF
+        sta REU+2
+        lda #>PALBUF
+        sta REU+3
+        lda #<R_PAL
+        sta REU+4
+        lda #>R_PAL
+        sta REU+5
+        lda #^R_PAL
+        sta REU+6
+        lda #<768
+        sta REU+7
+        lda #>768
+        sta REU+8
         lda #0
-        sta VADDR
-        sta VADDR+1
-        txa
-        asl
-        asl
-        sta VADDR+2             ; bank 0, 4, 8
-        lda rbg0,x
-        ldy rbg2,x
-        sta t0
-        lda rbg1,x
-        tax
-        lda t0
-        jsr rset
+        sta REU+10
+        lda #$91
+        sta REU+1
         lda #0
+        sta PALSEL
+        sta PALIDX
         tax
-        jsr rgo                 ; 64 KB
-        lda #0
-        tax
-        jsr rgo                 ; 64 KB
-        lda #<(LEN_BG-131072)
-        ldx #>(LEN_BG-131072)
-        jsr rgo
-        ldx look
+-       lda PALBUF,x
+        sta PALR
+        lda PALBUF+256,x
+        sta PALG
+        lda PALBUF+512,x
+        sta PALB
         inx
-        cpx #3
-        bne .bgs
-        lda #<V_BEADS
-        ldx #>V_BEADS
-        ldy #^V_BEADS
+        bne -
+        ; the sprites' graphics and the background, REU -> VDATA
+        lda #<V_GFX
+        ldx #>V_GFX
+        ldy #^V_GFX
         jsr vset
-        lda #<R_BEADS
-        ldx #>R_BEADS
-        ldy #^R_BEADS
+        lda #<R_GFX
+        ldx #>R_GFX
+        ldy #^R_GFX
         jsr rset
-        lda #<LEN_BEADS
-        ldx #>LEN_BEADS
+        lda #<LEN_GFX
+        ldx #>LEN_GFX
         jsr rgo
-        lda #<V_GLOW
-        ldx #>V_GLOW
-        ldy #^V_GLOW
+        lda #<V_BG
+        ldx #>V_BG
+        ldy #^V_BG
         jsr vset
-        lda #<R_GLOW
-        ldx #>R_GLOW
-        ldy #^R_GLOW
+        lda #<R_BG
+        ldx #>R_BG
+        ldy #^R_BG
         jsr rset
-        lda #<1024
-        ldx #>1024
+        lda #0                  ; 284 rows of 512: 145408 bytes = 2 x 65536 + 14336 (the REU's address goes on by itself)
+        ldx #0
         jsr rgo
-        lda #<V_COP
-        ldx #>V_COP
-        ldy #^V_COP
-        jsr vset
-        lda #<R_COP
-        ldx #>R_COP
-        ldy #^R_COP
-        jsr rset
-        lda #<LEN_COP
-        ldx #>LEN_COP
+        lda #0
+        ldx #0
         jsr rgo
-        ; the layers: 512 x 512 bitmaps, picture (0,0) at the top left
+        lda #<14336
+        ldx #>14336
+        jsr rgo
+        ; the layers: only the rungs' (build 3: no background picture - black, the beads and rungs on their own)
         lda #$5b
-        sta L0
         sta L1
+        lda #2                  ; the backdrop: black
+        sta PALSEL
+        lda #0
+        sta PALR
+        sta PALG
+        sta PALB
+        sta PALSEL
+        lda #^V_BG
+        sta L0+6
         lda #^V_RGA
         sta L1+6
         lda #32
         sta L0+8
         sta L1+8
-        lda #<V_GLOW
+        lda #35
+        sta L0+10
+        sta L1+10
+        lda #<V_GFX
         sta SPRGFX
-        lda #>V_GLOW
+        lda #>V_GFX
         sta SPRGFX+1
-        lda #^V_GLOW
+        lda #^V_GFX
         sta SPRGFX+2
         lda #<V_SATA
         sta SATBASE
@@ -244,12 +241,6 @@ init    lda #$7f
         sta SATBASE+1
         lda #^V_SATA
         sta SATBASE+2
-        lda #<V_COP
-        sta COPBASE
-        lda #>V_COP
-        sta COPBASE+1
-        lda #^V_COP
-        sta COPBASE+2
         lda #0
         sta SPRCOUNT
         sta OKEY
@@ -272,97 +263,14 @@ init    lda #$7f
         sta PH2,x
         sta OLDP,x
         sta FLASH,x
-        sta EQL,x
         dex
         bpl -
         sta back
         sta nsprA
         sta nsprB
-        sta minute
-        sta minute+1
-        sta look
-        jsr setlook
         lda OFRAME
         sta lastf
         rts
-
-; the look: its palette and numbers from the REU, its background on layer 0, the mirror's copper on or off
-setlook lda #0
-        sta COPCTL
-        ldx look
-        lda #<PALBUF
-        sta REU+2
-        lda #>PALBUF
-        sta REU+3
-        lda rpal0,x
-        sta REU+4
-        lda rpal1,x
-        sta REU+5
-        lda rpal2,x
-        sta REU+6
-        lda #<768
-        sta REU+7
-        lda #>768
-        sta REU+8
-        lda #0
-        sta REU+10
-        lda #$91
-        sta REU+1
-        lda #<GEO
-        sta REU+2
-        lda #>GEO
-        sta REU+3
-        lda rgeo0,x
-        sta REU+4
-        lda rgeo1,x
-        sta REU+5
-        lda rgeo2,x
-        sta REU+6
-        lda #<1024
-        sta REU+7
-        lda #>1024
-        sta REU+8
-        lda #$91
-        sta REU+1
-        lda #0
-        sta PALSEL
-        sta PALIDX
-        tax
--       lda PALBUF,x
-        sta PALR
-        lda PALBUF+256,x
-        sta PALG
-        lda PALBUF+512,x
-        sta PALB
-        inx
-        bne -
-        lda #2                  ; the backdrop
-        sta PALSEL
-        lda BACK
-        sta PALR
-        lda BACK+1
-        sta PALG
-        lda BACK+2
-        sta PALB
-        lda #0
-        sta PALSEL
-        lda look                ; layer 0: this look's background
-        asl
-        asl
-        sta L0+6
-        lda #35
-        sta L0+10
-        sta L1+10
-        lda #0
-        sta L0+11
-        sta L1+11
-        sta L0+15
-        sta L1+15
-        lda look
-        bne +
-        lda #1                  ; gold and steel: the mirror
-        sta COPCTL
-+       rts
 
 vset    sta VADDR
         stx VADDR+1
@@ -411,7 +319,7 @@ main    lda OLINE+1
         lda OLINE
         cmp #<300
         bcc main
-        lda back
+        lda back                ; show what was drawn
         bne .sb
         lda #<V_SATB
         sta SATBASE
@@ -433,12 +341,8 @@ main    lda OLINE+1
 .fl     lda back
         eor #1
         sta back
-        lda newlook
-        beq +
-        lda #0
-        sta newlook
-        jsr setlook
-+       lda OFRAME
+        ; the physics: as many steps as frames have gone by (the minute keeps its time even if drawing runs late)
+        lda OFRAME
         sec
         sbc lastf
         beq .dr
@@ -452,8 +356,8 @@ main    lda OLINE+1
         dec steps
         bne -
 .dr     jsr beads
-        jsr draw
-        jsr glows
+        jsr rungs
+        jsr sprites
 .wt     lda OLINE+1
         bne .wt
         jmp main
@@ -486,38 +390,13 @@ physics ldx #0
         lda FLASH,x
         beq +
         dec FLASH,x
-+       lda EQL,x
-        beq +
-        dec EQL,x
 +       inx
         cpx #NP
         bne .ph
-        inc minute              ; 3000 steps: the minute is up, all in line: the next look
-        bne +
-        inc minute+1
-+       lda minute+1
-        cmp #>3000
-        bne +
-        lda minute
-        cmp #<3000
-        bne +
-        lda #0
-        sta minute
-        sta minute+1
-        ldx look
-        inx
-        cpx #3
-        bne .lk
-        ldx #0
-.lk     stx look
-        lda #1
-        sta newlook
-+       rts
+        rts
 
 ring    lda #24
         sta FLASH,x
-        lda EQH
-        sta EQL,x
         lda vlo,x
         sta vp
         lda vhi,x
@@ -572,139 +451,55 @@ beads   ldx #0
         bne .b
 .bd     rts
 
-
-; ---------------------------------------------------------------------------------------------- the rung layer, all of it
-draw    jsr bwait
+; the rungs, into the layer not shown: clear it, each rung in four stripes and a highlight, lit up when it rings
+rungs   jsr bwait
         lda back
         bne .a
         lda #^V_RGB
         bne +
 .a      lda #^V_RGA
-+       sta bank
-        sta BDST+2
++       sta BDST+2
+        sta bank
+        lda #0
+        sta BFILL
         lda #0
         sta BDST
+        lda #40*2               ; rows 40 .. 279
         sta BDST+1
-        sta BFILL
-        sta BDSTR
         lda #<400
         sta BW
         lda #>400
         sta BW+1
-        lda #<284
+        lda #240
         sta BH
-        lda #>284
+        lda #0
         sta BH+1
+        sta BDSTR
         lda #2
         sta BDSTR+1
         lda #3
         sta BCTRL
-        lda #0                  ; the far beads
-        sta pass
-        jsr strands
-        jsr rungs
-        lda #1                  ; the near beads
-        sta pass
-        jsr strands
-        jmp eq
-
-; both strands' beads of this pass (0 far: depth 0-1, 1 near: depth 2-3), copied see-through onto the layer
-strands ldx #0
-.q      stx j
-        ldy BP,x
-        lda DEP,y               ; strand A
-        sta bs
-        lsr
-        cmp pass
-        bne ._b
-        lda AYB,x
-        clc
-        adc YCOS,y
-        jsr blit
-._b     ldx j
-        lda BP,x
-        eor #$80
-        tay
-        lda DEP,y               ; strand B, half a turn on
-        ora #4
-        sta bs
-        and #3
-        lsr
-        cmp pass
-        bne ._n
-        ldy BP,x
-        lda AYB,x
-        sec
-        sbc YCOS,y
-        jsr blit
-._n     ldx j
-        inx
-        cpx #NB
-        beq +
-        jmp .q
-+       rts
-; bead j (X) centred on row A, image bs
-blit    sec
-        sbc #8
-        sta by
         jsr bwait
         lda #0
-        sta BSRC
-        lda look
-        asl
-        asl
-        asl
-        ora bs
-        sta BSRC+1
-        lda #^V_BEADS
-        sta BSRC+2
-        lda #16
-        sta BSSTR
-        sta BW
-        sta BH
-        lda #0
-        sta BSSTR+1
         sta BW+1
-        sta BH+1
-        lda bxl,x
-        sta BDST
-        lda by
-        asl
-        ora bxh,x
-        sta BDST+1
-        lda #0
-        rol
-        ora bank
-        sta BDST+2
-        lda #5                  ; go, COPY0 (see-through)
-        sta BCTRL
-        rts
-
-; the rungs: a steel rod, coloured glass in four stripes inset from its ends (the steel shows as collars), a highlight
-rungs   ldx #0
+        ldx #0
 .r      stx j
-        ldy PH2,x
-        lda AYR,x
+        ldy PH2,x               ; the ends: axis + / - ycos
+        lda ayr,x
         sta ax
         clc
-        adc YCOS,y
+        adc ycos,y
         sta ya
         lda ax
         sec
-        sbc YCOS,y
+        sbc ycos,y
         sta yb
-        lda ya                  ; the steel: the whole rod
-        sta t0
-        lda yb
-        sta t1
-        lda #184
-        ldy #0
-        jsr bar
-        lda #0
+        lda #0                  ; lit: + 2 in the colour
         ldy FLASH,x
         beq +
         lda #2
 +       sta t2
+        ; stripes: ya .. (ya+ax)/2, .. ax, .. (ax+yb)/2, .. yb, in rc0..rc3
         lda ya
         sta t0
         clc
@@ -712,13 +507,13 @@ rungs   ldx #0
         ror
         sta t1
         lda rc0,x
-        jsr glass
+        jsr stripe
         lda t1
         sta t0
         lda ax
         sta t1
         lda rc1,x
-        jsr glass
+        jsr stripe
         lda ax
         sta t0
         clc
@@ -726,79 +521,45 @@ rungs   ldx #0
         ror
         sta t1
         lda rc2,x
-        jsr glass
+        jsr stripe
         lda t1
         sta t0
         lda yb
         sta t1
         lda rc3,x
-        jsr glass
-        ldx j
-        lda ya                  ; the highlight down the rod
-        sta t0
-        lda yb
-        sta t1
-        lda #185
-        ldy #1
-        jsr bar
+        jsr stripe
         ldx j
         inx
         cpx #NP
-        beq +
-        jmp .r
-+       rts
-; a glass stripe from t0 to t1, colour A + t2, one row in at each end
-glass   clc
+        bne .r
+        rts
+; a stripe of rung j from row t0 to row t1 (either way round), colour A + t2: a 5-wide body, a highlight on its left
+stripe  clc
         adc t2
-        pha
-        lda t0
-        cmp t1
-        bcc +
-        ldy t1
-        sta t1
-        sty t0
-+       inc t0
-        lda t1
-        beq +
-        dec t1
-+       pla
-        ldy #0
-; a bar of rung j (X) from row t0 to t1 (either way round), colour A: Y = 0 the rod (5 wide), 1 the highlight (1 wide)
-bar     sta yy
+        sta yy                  ; (the colour)
         jsr bwait
         lda t0
         cmp t1
-        bcc +
         beq .x
-        ldx t1
+        bcc +
+        ldy t1                  ; swap: t0 the top
         sta t1
-        stx t0
+        sty t0
 +       lda t1
         sec
         sbc t0
-        beq .x
         sta BH
-        lda #0
-        sta BH+1
-        sta BW+1
+        ldx j
         lda yy
         sta BFILL
-        ldx j
-        lda rxl,x
+        lda rxl,x               ; x - 2
         sec
         sbc #2
+        sta BDST
         lda rxh,x
         sbc #0
         sta xh
-        lda rxl,x
-        sec
-        sbc #2
-        cpy #0
-        beq +
-        clc
-        adc #1
-+       sta BDST
-        lda t0
+        lda t0                  ; + row * 512 (into the layer's bank)
         asl
         ora xh
         sta BDST+1
@@ -807,80 +568,23 @@ bar     sta yy
         ora bank
         sta BDST+2
         lda #5
-        cpy #0
-        beq +
-        lda #1
-+       sta BW
-        lda #0
-        sta BDSTR
-        lda #2
-        sta BDSTR+1
-        lda #3
-        sta BCTRL
-.x      ldx j
-        rts
-
-; the equaliser: a bar per voice under its rung, its height the voice's level (it jumps when the voice rings)
-eq      ldx #0
-.e      stx j
-        lda EQL,x
-        beq .en
-        sta t1                  ; height
-        jsr bwait
-        lda rc0,x               ; the glass colour of its rung's first stripe, lit
-        clc
-        adc #2
-        sta BFILL
-        lda EQYL
-        sec
-        sbc t1
-        sta t0                  ; the top row (16 bits: EQY - h)
-        lda EQYH
-        sbc #0
-        sta yy
-        lda rxl,x
-        sec
-        sbc #4
-        sta BDST
-        lda rxh,x
-        sbc #0
-        sta xh
-        lda t0
-        asl
-        sta BDST+1
-        lda yy
-        rol
-        sta t2
-        lda BDST+1
-        ora xh
-        sta BDST+1
-        lda t2
-        ora bank
-        sta BDST+2
-        lda #9
         sta BW
-        lda #0
-        sta BW+1
-        sta BH+1
-        lda t1
-        sta BH
         lda #3
         sta BCTRL
-        jsr bwait               ; its chrome cap
-        lda #185
+        jsr bwait
+        jsr bwait
+        inc yy                  ; the highlight: 1 wide, one in
+        lda yy
         sta BFILL
-        lda #2
-        sta BH
+        inc BDST
+        lda #1
+        sta BW
         lda #3
         sta BCTRL
-.en     ldx j
-        inx
-        cpx #NP
-        bne .e
-        rts
+.x      rts
 
-; the glows: rungs that rang lately, where the strands crossed (added sprites)
-glows   lda back
+; the sprite table not shown: the near beads (in front of the rungs), the glows, the far beads (behind the rungs)
+sprites lda back
         bne .wa
         lda #<V_SATB
         ldx #>V_SATB
@@ -893,7 +597,10 @@ glows   lda back
         sta VADDR+2
         lda #0
         sta nspr
-        ldx #0
+        lda #1                  ; pass 1: near (depth 2-3), priority 0
+        sta pass
+        jsr strands
+        ldx #0                  ; the glows: rungs that rang lately, where the strands crossed
 .g      lda FLASH,x
         cmp #8
         bcc .ng
@@ -904,7 +611,7 @@ glows   lda back
         lda rxh,x
         sbc #0
         sta VDATA
-        lda AYR,x
+        lda ayr,x
         sec
         sbc #51
         sta VDATA
@@ -913,7 +620,8 @@ glows   lda back
         sta VDATA
         lda #0
         sta VDATA
-        sta VDATA               ; GFX 0
+        lda #1
+        sta VDATA               ; GFX 256
         lda #$ca
         sta VDATA
         lda #$80
@@ -922,7 +630,10 @@ glows   lda back
 .ng     inx
         cpx #NP
         bne .g
-        lda back
+        lda #0                  ; pass 2: far (depth 0-1), priority 2 (behind the rungs)
+        sta pass
+        jsr strands
+        lda back                ; how many, for when this table is shown
         bne +
         lda nspr
         sta nsprB
@@ -930,5 +641,83 @@ glows   lda back
 +       lda nspr
         sta nsprA
         rts
+
+; both strands' beads of this pass: strand A at axis + ycos, strand B at axis - ycos (half a turn on)
+strands ldx #0
+.q      stx j
+        ldy BP,x
+        lda dep,y               ; strand A
+        sta t0
+        lsr
+        cmp pass
+        bne ._b
+        lda ayb,x
+        clc
+        adc ycos,y
+        jsr bead0
+        lda hueA,x
+        jsr bead1
+._b     ldx j
+        lda BP,x
+        eor #$80
+        tay
+        lda dep,y               ; strand B: its depth half a turn on
+        sta t0
+        lsr
+        cmp pass
+        bne ._n
+        lda BP,x
+        tay
+        lda ayb,x
+        sec
+        sbc ycos,y
+        jsr bead0
+        lda hueB,x
+        jsr bead1
+._n     ldx j
+        inx
+        cpx #NB
+        bne .q
+        rts
+; a bead at row A (the bead's centre): X, Y
+bead0   sec
+        sbc #43
+        sta t1
+        lda bxl,x
+        sta VDATA
+        lda bxh,x
+        sta VDATA
+        lda t1
+        sta VDATA
+        lda #0
+        bcs +
+        lda #$ff
++       sta VDATA
+        rts
+; its graphics: hue A, depth t0: GFX 8 (4 hue + depth); 16 x 16, 256 colours; priority by the pass
+bead1   asl
+        asl
+        ora t0
+        asl
+        asl
+        asl
+        sta VDATA
+        lda #0
+        rol
+        sta VDATA
+        lda #$c5
+        sta VDATA
+        lda pass
+        bne +
+        lda #$10                ; between the layers: behind the rungs, over the night
+        sta VDATA
+        inc nspr
+        rts
++       lda #0
+        sta VDATA
+        inc nspr
+        rts
+
+t_top   !scr "  dna wave . 24 base pairs . 24 voices  "
 
 !source "data.inc"

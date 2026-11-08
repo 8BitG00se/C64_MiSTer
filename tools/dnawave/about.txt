@@ -1,4 +1,4 @@
-DNA WAVE build 2 - for the Octophonic 64 (OctoVIC 2+, 8 SIDs, REU). By Mong00se.
+DNA WAVE build 3 - for the Octophonic 64 (OctoVIC 2+, 8 SIDs, REU). By Mong00se.
 
 Pendulum Wave's maths and music, seen as a double helix. 24 base pairs turn about the helix's axis, each like one of
 the 24 pendulums: rung i turns 30 + i times a minute. Because each turns a little faster than the last, the ladder
@@ -7,15 +7,12 @@ twists - flat at the start, a slow twist, tighter and tighter, a tangle - and af
 Each rung is one of the 24 SID voices (8 SIDs x 3) and rings its note as it turns edge-on, where the two strands cross:
 a glow flashes there and the rung lights up. One great chord when they line up, then ripples, cascades and shimmer.
 
-Build 2: chrome and metal, an equaliser (a bar per voice under its rung, jumping as it rings) and three looks, one
-each minute, changing as the ladder goes flat: GOLD AND STEEL (a studio, the screen split - the helix on a mirror floor
-above, its full reflection below, made by the copper re-reading the layers upside down line by line), CHROME IN DEEP
-SPACE (a nebula and stars) and CHROME SYNTHWAVE (a striped sun and a neon grid).
+Build 3: build 1's helix on plain black.
 
 All live on the 6502: the turning (24-bit phases, so the minute comes round exactly), the sound, the beads of the two
 strands (sprites, shaded and sized by depth - the near side in front of the rungs, the far side behind them), the
 striped rungs (the blitter, into the back of two layers) and the glows (sprites added to what is under them). The REU
-brings the graphics, the palette and the background - a night of out-of-focus lights.
+brings the graphics and the palette.
 
 Run it: put DNA Wave.prg and DNA Wave.reu in the same folder (or run "Install to MiSTer.bat"), then pick DNA Wave.prg
 in the Octophonic browser.
