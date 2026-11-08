@@ -1,0 +1,17 @@
+PENDULUM WAVE - for the Octophonic 64 (OctoVIC 2+, 8 SIDs, REU). By Mong00se.
+
+24 pendulums hang in a row, each a little shorter than the one before: the first swings 30 times a minute, the next
+31, and so on to 53. They start together; then they drift into a travelling snake, two waves, three, what looks like
+chaos - and after exactly 60 seconds every one has swung a whole number of times and they all line up again.
+
+Each pendulum is one of the 24 SID voices (8 SIDs x 3 voices). It rings its note - D minor pentatonic, the longest
+pendulum lowest - as it swings through the bottom of its arc, so the pattern you see is the pattern you hear: one great
+chord when they line up, then ripples, cascades and shimmer, and back to the chord.
+
+All of it live on the 6502: each pendulum's phase (24 bits, so the minute comes round exactly), its swing and the rise
+at the ends of its arc (OctoVIC's maths unit), the strings (the blitter, drawn into the back of two layers), the balls
+and their glows (sprites; the glow is added to what is under it), and a light trail behind every ball that fades by
+its palette colours. The REU brings the graphics and the palette.
+
+Run it: put Pendulum Wave.prg and Pendulum Wave.reu in the same folder (or run "Install to MiSTer.bat"), then pick
+Pendulum Wave.prg in the Octophonic browser.
