@@ -3,8 +3,9 @@
 ;   F1 F3 F5 F7 F8 at READY: the browser, for what the key says (types @@ and a letter on a clear
 ;   screen, for the wedge to pick up); C=+F1 on a MiSTer: @! (the MiSTer's own menu)
 ;   the no-reply message: ?NO MAIN REPLY (CMD nn)
-;   call2: a request to Main, numbered (SEQ), waited on for up to 20 seconds with the border
-;   flickering so it never looks hung; only an answer with our own number counts
+;   call2: a request to Main, numbered (SEQ), waited on for up to 20 seconds with soft blue
+;   raster bars sliding down the border so it never looks hung (core 8: it used to flash);
+;   only an answer with our own number counts
 !src "wedge.lbl"
 KEYLOG  = $028F
 NDX     = $C6
@@ -12,8 +13,7 @@ KEYD    = $0277
 AUTORUN = $02A8
 SEQV    = $02AB             ; the number of our last request
 BSAVE   = $02AC             ; the border colour, put back after the wait
-SECS    = $02AD             ; seconds left
-JIFS    = $02AE             ; jiffies left in this second
+SECS    = $02AD             ; the wait left, in 4-jiffy steps (250: 20 seconds)
 LASTJ   = $02AF
 RUNTXT  = $E4E6             ; octo.asm: R U N RETURN (fixed; moved there in build 6 for the room)
 
@@ -31,13 +31,18 @@ call2   inc SEQV
         sta LASTCMD
         lda $D020
         sta BSAVE
-        lda #20
+        lda #250
         sta SECS
-        lda #50
-        sta JIFS
         lda $A2
         sta LASTJ
-wait    jsr STOP
+wait    lda $D012               ; the bars: blue and black, 16 lines each, sliding down a line a
+        clc                     ; jiffy (the raster line plus the jiffy clock)
+        adc $A2
+        and #$10
+        beq +
+        lda #6
++       sta $D020
+        jsr STOP
         beq gaveup
         lda MB_ST
         cmp #$01
@@ -50,12 +55,7 @@ tick    lda $A2
         beq wait
         sta LASTJ
         and #3
-        bne +
-        inc $D020               ; Main is working: the border says so
-+       dec JIFS
         bne wait
-        lda #50
-        sta JIFS
         dec SECS
         bne wait
         lda #$FE
