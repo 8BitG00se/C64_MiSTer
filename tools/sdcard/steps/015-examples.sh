@@ -21,7 +21,13 @@ octo_is_done && { octo_say "already done"; exit 0; }
 
 EX="$OCTO_PAYLOAD/examples"
 MAN="$EX/MANIFEST.txt"
-[ -s "$MAN" ] || { echo "no example set in $EX (MANIFEST.txt missing)"; exit 1; }
+if [ ! -s "$MAN" ]; then
+    # a card with no example set (build-image.sh OCTO_EXAMPLES=none): the folders stay empty, to be
+    # filled by the user (FileZilla, the updater)
+    octo_say "no example set in this payload - the games/C64 folders stay empty"
+    octo_mark_done "no example set (folders left empty)"
+    exit 0
+fi
 
 NEW=0; SAME=0; REPL=0; BAD=0
 # (read from a file, not a pipe, so the counters survive the loop; names have spaces)

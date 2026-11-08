@@ -150,6 +150,8 @@ grep -q 'Octophonic OS' "$PAY/MiSTer" || die "that MiSTer is not Octophonic Main
 [ -s "$PAY/acme" ] || { [ -n "${OCTO_ACME:-}" ] && cp "$OCTO_ACME" "$PAY/acme"; }
 [ -s "$PAY/acme" ] || die "no acme for step 055 (set OCTO_ACME)"
 grep -q 'COMPILE' "$PAY/MiSTer" || die "that Main has no COMPILE (octophonic-compile.patch)"
+# the front-screen cards (step 085)
+cp -r "$HERE/files/tty2oled" "$PAY/"
 # OCTOCODE, the code editor, from this commit's source (step 055 puts it in Apps)
 acme -f cbm -o "$PAY/OCTOCODE.PRG" "$REPO/tools/octoos/octocode/octocode.asm"
 echo "OCTOCODE.PRG: $(stat -c %s "$PAY/OCTOCODE.PRG") bytes"
