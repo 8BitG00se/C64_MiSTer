@@ -151,7 +151,7 @@ grep -q 'Octophonic OS' "$PAY/MiSTer" || die "that MiSTer is not Octophonic Main
 [ -s "$PAY/acme" ] || die "no acme for step 055 (set OCTO_ACME)"
 grep -q 'COMPILE' "$PAY/MiSTer" || die "that Main has no COMPILE (octophonic-compile.patch)"
 # the front-screen cards (step 085)
-cp -r "$HERE/files/tty2oled" "$PAY/"
+if [ -d "$HERE/files/tty2oled" ]; then cp -r "$HERE/files/tty2oled" "$PAY/"; else echo "no front-screen cards here (step 085 skips: a fresh card has no tty2oled)"; fi
 # OCTOCODE, the code editor, from this commit's source (step 055 puts it in Apps)
 acme -f cbm -o "$PAY/OCTOCODE.PRG" "$REPO/tools/octoos/octocode/octocode.asm"
 echo "OCTOCODE.PRG: $(stat -c %s "$PAY/OCTOCODE.PRG") bytes"
@@ -218,6 +218,7 @@ say "5. the image"
 IMG="$OUT/$NAME.img"
 SOURCE_DATE_EPOCH=$(git -C "$REPO" log -1 --format=%ct) python3 -I "$HERE/image/octofat.py" "$BASE" "$W/fat" "$IMG" OCTOFUSION
 sed "s/@BUILD@/$BUILD/g; s/@REL@/$REL/g; s/@MRF@/$MRF/g" "$HERE/image/How to flash.txt" > "$OUT/How to flash.txt"
+cp "$HERE/image/Check card.bat" "$OUT/"
 echo "$(stat -c %s "$IMG") bytes: $IMG"
 
 say "checking the image"

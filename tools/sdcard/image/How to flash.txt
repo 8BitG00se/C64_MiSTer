@@ -2,11 +2,10 @@ OCTOPHONIC FUSION build @BUILD@ - one card, flashed once from the PC
 =====================================================================
 
 What it is: a whole MiSTer on one SD card image (MiSTer @REL@, set up by MiSTer's own Mr. Fusion
-@MRF@) with Octophonic 64 already in: the core, Octophonic Main, the browser, and an
-example in every games/C64 folder (four demos with their .reu, the coding examples and their
-.d64s, music, a picture, a game). Power on and it goes straight into Octophonic 64. The other
-demos come with the Octophonic updater (the installer has to unpack the whole card in the
-MiSTer's memory, so the card image is kept small).
+@MRF@) with Octophonic 64 already in: the core, Octophonic Main, the browser, and
+OCTOCODE (edit, compile and run) in games/C64/Apps. The other folders are empty, ready for your
+own files. Power on and it goes straight into Octophonic 64. (The installer unpacks the whole card
+in the MiSTer's memory, so the image is kept small: demos come with the updater.)
 
 You need: a micro SD card of 2 GB or more (everything on it will be wiped), a card reader, and
 balenaEtcher or Rufus on the PC.
@@ -26,8 +25,12 @@ WITH RUFUS
 
 FIRST POWER-ON
  - Card into the MiSTer, switch on. The Octophonic setting-up picture comes up (navy, yellow
-   OCTOPHONIC 64) for about two minutes while it grows the card to its full size and puts
-   everything on it. Don't switch off. It restarts by itself.
+   OCTOPHONIC 64) while it grows the card to its full size and puts everything on it. Then the
+   screen can go BLACK for several minutes while it writes - that is normal.
+   LEAVE IT ALONE FOR 10 MINUTES. Switching off now leaves a half card (black screen for good).
+   It restarts by itself into Octophonic 64.
+ - Not sure it worked? Card back into the PC and double-click "Check card.bat" (it only reads).
+   It says CARD OK, or which file is missing - then flash again.
  - From then on, every power-on goes straight into Octophonic 64.
 
 OPTIONAL, before the first power-on: with the card still in the PC, a drive called OCTOFUSION

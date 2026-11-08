@@ -14,11 +14,11 @@ set -u
 
 SRC="$OCTO_PAYLOAD/tty2oled/pics_pri"
 DST="$OCTO_ROOT/tty2oled/pics_pri"
-ls "$SRC"/*.gsc >/dev/null 2>&1 || { echo "no .gsc cards in $SRC"; exit 1; }
 if [ ! -d "$OCTO_ROOT/tty2oled" ]; then
     octo_say "no tty2oled on this card - no front screen to give pictures to (skipped, not marked done)"
     exit 0
 fi
+ls "$SRC"/*.gsc >/dev/null 2>&1 || { echo "no .gsc cards in $SRC"; exit 1; }
 mkdir -p "$DST" || exit 1
 N=0; SAME=0
 for NEW in "$SRC"/*.gsc; do
