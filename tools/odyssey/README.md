@@ -53,11 +53,12 @@ photo itself is not in git (the full-size Webb TIF/JPG; any size works).
 * **The Octophonic's sleeping SIDs.** A SID other than SID 1 takes no writes of its own until it has had a volume
   and a control write; until then SID 1 gets them too. The stream's first frame put SID 3's filter routing into
   SID 1 (with no filter mode: silent). `oinit` wakes SIDs 3-8 first and the player clears SID 1/2's filter.
-* **The music (build 2).** Slow and orchestral, after Kubrick's use of it: out of near-silence (a high string tremolo
-  under a closed filter, then the horn call), the theme legato on strings with soft held after-beats and a gentle bass,
-  swelling the second time; no arpeggio chords. 128.7 s a loop (was 96.3 s): `phtab` and the Octophonic camera follow
-  song.py's tempo map, the galaxy's turn follows `songlen`. Balanced by recording each part alone in the Octophonic
-  emulator. The strings' lowpass is set for a 6581 (the core's default); on an 8580 the same values are brighter.
+* **The music (build 3).** Slow, out of near-silence (a high tremolo under a closed filter, then the horn call), now
+  as a warm synth organ (triangle and slow-sweeping pulse stops stacked 16/8/5 1/3 foot across the SIDs, flat
+  envelopes, a slow rotary wobble, a low lowpass): waltz no. 1's first strain, its second strain (1B, from the score),
+  the first strain again full, a coda; no arpeggio chords. 153.0 s a loop: `phtab`/`PHN` and the Octophonic camera
+  follow song.py's tempo map, the galaxy's turn follows `songlen`. The lowpass is set for a 6581 (the core's
+  default); on an 8580 the same values are brighter.
 * **Colours.** The stock galaxy is made for the core's palette 0 (`rtl/fpga64_rgbcolor.vhd`); the VICE
   recordings use the same palette.
 

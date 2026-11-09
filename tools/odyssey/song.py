@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
 # (C) 2026 Mong00se
 # ODYSSEY - the music: "The Blue Danube" (An der schoenen blauen Donau, Op. 314, Johann Strauss II, 1866-67, public domain),
-# arranged by Mong00se from the waltz's own score (the first waltz's theme as Strauss wrote it - its melody, slurs, bass
-# and harmony - and a short introduction of our own on its horn call). Slow and floating, the strings legato, the waltz's
-# after-beats soft held strings, the bass a gentle cello on the downbeat; out of near-silence (a high string tremolo, a
-# horn call) and back into it. No arpeggio chords anywhere.
-# One arrangement that opens out:
-#   1 SID (stock C64)   voice 1 the 1st violins' melody (a filtered saw, legato, a light late vibrato; the horn call in the
-#                       introduction), voice 2 the cellos/basses on the downbeat, voice 3 the violas: the tremolo, then
-#                       the after-beats (two soft bowed notes a bar)
-#   2 SIDs (stereo)     SID 2 the 2nd violins doubling the melody (a pulse a few cents sharp: an ensemble across the
-#                       stereo; an octave down the second time), a held string pad, the harp
-#   8 SIDs (Octophonic) SIDs 3-8 the rest of the orchestra, seated left and right: 1st violins (more desks, octaves at
-#                       the climaxes, the tremolo), 2nd violins, horns, violas and cellos, flute and oboe (the melody the
-#                       second time) and a second harp, basses and timpani (soft rolls at the swells and the end)
+# arranged by Mong00se from the waltz's own score: the introduction (our own, on the horn call), waltz no. 1's first
+# strain (1A), its second strain (1B, in A major), 1A again (full), a short coda - as Strauss's D.C. A warm synth organ:
+# triangle and slowly sweeping pulse "stops" (16, 8 and 5 1/3 foot) stacked across the SIDs a few cents apart, flat
+# envelopes with a gentle attack and release, a slow rotary wobble, a low lowpass - soft highs; the waltz's after-beats
+# one held note over beats 2-3, the pedal on the downbeat. Out of near-silence and back into it. No arpeggio chords.
+#   1 SID (stock C64)   the lead (a triangle flute stop; the horn call in the introduction), the pedal, the after-beats
+#   2 SIDs (stereo)     SID 2: the melody an octave down (16 foot, a few cents sharp), a held pad, the harp
+#   8 SIDs (Octophonic) SIDs 3-8: the 8 foot on the other side, the 16 and 5 1/3 foot, a held three-note chord,
+#                       after-beats on both sides, a tenor line, a second harp, the pedal and soft timpani rolls
 # SIDs 1 and 2 are played by the 6502's player (player.asm) from the note lists this script writes (song.asm); SIDs 3-8 are
 # rendered here to SID register frames (music8.bin: 6 SIDs x 32 bytes a frame) that the Octophonic streams from the REU.
 # Both use the same frame timing (the tempo map below), so they stay together.
