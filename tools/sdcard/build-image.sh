@@ -15,6 +15,8 @@
 #
 #   OCTO_BUILD=1 tools/sdcard/build-image.sh [OUTDIR]
 #
+# OCTO_EXAMPLES_PARTIAL=1: the example set fills only some games/C64 folders (the check allows empty ones).
+# OCTO_OLED_FW=<folder>: the front screen's firmware kit (esptool.py, serial/, *_octo.bin), put on the card for step 088.
 # Settings: OCTO_BUILD (the build number in the name, default 1), OCTO_WORK (scratch room, about
 # 1.5 GB; default /dev/shm/octofusion when there is room, else $TMPDIR), MRFUSION (Mr. Fusion's
 # release, default v2.10), MISTER_RELEASE (default: the newest), OCTO_CORE / OCTO_MAIN /
@@ -157,7 +159,10 @@ if [ -d "$HERE/files/tty2oled" ]; then cp -r "$HERE/files/tty2oled" "$PAY/"; els
 mkdir -p "$PAY/tty2oled"; cp "$REPO/tools/oled/tty2oled/"* "$PAY/tty2oled/"; cp "$REPO/tools/oled/oled.sh" "$PAY/oled.sh"
 # (OCTO_OLED_FW=<folder>: the firmware kit from the front-screen build, else files/tty2oled-firmware here)
 FWD=${OCTO_OLED_FW:-$HERE/files/tty2oled-firmware}
-if [ -d "$FWD" ]; then cp -r "$FWD" "$PAY/tty2oled-firmware"; echo "screen firmware kit: $(ls "$PAY/tty2oled-firmware" | grep -c '_octo.bin$') firmware(s)"
+if [ -d "$FWD" ]; then cp -r "$FWD" "$PAY/tty2oled-firmware"
+    # no 0-byte files on a Mr. Fusion card (its installer trips on them): pyserial's empty __init__.py get a comment
+    find "$PAY/tty2oled-firmware" -type f -name '*.py' -size 0 -exec sh -c 'echo "# (package marker)" > "$1"' _ {} \;
+    echo "screen firmware kit: $(ls "$PAY/tty2oled-firmware" | grep -c '_octo.bin$') firmware(s)"
 else echo "no screen firmware kit (step 088 has nothing to put on the screen later)"; fi
 # OCTOCODE, the code editor, from this commit's source (step 055 puts it in Apps)
 acme -f cbm -o "$PAY/OCTOCODE.PRG" "$REPO/tools/octoos/octocode/octocode.asm"

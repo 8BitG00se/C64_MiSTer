@@ -49,7 +49,8 @@ else
 fi
 for d in Demos Games Apps Code Music SIDs Pictures "My Chips" Disks Screenshots Saves; do
     [ -d "$C/games/C64/$d" ] || bad "no games/C64/$d"
-    [ "${OCTO_EXAMPLES:-}" = none ] || [ -n "$(ls -A "$C/games/C64/$d")" ] || bad "games/C64/$d is empty"
+    # OCTO_EXAMPLES_PARTIAL=1: a set that fills only some folders (build 7: the four demos) - empty ones are fine
+    [ "${OCTO_EXAMPLES:-}" = none ] || [ "${OCTO_EXAMPLES_PARTIAL:-0}" = 1 ] || [ -n "$(ls -A "$C/games/C64/$d")" ] || bad "games/C64/$d is empty"
 done
 
 echo "-- straight into Octophonic"
