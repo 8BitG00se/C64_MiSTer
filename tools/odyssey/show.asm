@@ -65,7 +65,7 @@ nfr     = $c4f2         ; 2: the frames since the show began
 bank    = $1a           ; the bank shown: 0 ($4000) or 1 ($8000)
 view    = $1b           ; the view shown
 nview   = $1c           ; the view loading
-fxon    = $1d           ; 1: twinkles, sparkles, comet
+fxon    = $1d           ; 1: twinkles, sparkles
 mptr    = $20           ; 2: the scroll text
 qview   = $22           ; a view's name to scroll next (+1)
 vtime   = $23           ; 2: frames this view has been shown
@@ -74,9 +74,6 @@ trans   = $26           ; counts the changes (iris / fade)
 lvn     = $27           ; loading: the view
 lvb     = $28           ; loading: the bank
 spnext  = $29           ; the next sparkle star
-cometx  = $2a           ; 2
-comety  = $2c
-cometw  = $2d           ; 2: frames to the next comet
 inname  = $2f
 iptr    = $30           ; 2: the interrupt's
 iptr2   = $32           ; 2
@@ -341,7 +338,7 @@ drready lda frame
 ; The pictures change on the music's phrases (8 bars), a little early so the new one is
 ; in on the beat. phtab: the song frames (mfr) at which a change starts: the theme's
 ; 4-bar phrases, both times (made by song.py into SONG.ASM, so they follow its tempo).
-PHN     = 16
+; PHN (how many) is in SONG.ASM too
 PHLEAD  = 0
 !zone atcut
 atcut   ldx #0

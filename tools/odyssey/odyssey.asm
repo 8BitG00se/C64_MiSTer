@@ -39,7 +39,7 @@
 ;   IRIS.ASM     its setting up, its line about the machine
 ;   GALAXY.ASM   the galaxy's turn (drawn anew) and its live stars
 ;   OCTO.ASM     the Octophonic show (OctoVIC, 8 SIDs, the REU)
-;   OCTOFX.ASM   its twinkles, sparkles, comet, sprites, scroll text
+;   OCTOFX.ASM   its twinkles, sparkles, sprites, scroll text
 ;   CAMERA.ASM   its camera through the cliffs
 ;   SONG.ASM     the notes (made by song.py on the PC)
 ; Press F2 on ANY of them: each part starts by pulling in this file
@@ -53,7 +53,7 @@
 ; this disk (VIEW0-VIEW3), the Octophonic picture is in the .reu.
 
 !set odytop = 1         ; (the parts look for this: see above)
-BUILD   = 2
+BUILD   = 3
 
 ; ---------------------------------------------------- the machine
 REU     = $DF00

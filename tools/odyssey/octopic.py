@@ -158,7 +158,9 @@ def main():
     ABOVE = (700 * sx, 150 * sy, 0.8)                      # the stars above it
     EAST = (1080 * sx, 230 * sy, 1.2)                      # the eastern cliffs
     DUST = (620 * sx, 560 * sy, 1.1)                       # the deep dust
-    STAR = (1112 * sx, 177 * sy, 0.5)
+    # where it starts and ends: close on the ridge, no star in the middle (build 2 started and ended zoomed on a bright
+    # star, which then sat in the screen's centre while the camera moved - it looked as if it followed the watcher)
+    STAR = (590 * sx, 330 * sy, 0.6)
     SPEC = [(60, None, 1),                                # black; the palette fades up (event 1)
             (480, WHOLE, 2),                              # out from the star to the whole picture (the introduction)
             (240, None, 0),
@@ -176,7 +178,7 @@ def main():
     SPEC = SPEC[:1] + [(p1 - 60, WHOLE, 2)] + [(int(round(n * k)), p, e) for n, p, e in SPEC[2:]]
     used = sum(n for n, _, _ in SPEC)
     rest = songlen - used
-    SPEC += [(max(60, rest - 360), None, 3), (360, STAR, 0)]   # hold through the coda (the credit), then back to the star
+    SPEC += [(max(60, rest - 360), None, 3), (360, STAR, 0)]   # hold through the coda (the credit), then back to the ridge
     rows, tot = path_rows(SPEC, STAR)
     assert tot == songlen, (tot, songlen)
     for n, (x, y, z), ev in rows:                          # never past the picture's edges

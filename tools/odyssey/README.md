@@ -9,7 +9,7 @@ hear is done by the 6502 on the machine; the PC only converts the picture and pr
 
 | machine | what it does |
 |---|---|
-| Octophonic 64 (OctoVIC 2+ and the .reu) | the picture in 256 colours (2048 x 1186) on OctoVIC's turned-and-sized layer, a camera from a star out to the whole cliffs, along the ridge, up to the stars, into the dust and back; stars twinkle (8 palette groups), sparkles and a comet (sprites, added light), 8 equaliser bars; the waltz on all 8 SIDs |
+| Octophonic 64 (OctoVIC 2+ and the .reu) | the picture in 256 colours (2048 x 1186) on OctoVIC's turned-and-sized layer, a camera pulling back from the ridge to the whole cliffs, along the ridge, up to the stars, into the dust and back; stars twinkle (8 palette groups), sparkles (sprites, added light), 8 equaliser bars; the waltz on all 8 SIDs |
 | C64 with a second SID ($D420, $D500 or $DE00) | our own Andromeda-style spiral galaxy (`galaxy.py`, no photo) in hires: the 6502 turns it and draws it anew (a 64x64 texture of the disk, tilted 60 degrees, a 16x16 dither), ~100 live stars orbit in its arms (the inner ones faster), stars twinkle, glints flash on the brightest, a scroll text and an equaliser in a text row; the waltz in stereo |
 | stock C64 | the same galaxy, the waltz on 1 SID (the melody on soft strings, a gentle bass on the downbeat, soft held after-beats; the tremolo and horn call in the introduction) |
 

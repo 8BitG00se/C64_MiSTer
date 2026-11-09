@@ -7,7 +7,7 @@
 ; peak, along the ridge, up to the stars, to the eastern cliffs, down
 ; into the dust and back out - in time with the waltz, all 8 SIDs.
 ; Stars twinkle (8 palette entries the picture's stars use, set every
-; frame), sparkles glow on the brightest ones and a comet passes
+; frame), sparkles glow on the brightest ones
 ; (OctoVIC sprites, "added" light), 8 equaliser bars (a SID each),
 ; the scroll text on the VIC in front.
 ; Everything big is in the .reu: its first bytes list the parts, so
@@ -46,7 +46,7 @@ V_PIC1  = $260000       ; the half size (1024)
 V_PIC2  = $300000       ; the quarter size (512)
 V_SPR   = $340000       ; the sprites' graphics
 V_SAT   = $350000       ; two sprite tables (one shown, one built)
-NSPR    = 13            ; 0-3 sparkles, 4 the comet, 5-12 the bars
+NSPR    = 13            ; 0-3 sparkles, 4 off (was the comet), 5-12 the bars
 
 HDR     = $c000         ; the .reu's list of parts (128 bytes)
 STARS   = $c100         ; the sparkle stars: n, then x, y (16 bits)
@@ -83,9 +83,7 @@ fade    = $8a           ; the palette's fade in, 0-64
 sat     = $8b           ; which sprite table is being built
 oxs     = $8c           ; the scroll text's fine scroll
 optr    = $8d           ; 2: the scroll text
-cmx     = $8f           ; (+$90) 2: the comet's x
-cmy     = $91
-cmw     = $92           ; 2: frames to the next comet
+oshift  = $8f           ; 1: the scroll text moves a letter at the next frame's top
 
 !macro asr32 .a {
         lda .a+3
@@ -287,7 +285,6 @@ omain   lda tick
         jsr ofade
         jsr levels8     ; the equaliser
         jsr sparkle8
-        jsr comet8
         jsr satbuild    ; the sprite table for the next frame
         jsr oscroll
         jmp omain
@@ -314,7 +311,10 @@ ovblank ldx #23
         sta SATBASE+2
         lda oxs         ; the scroll text's fine scroll (38 columns)
         sta $d016
-        rts
+        lda oshift      ; and its letters, in the same frame
+        beq +
+        jsr oshiftrow
++       rts
 mipctl  !byte $fb, $ab, $5b     ; on, 256 colours, bitmap, its size
 miphi   !byte ^V_PIC0, ^V_PIC1, ^V_PIC2
 

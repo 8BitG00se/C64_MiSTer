@@ -1,6 +1,6 @@
 ; (C) 2026 Mong00se
 ; OCTOFX.ASM - the Octophonic show's set-up and effects: the twinkles, the
-; sparkles, the comet, the sprite table, the scroll text (with OCTO.ASM)
+; sparkles, the sprite table, the scroll text (with OCTO.ASM)
 ; A part of ODYSSEY.ASM (2026: An Octophonic Odyssey), by Mong00se:
 ; F2 on it builds the whole demo.
 !ifdef odytop { !set odyp = odytop } else { !set odyp = 0 }
@@ -242,46 +242,6 @@ spos    stx tq+6
 .far    sec
         rts
 
-; ------------------------------------------------ the comet
-!zone comet8
-comet8  lda cmy
-        bne .fly
-        lda cmw
-        bne +
-        dec cmw+1
-+       dec cmw
-        lda cmw
-        ora cmw+1
-        bne .x
-        lda #<380
-        sta cmx
-        lda #>380
-        sta cmx+1
-        jsr random
-        and #63
-        ora #4
-        sta cmy
-.x      rts
-.fly    sec             ; 3 left, 1 down a frame
-        lda cmx
-        sbc #3
-        sta cmx
-        lda cmx+1
-        sbc #0
-        sta cmx+1
-        bmi .end
-        inc cmy
-        lda cmy
-        cmp #190
-        bcc .x
-.end    lda #0
-        sta cmy
-        jsr random
-        sta cmw
-        lda #3
-        sta cmw+1
-        rts
-
 ; ------------------------------------------------ the sprite table
 ; built in the table not shown (VRAM V_SAT + sat x 1024), 8 bytes a
 ; sprite: x, y, graphics, size and on, how it mixes
@@ -336,27 +296,8 @@ satbuild
 .nx     inx
         cpx #4
         bne .sp
-        lda cmy         ; the comet
-        bne +
-        jsr soff
-        jmp .eq
-+       lda cmx
-        sta VDATA
-        lda cmx+1
-        sta VDATA
-        lda cmy
-        sta VDATA
-        lda #0
-        sta VDATA
-        lda HDR+64+8*6+1
-        sta VDATA
-        lda #0
-        sta VDATA
-        lda #$c7        ; 64 x 16, 256 colours, on
-        sta VDATA
-        lda #$80
-        sta VDATA
-.eq     ldx #0          ; the bars: 8 x 64, the graphics of the level
+        jsr soff        ; (the comet's sprite: no comet now)
+        ldx #0          ; the bars: 8 x 64, the graphics of the level
 -       txa
         asl
         asl
@@ -399,11 +340,25 @@ soff    lda #0
 osize   !byte 0,1,2,3,3,2,1,0
 
 ; ------------------------------------------------ the scroll text
+; 1 pixel a frame. The fine scroll steps here; when it wraps (7 again)
+; the row moves a letter left in OVBLANK, at the top of the next frame,
+; together with the new fine scroll - so the letters and $D016 always
+; change in the same frame (before, the row moved at the end of this
+; frame's work, one frame early: the text jumped back 8 pixels every
+; 8 frames).
 !zone oscroll
 oscroll dec oxs
         bpl .x
         lda #7
         sta oxs
+        lda #1
+        sta oshift
+.x      rts
+; the row a letter left, the next letter in at the right (OVBLANK)
+!zone oshiftrow
+oshiftrow
+        lda #0
+        sta oshift
         ldx #0
 -       lda $07c1,x
         sta $07c0,x
@@ -420,9 +375,9 @@ oscroll dec oxs
         jmp .g
 +       sta $07e7
         inc optr
-        bne .x
+        bne +
         inc optr+1
-.x      rts
++       rts
 ; ------------------------------------------------ the show's set-up
 !zone oinit
 oinit   lda #0
@@ -432,11 +387,7 @@ oinit   lda #0
         sta tick
         sta rt
         sta rt+1
-        sta cmy
-        lda #<700
-        sta cmw
-        lda #>700
-        sta cmw+1
+        sta oshift
         lda #<PATH
         sta rp
         lda #>PATH
