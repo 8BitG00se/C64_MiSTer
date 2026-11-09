@@ -7,7 +7,7 @@ Music: "The Blue Danube" (An der schoenen blauen Donau, 1866) by Johann Strauss 
 
 One program for three machines - it looks at the machine it is on:
 - Octophonic 64 (OctoVIC, 8 SIDs, REU): the picture in 256 colours, 2048 x 1186, a slow camera through the
-  cliffs, the waltz on all 8 SIDs (strings, harp, horns, flute, bells, cellos, timpani), twinkling stars,
+  cliffs, the waltz on all 8 SIDs as an orchestra (violins, violas, cellos, basses, horns, flute, oboe, harp, timpani), twinkling stars,
   sparkles, a comet, 8 equaliser bars.
 - C64 with a second SID (at $D420, $D500 or $DE00): our own Andromeda-style spiral galaxy (no photo) in hires,
   turned and drawn anew by the 6502, with ~100 live stars orbiting in its arms (the inner ones faster), twinkling
