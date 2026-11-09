@@ -1,4 +1,4 @@
-; (C) 2026 Mong00se. All rights reserved.
+; (C) 2026 Mong00se
 ; FX.ASM - the stock show's effects: the scroll text, the equaliser, the
 ; twinkles, the sparkles, the comet, the sprites (with SHOW.ASM)
 ; A part of ODYSSEY.ASM (2026: An Octophonic Odyssey), by Mong00se:
@@ -17,24 +17,6 @@
 scroll  jsr scrshift
         lda colbit
         bne .col
-        lda qview       ; a new view: its name now, then back
-        beq .get
-        sec
-        sbc #1
-        asl
-        tax
-        lda #0
-        sta qview
-        lda mptr
-        sta msave
-        lda mptr+1
-        sta msave+1
-        lda vnames,x
-        sta mptr
-        lda vnames+1,x
-        sta mptr+1
-        lda #1
-        sta inname
 .get    ldy #0
         lda (mptr),y
         bne +
@@ -62,9 +44,9 @@ scroll  jsr scrshift
         ldx bank
         lda b_bmp,x
         clc
-        adc #$1f
+        adc #$1e
         sta iptr2+1
-        lda #$38        ; bitmap + $1F38: the last cell of row 24
+        lda #$f8        ; bitmap + $1EF8: the last cell (31) of the scroll text in row 24
         sta iptr2
         ldy #7
 -       lda (iptr),y
@@ -83,17 +65,37 @@ scroll  jsr scrshift
         sta colbit
         rts
 bitmask !byte $80,$40,$20,$10,$08,$04,$02,$01
-; the message after this one: back from a view's name, or the next
-; in the list (and after the machine's line, the first again)
+; the message after this one. A view's name (queued by the tour in qview) goes in only here, at the end of
+; a message - the "..." gap between two sentences - so a sentence always reads whole. After the name the
+; message list goes on where it was. The list: each message's end (its 0) and the one that follows it.
 !zone nextmsg
 nextmsg lda inname
         beq +
-        lda #0
+        lda #0          ; the name is done: back to the end of the message it came after
         sta inname
         lda msave
         sta mptr
         lda msave+1
         sta mptr+1
+        rts
++       lda qview       ; a view's name waits: now
+        beq +
+        sec
+        sbc #1
+        asl
+        tax
+        lda #0
+        sta qview
+        lda mptr
+        sta msave
+        lda mptr+1
+        sta msave+1
+        lda vnames,x
+        sta mptr
+        lda vnames+1,x
+        sta mptr+1
+        lda #1
+        sta inname
         rts
 +       lda mptr+1
         cmp #>MSGBUF
@@ -114,7 +116,7 @@ nextmsg lda inname
         inx
         inx
         inx
-        cpx #4*4
+        cpx #NMSG*4
         bne -
         ldx #0
         beq +++
@@ -125,43 +127,31 @@ nextmsg lda inname
         lda msgs+1,x
         sta mptr+1
         rts
-; the end of each message (its 0), and what comes next
+NMSG    = 7
 !zone msgs
-msgs    !word msg0e, msg1, msg1e, msg2, msg2e, msg3, msg3e, MSGBUF
+msgs    !word msg0e, msg1, msg1e, msg2, msg2e, msg3, msg3e, msg4
+        !word msg4e, msg5, msg5e, msg6, msg6e, MSGBUF
 !zone msg0
-msg0    !scr "      2026: an octophonic odyssey  -  (c) 2026 "
-        !scr "mong00se    ...    "
-        !scr "the cosmic cliffs of the carina nebula, seen by "
-        !scr "the james webb space telescope    ...    "
-!zone msg0e
+msg0    !scr "      2026: an octophonic odyssey  -  (c) 2026 mong00se    ...    "
 msg0e   !byte 0
-!zone msg1
-msg1    !scr "image: nasa, esa, csa, stsci    ...    music: the "
-        !scr "blue danube, johann strauss ii (1866), arranged "
-        !scr "by mong00se    ...    "
-!zone msg1e
+msg1    !scr "the cosmic cliffs of the carina nebula, seen by the james webb space telescope    ...    "
 msg1e   !byte 0
-!zone msg2
-msg2    !scr "every star, sparkle and note is done by the 6502 "
-        !scr "- the pictures are loaded from the disk while you "
-        !scr "watch, and change with the music    ...    "
-!zone msg2e
+msg2    !scr "image: nasa, esa, csa, stsci    ...    "
 msg2e   !byte 0
-!zone msg3
-msg3    !scr "on an octophonic 64 this disk zooms through the "
-        !scr "cliffs in 256 colours on 8 sids    ...    "
-!zone msg3e
+msg3    !scr "music: the blue danube, johann strauss ii (1866), arranged by mong00se    ...    "
 msg3e   !byte 0
+msg4    !scr "every star, sparkle and note is done by the 6502    ...    "
+msg4e   !byte 0
+msg5    !scr "the pictures are loaded from the disk while you watch, and change with the music    ...    "
+msg5e   !byte 0
+msg6    !scr "on an octophonic 64 this disk zooms through the cliffs in 256 colours on 8 sids    ...    "
+msg6e   !byte 0
 !zone vnames
 vnames  !word vn0, vn1, vn2, vn3
-!zone vn0
-vn0     !scr "   * the cliff edge *   ", 0
-!zone vn1
-vn1     !scr "   * the western peak *   ", 0
-!zone vn2
-vn2     !scr "   * the golden ridge *   ", 0
-!zone vn3
-vn3     !scr "   * the eastern stars *   ", 0
+vn0     !scr "   * the cliff edge *    ...    ", 0
+vn1     !scr "   * the western peak *    ...    ", 0
+vn2     !scr "   * the golden ridge *    ...    ", 0
+vn3     !scr "   * the eastern stars *    ...    ", 0
 !zone t_m1
 t_m1    !scr "1 sid detected - a stock commodore 64    ...    ", 0
 !zone t_m2
@@ -176,8 +166,8 @@ scrshift
 !for p, 1, 2 {
 !for r, 0, 7 {
         clc
-!for c, 0, 39 {
-        rol $7e00+(39-c)*8+r
+!for c, 0, 31 {
+        rol $7e00+(31-c)*8+r
 }
 }
 }
@@ -190,11 +180,11 @@ scrswap lda #<scrshift
         sta ptr
         lda #>scrshift
         sta ptr+1
-        ldx #16         ; 16 runs of: CLC, 40 x ROL abs
+        ldx #16         ; 16 runs of: CLC, 32 x ROL abs
 .run    inc ptr
         bne +
         inc ptr+1
-+       ldy #40
++       ldy #32
 -       sty tmp
         ldy #2
         lda (ptr),y
@@ -231,48 +221,55 @@ scrswap lda #<scrshift
         rts
 
 ; ================================================= the equaliser
-; a sprite a SID: 3 bars (a voice each), bytes 0, 1, 2 of each row
+; A slim meter in the last row of the bitmap, right of the scroll text (cells 32-39): a thin bar a voice
+; (3, or 6 with a second SID), 8 lines high, blue at the foot, light blue, then white at the top (the
+; three colours a cell has: screen RAM's two nibbles and colour RAM). Drawn into both banks' bitmaps.
 !zone eqdraw
-eqdraw  ldx #0
-        jsr .bar
-        ldx #1
-        jsr .bar
-        ldx #2
-        jsr .bar
-        lda mode
-        beq .x
-        ldx #3
-        jsr .bar
-        ldx #4
-        jsr .bar
-        ldx #5
-.bar    lda pv_eq,x     ; rows from the top: 21 - level empty
-        sta it
-        lda #21
-        sec
-        sbc it
-        bcs +
-        lda #0
-+       sta it
-        txa             ; the byte: SID 2's sprite is 64 on
-        cmp #3
-        bcc +
-        adc #64-3-1     ; (carry set)
-+       tay
+eqdraw  lda #3
+        ldy #2          ; the first bar's cell - 32
+        ldx mode
+        beq +
+        lda #6
+        ldy #1
++       sta eqn
+        sty it+1
         ldx #0
--       lda #0
-        cpx it
+.j      stx it
+        lda pv_eq,x
+        tay
+        lda eqh,y       ; the bar's height in lines
+        sta iptr
+        lda #8
+        sec
+        sbc iptr
+        sta iptr+1      ; its first line from the top
+        lda it
+        clc
+        adc it+1
+        asl
+        asl
+        asl
+        tay             ; the cell's 8 bytes
+        ldx #0
+.l      lda #0
+        cpx iptr+1
         bcc +
-        lda #$fe
-+       sta $4800,y
-        sta $8800,y
-        iny
-        iny
+        lda eqv,x
++       sta $7f00,y
+        sta $bf00,y
         iny
         inx
-        cpx #21
-        bne -
-.x      rts
+        cpx #8
+        bne .l
+        ldx it
+        inx
+        cpx eqn
+        bne .j
+        rts
+!zone eqv
+eqv     !byte $3c,$3c,$28,$28,$28,$14,$14,$14
+!zone eqh
+eqh     !byte 0,0,1,1,2,2,2,3,3,4,4,4,5,5,6,6,6,7,7,8,8
 
 ; ================================================== the twinkles
 ; the view's table: n, then n x (colour RAM lo, hi, its colour)

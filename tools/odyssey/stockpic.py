@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# (C) 2026 Mong00se. All rights reserved.
+# (C) 2026 Mong00se
 # ODYSSEY - the stock C64 pictures: the Webb "Cosmic Cliffs" (NASA, ESA, CSA, STScI) as four multicolour bitmaps
 # (160 x 192 shown, 4 x 8 cells, black background + 3 colours a cell), plus the tables the 6502 needs for its live effects:
 # the star cells it twinkles and the brightest stars for the sparkle sprites.
@@ -74,8 +74,8 @@ VIEWS = [
     dict(name='THE GOLDEN RIDGE', box=(600, 190, 440), p=dict(wide=1.8, usm=1.3, wide_s=10)),
     dict(name='THE EASTERN STARS', box=(820, 50, 460), p=dict(wide=1.2, usm=1.0)),
 ]
-DEFAULT = dict(usm=0.9, usm_s=1.0, usm_sky=0.3, sky_smooth=0.8, wide=1.0, wide_s=6.0, glo=2, ghi=99.5, warm_gam=0.85, sky_gam=1.0,
-               rose=0.5, hue_lo=22, hue_hi=48)
+DEFAULT = dict(usm=0.8, usm_s=1.3, usm_sky=0.3, sky_smooth=1.0, wide=1.0, wide_s=6.0, glo=2, ghi=99.5, warm_gam=0.85, sky_gam=1.0,
+               rose=0.5, hue_lo=22, hue_hi=48, sky_step=0.75)
 
 def view_crop(full, v):
     x, y, w = v['box']; h = w / ASP; S = full.width / 1280.0
@@ -109,7 +109,8 @@ def prepare(im, p):
     w = np.clip((B + 0.3 * A + 0.01) / 0.03, 0, 1); w = w * w * (3 - 2 * w)       # 1: warm (the cliffs), 0: blue (the sky)
     w = ndimage.gaussian_filter(w, 0.8)
     Ls = ndimage.gaussian_filter(L, p['sky_smooth'])                              # the sky is smoothed: its faint stars are noise
-    Lw = w * L + (1 - w) * Ls
+    Lm = ndimage.median_filter(L, size=3)                                         # the cliffs: a median takes the speckle out
+    Lw = w * Lm + (1 - w) * Ls
     Lc = (Lw + (w * p['usm'] + (1 - w) * p['usm_sky']) * (Lw - ndimage.gaussian_filter(Lw, p['usm_s']))
           + p['wide'] * (Lw - ndimage.gaussian_filter(Lw, p['wide_s'])))
     ang = ndimage.gaussian_filter(np.degrees(np.arctan2(B, A)), 1.0)
@@ -121,11 +122,16 @@ def prepare(im, p):
         lo, hi = np.percentile(ref, p['glo']), np.percentile(ref, p['ghi'])
         t = np.clip((Lc - lo) / max(1e-3, hi - lo), 0, 1) ** gam
         if fam == 'warm': col = ramp('gold', t) * (1 - wr[..., None]) + ramp('rose', t) * wr[..., None]
-        else: col = ramp('sky', t)
+        else:                                                                     # the sky in bands: flat, with narrow soft steps
+            cols, stops = RAMPS['sky']; stops = np.array(stops, float); R = PLAB0[cols]
+            i = np.clip(np.searchsorted(stops, t, side='right') - 1, 0, len(stops) - 2)
+            f = (t - stops[i]) / (stops[i + 1] - stops[i])
+            g = np.clip((f - 0.5 + p['sky_step'] / 2) / p['sky_step'], 0, 1); g = (g * g * (3 - 2 * g))[..., None]
+            col = R[i] * (1 - g) + R[i + 1] * g
         out += col * wt[..., None]
-    return out
+    return out, w
 
-def choose_cells(lab, starmask, plab, bg=0):
+def choose_cells(lab, starmask, plab, skycell, bg=0):
     # every cell: the 3 colours (+ black) that give the least error after dithering, all triples of ALLOWED tried at once
     tri = np.array(list(combinations([c for c in ALLOWED if c != bg], 3)))     # T x 3
     T = len(tri)
@@ -134,6 +140,7 @@ def choose_cells(lab, starmask, plab, bg=0):
     wts = starmask.reshape(CH, 8, CW, 4).transpose(0, 2, 1, 3).reshape(CH * CW, 32)
     best = np.zeros(CH * CW, int)
     P = plab[sets]                                                              # T x 4 x 3
+    skyok = np.array([set(t) <= {1, 3, 6, 14} for t in tri])                    # the sets the sky may use
     for i0 in range(0, CH * CW, 40):
         c = cells[i0:i0 + 40]                                                   # B x 32 x 3
         B = len(c)
@@ -159,12 +166,16 @@ def choose_cells(lab, starmask, plab, bg=0):
         pe = (((outc - c[:, None]) ** 2).sum(-1) * (1 + 6 * wts[i0:i0 + B, None])).mean(-1)
         o4 = outc.reshape(B, T, 4, 2, 2, 2, 3).mean(axis=(3, 5)); c4 = c.reshape(B, 4, 2, 2, 2, 3).mean(axis=(2, 4))
         be = ((o4 - c4[:, None]) ** 2).sum(-1).mean(axis=(-1, -2))
-        best[i0:i0 + B] = (0.5 * pe + 1.5 * be).argmin(1)
+        cost = 0.5 * pe + 1.5 * be
+        cost[skycell[i0:i0 + B][:, None] & ~skyok[None, :]] += 1e3
+        best[i0:i0 + B] = cost.argmin(1)
     return sets[best].reshape(CH, CW, 4)
 
 BAYER = (np.array([[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]) + 0.5) / 16
 
-def ordered(lab, csets, plab):
+BAYER2 = (np.array([[0, 2], [3, 1]]) + 0.5) / 4
+
+def ordered(lab, csets, plab, skypx):
     # ordered dither (pattern mixing): each pixel picks the pair of its cell's colours (and how much of each, in 16ths)
     # that mixes closest to it, a penalty for mixing far-apart colours; the 4 x 4 Bayer matrix decides which one it shows
     idx = np.zeros((H, W), int)
@@ -186,14 +197,17 @@ def ordered(lab, csets, plab):
                         m = e < best[0]
                         best[0][m] = e[m]; best[1][m] = i; best[2][m] = j; best[3][m] = ts[k][m]
             ys, xs = np.mgrid[0:8, 0:4]
-            thr = BAYER[(ys + cy * 8) % 4, (xs + cx * 4) % 4].reshape(-1)
+            thr = np.where(skypx[cy * 8:cy * 8 + 8, cx * 4:cx * 4 + 4].reshape(-1), BAYER2[(ys + cy * 8) % 2, (xs + cx * 4) % 2].reshape(-1),
+                           BAYER[(ys + cy * 8) % 4, (xs + cx * 4) % 4].reshape(-1))
             pick = np.where(best[3] > thr, best[2], best[1])
             idx[cy * 8:cy * 8 + 8, cx * 4:cx * 4 + 4] = pick.reshape(8, 4)
     return idx
 
 def convert(im, p):
     q = dict(DEFAULT); q.update(p)
-    lab = prepare(im, q)
+    lab, wmap = prepare(im, q)
+    skypx = wmap < 0.5
+    skycell = (wmap.reshape(CH, 8, CW, 4).mean(axis=(1, 3)) < 0.15).reshape(-1)     # cells of the sky: only its own colours (no streaks of odd sets)
     st = stars(im)
     starmask = np.zeros((H, W))
     for b, x, y, rgb in st[:NSTARS]:                                # the stars, crisp: near white with their tint
@@ -203,8 +217,8 @@ def convert(im, p):
             lab[yi, xi] = c; starmask[yi, xi] = 1
     lab[H - 1] = PLAB0[0]                                           # the last line black (the scroller's row is just below it)
     wt = np.array([1, WAB, WAB]); plab = PLAB0 * wt; lab = lab * wt
-    csets = choose_cells(lab, starmask, plab)
-    idx = ordered(lab, csets, plab)
+    csets = choose_cells(lab, starmask, plab, skycell)
+    idx = ordered(lab, csets, plab, skypx)
     scr = np.zeros(1000, np.uint8); col = np.zeros(1000, np.uint8); bmp = np.zeros(8000, np.uint8)
     n3 = np.zeros(1000, int)
     for cy in range(CH):
@@ -228,12 +242,24 @@ def convert(im, p):
         if o < 960 and n3[o] <= 3 and col[o] in (1, 7, 15, 13, 3) and o not in [t[0] for t in tw]:
             tw.append((o, int(col[o])))
     tw = tw[:24]
-    # sparkle stars: the brightest, not too near one another, clear of the bottom (the equaliser) rows
+    # sparkle stars: the brightest star pixels as the picture really shows them (a bright pixel of the finished bitmap, found
+    # near each detected star), not too near one another, clear of the scroller; the glint sprite goes exactly there
+    lum = np.zeros((H, W))
+    for y in range(H):
+        for x in range(W): lum[y, x] = PLAB0[csets[y // 8, x // 4][idx[y, x]]][0]
+    sm = ndimage.uniform_filter(lum, 3)
     sp = []
-    for b, x, y, rgb in st:
-        if y < 150 and all((x - sx) ** 2 + (y - sy) ** 2 > 16 ** 2 for sx, sy, _ in sp): sp.append((x, y, b))
+    for b, x, y, rgb in st[:80]:
+        xi, yi = int(x), int(y)
+        y0, y1, x0, x1 = max(0, yi - 3), min(H - 16, yi + 4), max(0, xi - 3), min(W, xi + 4)
+        if y1 <= y0: continue
+        win = sm[y0:y1, x0:x1] + 0.01 * lum[y0:y1, x0:x1]
+        k = np.unravel_index(win.argmax(), win.shape); py, px = y0 + k[0], x0 + k[1]
+        if lum[py, px] < 0.8 or sm[py, px] < 0.55 or py > 170: continue
+        if all((px - sx) ** 2 + (py - sy) ** 2 > 14 ** 2 for sx, sy in sp): sp.append((px, py))
         if len(sp) == 8: break
-    sp = [(int(24 + x * 2 - 11), int(50 + y - 10)) for x, y, _ in sp]
+    spf = sp
+    sp = [(int(24 + 2 * x - 10), int(50 + y - 10)) for x, y in sp]
     tab = bytearray(256)
     tab[0] = len(tw)
     for k, (o, c) in enumerate(tw): tab[1 + k * 3:4 + k * 3] = bytes([o & 255, (o >> 8) + 0xD8, c])
@@ -243,7 +269,7 @@ def convert(im, p):
     for y in range(H):
         for x in range(W):
             rgb[y, x] = PEPTO[csets[y // 8, x // 4][idx[y, x]]]
-    return bytes(scr) + bytes(col) + bytes(tab) + bytes(bmp), Image.fromarray(rgb).resize((320, H), Image.NEAREST)
+    return bytes(scr) + bytes(col) + bytes(tab) + bytes(bmp), Image.fromarray(rgb).resize((320, H), Image.NEAREST), spf
 
 # ------------------------------------------------------------------------------------------------ the packer
 def pack(data):
@@ -310,7 +336,8 @@ def main():
     pngs = []
     for k in only:
         v = VIEWS[k]
-        data, pv = convert(view_crop(full, v), v['p'])
+        data, pv, spf = convert(view_crop(full, v), v['p'])
+        print('  sparkles', spf)
         assert len(data) == 10256
         p1, p2 = pack(data[:2256]), pack(data[2256:])
         assert unpack(p1, 2256) == data[:2256] and unpack(p2, 8000) == data[2256:]

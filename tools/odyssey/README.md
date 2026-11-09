@@ -1,6 +1,6 @@
 # 2026: AN OCTOPHONIC ODYSSEY
 
-(C) 2026 Mong00se. All rights reserved.
+(C) 2026 Mong00se
 
 One C64 program for three machines, by Mong00se. It looks at the machine it is on and shows what that machine can do
 with the James Webb Space Telescope's "Cosmic Cliffs" in the Carina Nebula (NASA, ESA, CSA, STScI), to Johann Strauss

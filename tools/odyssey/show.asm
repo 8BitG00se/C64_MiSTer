@@ -1,4 +1,4 @@
-; (C) 2026 Mong00se. All rights reserved.
+; (C) 2026 Mong00se
 ; SHOW.ASM - the stock C64 / 2-SID show of ODYSSEY.ASM, by Mong00se.
 ; A tour of the Webb "Cosmic Cliffs" (NASA, ESA, CSA, STScI): four
 ; multicolour bitmaps (VIEW0-VIEW3 on the disk: the whole picture,
@@ -61,9 +61,10 @@ lvw     = $5a
 lverr   = $5b           ; loading: the drive failed
 lvpage  = $5c           ; loading: pages of the view unpacked so far (the bar)
 lvdr    = $5d           ; the bar: cells drawn
-LST     = $cf00         ; the loading screen's stars: offset lo, hi (40 each), timers
+eqn     = $5e           ; the equaliser: bars
+LST     = $cf00         ; the loading screen's stars: offset lo, hi, timers (72 each)
 
-MINVIEW = 600           ; the least frames from one cut to the next (12 s: a view loads in about 15 s on a 1541)
+MINVIEW = 700           ; the least frames from one cut to the next (12 s: a view loads in about 15 s on a 1541)
 NVIEW   = 4             ; the views on the disk (VIEW0-VIEW3)
 
 !zone b_dd00
@@ -98,6 +99,9 @@ show    lda #<irq_t     ; the title's interrupt: the music only
         sta qview
         sta inname
         jsr setup       ; letters, sprites, black screens
+        lda #0          ; (the equaliser is not sprites any more)
+        sta spry
+        sta spry+1
         jsr loadscr     ; the loading screen: stars, the title, the equaliser, a bar
         ; the first view, into bank 1
 -       lda #0
@@ -109,16 +113,17 @@ show    lda #<irq_t     ; the title's interrupt: the music only
         lda #7
         jsr print2
         jmp -
-+       ldx #<t_ready
++       lda #40         ; the bar full
+        sta lvpage
+        ldx #<t_ready
         ldy #>t_ready
         lda #1
         jsr print2
 -       jsr atcut       ; the picture comes up on the music's next phrase
         bcc -
-        jsr bars        ; the telescope opens: raster bars
-        jsr showon      ; the bitmap (all black), the split
-        lda #2
-        jsr iris_open   ; the iris opens on the whole picture
+        jsr showon      ; the bitmap (all black)
+        lda #1
+        jsr iris_open   ; the iris opens on the whole picture, straight from the loading screen
         lda #1
         sta qview
         sta fxon
@@ -385,9 +390,9 @@ drready lda frame
 ; ===================================================== the phrases
 ; The pictures change on the music's phrases (8 bars), a little early so the new one is
 ; in on the beat. phtab: the song frames (mfr) at which a change starts: the phrases
-; begin at frame 549 (the end of the introduction), 480 frames (8 bars) apart; scaled
+; begin at frame 549 (the end of the introduction), 240 frames (4 bars) apart; scaled
 ; to SONGLEN if the song's length changes (song.asm).
-PHN     = 8
+PHN     = 16
 PHLEAD  = 40
 !zone atcut
 atcut   ldx #0
@@ -411,13 +416,14 @@ atcut   ldx #0
 .y      sec
         rts
 !zone phtab
-phtab   !for k, 0, PHN-1 { !word ((549 + 480*k) * songlen / 4816) - PHLEAD }
+phtab   !for k, 0, PHN-1 { !word ((549 + 240*k) * songlen / 4816) - PHLEAD }
 
 ; ============================================== the loading screen
-; Text mode in bank 1 (screen $4400, the letters at $5800), what the loading is shown on:
-; stars that twinkle ('.', '+', '*' and back, in the greys), the title with a light
-; running through it, the equaliser (the music is playing) and a bar that fills as the
-; picture comes off the disk.
+; Text mode in bank 1 (screen $4400, the letters at $5800 with a few of our own: star glints, the bar's
+; pieces), the whole screen: a starfield (many faint stars, 16 bright ones that twinkle - a glint that
+; grows and fades), the title block in the middle with a light running through the title, a bar
+; that fills as the picture comes off the disk, and below it the equaliser (a bar a voice, built of
+; block characters in a colour ramp).
 !zone loadscr
 loadscr sei
         ldx #0          ; colour RAM black
@@ -429,40 +435,82 @@ loadscr sei
         inx
         bne -
         sta lvdr
-        ldx #0          ; 40 stars: not in the middle rows (the text)
+        ldx #127        ; our own characters 64-79
+-       lda glyphs,x
+        sta $5a00,x
+        dex
+        bpl -
+        ldx #0          ; 72 stars: not in the middle (rows 3-21, columns 5-34: the text)
 .st     jsr random
-        and #3
+        and #31
+        cmp #24
+        bcs .st
         sta tmp
         jsr random
-        sta tmp+1       ; offset tmp/tmp+1: 0-1023
-        lda tmp
+        and #63
+        cmp #40
+        bcs .st
+        sta tmp+1
+        lda tmp         ; the text (rows 3-14, columns 5-34) and the equaliser (rows 15-21, 10-29) stay clear
         cmp #3
-        bne +
+        bcc .ok
+        cmp #15
+        bcs .eqr
         lda tmp+1
-        cmp #$e8
-        bcs .st         ; 1000 up: no
-+       lda tmp         ; rows 8-19: offsets 320-799
-        cmp #1
-        beq .st
-        cmp #2
-        beq .st
-        cmp #3
-        bne +
-        lda tmp+1
-        cmp #$20
+        cmp #5
+        bcc .ok
+        cmp #35
         bcc .st
-+       lda tmp+1
+        bcs .ok
+.eqr    cmp #22
+        bcs .ok
+        lda tmp+1
+        cmp #10
+        bcc .ok
+        cmp #30
+        bcc .st
+.ok     ldy tmp
+        lda tmp+1
+        clc
+        adc rowlo,y
         sta LST,x
-        lda tmp
-        sta LST+40,x
+        lda rowhi,y
+        adc #0
+        sta LST+72,x
         lda #0
-        sta LST+80,x
+        sta LST+144,x
         stx tmp+2
         jsr ltwput
         ldx tmp+2
         inx
-        cpx #40
+        cpx #72
         bne .st
+        ldx #29         ; the bar's track (row 13, columns 5-34)
+        lda #68
+-       sta $4400+13*40+5,x
+        dex
+        bpl -
+        ldx #29
+        lda #11
+-       sta $d800+13*40+5,x
+        dex
+        bpl -
+        ldx #16         ; the equaliser's colours (rows 16-20, white at the top, blue at the foot)
+.er     lda rowlo,x
+        sta ptr3
+        lda rowhi,x
+        clc
+        adc #$d8
+        sta ptr3+1
+        lda eqramp-16,x
+        ldy #8
+-       sta (ptr3),y
+        iny
+        cpy #32
+        bne -
+        inx
+        cpx #21
+        bne .er
         lda $dd00       ; bank 1, the text screen
         and #$fc
         ora #2
@@ -476,6 +524,12 @@ loadscr sei
         lda #0
         sta $d020
         sta $d021
+        lda #$7c        ; the glint sprites (the show's): multicolour, light blue and cyan spikes
+        sta $d01c
+        lda #14
+        sta $d025
+        lda #3
+        sta $d026
         ldx #<t_title
         ldy #>t_title
         lda #6
@@ -502,50 +556,83 @@ loadscr sei
         sta $0315
         cli
         rts
-; star X at its state: the character and colour of its timer (LST+80,x)
+!zone eqramp
+eqramp  !byte 1,3,14,14,6
+; our characters: star glints 64-67 (a dot, a cross, a bigger cross, a bright 8-point), the bar's track
+; 68 and fill 69, 72-79 a block 1-8 lines high from the foot
+!zone glyphs
+glyphs  !byte $00,$00,$00,$18,$00,$00,$00,$00
+        !byte $00,$00,$18,$3c,$3c,$18,$00,$00
+        !byte $00,$18,$18,$7e,$7e,$18,$18,$00
+        !byte $18,$5a,$3c,$ff,$ff,$3c,$5a,$18
+        !byte $00,$00,$00,$ff,$ff,$00,$00,$00
+        !byte $00,$ff,$ff,$ff,$ff,$ff,$ff,$00
+        !fill 16, 0
+        !byte $00,$00,$00,$00,$00,$00,$00,$ff
+        !byte $00,$00,$00,$00,$00,$00,$ff,$ff
+        !byte $00,$00,$00,$00,$00,$ff,$ff,$ff
+        !byte $00,$00,$00,$00,$ff,$ff,$ff,$ff
+        !byte $00,$00,$00,$ff,$ff,$ff,$ff,$ff
+        !byte $00,$00,$ff,$ff,$ff,$ff,$ff,$ff
+        !byte $00,$ff,$ff,$ff,$ff,$ff,$ff,$ff
+        !byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff
+; star X at its state: the glint's character and colour from its timer (LST+144,x); the faint ones stay dots
 !zone ltwput
 ltwput  lda LST,x
         sta iptr
         sta iptr2
-        lda LST+40,x
+        lda LST+72,x
         clc
         adc #$44
         sta iptr+1
-        lda LST+40,x
+        lda LST+72,x
         adc #$d8
         sta iptr2+1
-        lda LST+80,x
-        lsr
-        tay
-        lda lwch,y
-        ldy #0
-        sta (iptr),y
-        lda LST+80,x
+        cpx #16
+        bcs .faint
+        lda LST+144,x
         lsr
         tay
         lda lwc,y
+        pha
+        lda lwch,y
         ldy #0
+        sta (iptr),y
+        pla
+        sta (iptr2),y
+        rts
+.faint  txa
+        and #3
+        tay
+        lda faintc,y
+        pha
+        lda #64
+        ldy #0
+        sta (iptr),y
+        pla
         sta (iptr2),y
         rts
 !zone lwch
-lwch    !scr ".++**+..",0
+lwch    !byte 64,65,66,67,67,66,65,64
 !zone lwc
-lwc     !byte 11,12,15,1,1,15,12,11
-; the twinkles: now and then a star starts, all that are going go on
+lwc     !byte 12,15,1,1,1,1,15,12
+!zone faintc
+faintc  !byte 11,6,12,11
+; the twinkles: now and then a bright star starts, all that are going go on
 !zone ltw
 ltw     jsr random
         and #63
-        cmp #40
+        cmp #16
         bcs .go
         tax
-        lda LST+80,x
+        lda LST+144,x
         bne .go
         lda #16
-        sta LST+80,x
-.go     ldx #39
-.l      lda LST+80,x
+        sta LST+144,x
+.go     ldx #15
+.l      lda LST+144,x
         beq .nx
-        dec LST+80,x
+        dec LST+144,x
         stx it+1
         jsr ltwput
         ldx it+1
@@ -564,28 +651,107 @@ lshine  lda frame
         and #15
         tay
         lda shw,y
-        sta $d800+9*40+6,x
+        sta $d800+4*40+6,x
         inx
         cpx #27
         bne .l
         rts
 !zone shw
 shw     !byte 6,6,14,14,3,3,1,1,3,3,14,14,6,6,6,6
-; the bar: a cell for each page of the picture unpacked (39 in all)
+; the bar: a cell for each pages of the picture unpacked (30 cells for 40 pages)
 !zone lbar
 lbar    ldx lvdr
-.l      cpx lvpage
+.l      lda lvpage
+        lsr
+        lsr
+        sta it
+        lda lvpage
+        sec
+        sbc it
+        sta it
+        cpx it
         bcs .x
-        cpx #40
+        cpx #30
         bcs .x
-        lda #$a0
-        sta $4400+18*40,x
-        lda #14
-        sta $d800+18*40,x
+        lda #69
+        sta $4400+13*40+5,x
+        txa
+        lsr
+        lsr
+        lsr
+        tay
+        lda barc,y
+        sta $d800+13*40+5,x
         inx
         stx lvdr
         jmp .l
 .x      rts
+!zone barc
+barc    !byte 6,14,3,1
+; the equaliser (rows 16-20): a bar a voice, 2 characters wide, centred
+!zone eqtxt
+eqtxt   lda #3
+        ldy #16
+        ldx mode
+        beq +
+        lda #6
+        ldy #11
++       sta eqn
+        sty it+1
+        ldx #0
+.j      stx glyph
+        lda pv_eq,x
+        asl
+        sta glyph+1     ; its height in 1/8 characters
+        lda glyph
+        asl
+        clc
+        adc glyph
+        adc it+1
+        sta it          ; its column
+        ldy #0
+.r      sty iptr2       ; the row's number from the foot
+        lda #20
+        sec
+        sbc iptr2
+        tax
+        lda rowlo,x
+        clc
+        adc it
+        sta iptr
+        lda rowhi,x
+        adc #$44
+        sta iptr+1
+        lda iptr2
+        asl
+        asl
+        asl
+        sta iptr2+1
+        lda glyph+1
+        sec
+        sbc iptr2+1
+        bcc .e
+        beq .e
+        cmp #8
+        bcc +
+        lda #8
++       clc
+        adc #71
+        bne .w
+.e      lda #32
+.w      ldy #0
+        sta (iptr),y
+        iny
+        sta (iptr),y
+        ldy iptr2
+        iny
+        cpy #5
+        bne .r
+        ldx glyph
+        inx
+        cpx eqn
+        bne .j
+        rts
 
 ; print the text at X/Y (row, column, the letters, 0 ends) in colour A on the text screen at $4400
 !zone print2
@@ -658,11 +824,10 @@ irq_l   lda $d019
         sta $d019
         inc frame
         jsr pl_play
-        jsr eqdraw
+        jsr eqtxt
         jsr ltw
         jsr lshine
         jsr lbar
-        jsr sprites
         jmp $ea81
 
 ; the show's: once a frame at line $FC, below the picture
@@ -700,7 +865,7 @@ showon  sei
         ldx #39         ; the scroll text's colours: fading through the greys at the ends
 -       lda scrcol,x
         sta $dbc0,x
-        lda #$00
+        lda scrscr,x
         sta $43c0,x
         sta $83c0,x
         dex
@@ -744,54 +909,58 @@ showon  sei
         rts
 !zone scrcol
 scrcol  !byte 0,11,11,12,12,15,15,1,1,1,1,1,1,1,1,1,1,1,1,1
-        !byte 1,1,1,1,1,1,1,1,1,1,1,1,1,15,15,12,12,11,11,0
+        !byte 1,1,1,1,1,15,15,12,12,11,11,0     ; the scroll text: cells 0-31, fading through the greys at its ends
+        !byte 1,1,1,1,1,1,1,1                   ; the equaliser's cells 32-39: white (bits 11)
+!zone scrscr
+scrscr  !fill 32, 0
+        !fill 8, $6e                            ; the equaliser: bits 01 blue, 10 light blue
 
 ; ======================================================= texts
 !zone t_1sid
-t_1sid  !byte 13, 12
+t_1sid  !byte 8, 12
         !scr "1 sid detected", 0
 !zone t_2sid
-t_2sid  !byte 13, 8
+t_2sid  !byte 8, 8
         !scr "2 sids detected: stereo", 0
 !zone t_load
-t_load  !byte 16, 9
+t_load  !byte 11, 9
         !scr "loading the cliffs...", 0
 !zone t_ready
-t_ready !byte 16, 9
+t_ready !byte 11, 9
         !scr "the cliffs are ready!", 0
 !zone t_title
-t_title !byte 9, 6
+t_title !byte 4, 6
         !scr "2026: an octophonic odyssey", 0
 !zone t_copy
-t_copy  !byte 11, 11
+t_copy  !byte 6, 11
         !scr "(c) 2026 mong00se", 0
 !zone t_disk
-t_disk  !byte 20, 2
+t_disk  !byte 22, 2
         !scr "put the odyssey disk in drive 8", 0
 
 ; the sparkles (4 sizes) and the comet: sprites $22-$26
 !zone sprdata
 sprdata
-; sparkle, smallest
+; glint, smallest (multicolour: white core, cyan and light blue spikes)
         !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-        !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$00,$00,$08
-        !byte $00,$00,$08,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+        !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$20
         !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-; sparkle, small
         !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-        !byte $00,$00,$00,$00,$00,$00,$08,$00,$00,$08,$00,$00,$2a,$00,$00,$1c
-        !byte $00,$00,$2a,$00,$00,$08,$00,$00,$08,$00,$00,$00,$00,$00,$00,$00
+; glint, small (multicolour: white core, cyan and light blue spikes)
         !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-; sparkle, big
-        !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$08,$00,$00
-        !byte $08,$00,$00,$08,$00,$00,$08,$00,$00,$49,$00,$00,$6b,$00,$00,$3e
-        !byte $00,$00,$6b,$00,$00,$49,$00,$00,$08,$00,$00,$08,$00,$00,$08,$00
-        !byte $00,$08,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-; sparkle, biggest
-        !byte $00,$00,$00,$00,$08,$00,$00,$08,$00,$00,$08,$00,$00,$08,$00,$00
-        !byte $08,$00,$04,$08,$10,$03,$08,$60,$00,$c9,$80,$00,$6b,$00,$00,$7f
-        !byte $00,$00,$6b,$00,$00,$c9,$80,$03,$08,$60,$04,$08,$10,$00,$08,$00
-        !byte $00,$08,$00,$00,$08,$00,$00,$08,$00,$00,$08,$00,$00,$00,$00,$00
+        !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$00,$00,$30,$00,$00,$ec
+        !byte $00,$00,$30,$00,$00,$30,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+        !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+; glint, big (multicolour: white core, cyan and light blue spikes)
+        !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+        !byte $00,$00,$00,$10,$00,$00,$10,$00,$00,$30,$00,$00,$fc,$00,$01,$ed
+        !byte $00,$00,$fc,$00,$00,$30,$00,$00,$10,$00,$00,$10,$00,$00,$00,$00
+        !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+; glint, biggest (multicolour: white core, cyan and light blue spikes)
+        !byte $00,$00,$00,$00,$10,$00,$00,$10,$00,$00,$10,$00,$00,$10,$00,$00
+        !byte $10,$00,$00,$30,$00,$00,$30,$00,$01,$31,$00,$00,$ec,$00,$17,$ab
+        !byte $50,$00,$ec,$00,$01,$31,$00,$00,$30,$00,$00,$30,$00,$00,$10,$00
+        !byte $00,$10,$00,$00,$10,$00,$00,$10,$00,$00,$10,$00,$00,$00,$00,$00
 ; the comet
         !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
         !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
