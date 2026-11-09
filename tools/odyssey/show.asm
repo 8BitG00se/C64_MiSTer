@@ -56,6 +56,9 @@ res     = $85           ; 2
 acc     = $87           ; 2
 nquar   = $89           ; quarters drawn
 sgn     = $8a
+alphaf  = $8b           ; the angle's fraction
+nflip   = $c4f0         ; 2: the swaps (to count the frame rate)
+nfr     = $c4f2         ; 2: the frames since the show began
 
 
 ; zero page (the show's own)
@@ -137,7 +140,13 @@ show    lda #<irq_t     ; the title's interrupt: the music only
 ; the stars a step on in the bitmap not shown, then swap at the top of a frame,
 ; 2 frames after the last swap; the galaxy is drawn on until it has swapped
 !zone galloop
-galloop lda front
+galloop !if TIMING { lda $d012
+        sta $c4f6
+        lda $d011
+        sta $c4f7
+        lda nfr
+        sta $c4f8 }
+        lda front
         bne +
         !if TIMING { lda #2
         sta $d020 }
@@ -153,7 +162,13 @@ galloop lda front
         jsr respawn
         jsr splot0
 ++      !if TIMING { lda #0
-        sta $d020 }
+        sta $d020
+        lda $d012
+        sta $c4f9
+        lda $d011
+        sta $c4fa
+        lda nfr
+        sta $c4fb }
         lda #0
         sta flipped
         lda #1
@@ -782,7 +797,10 @@ irq_top lda $d019
         sta flipreq
         lda #1
         sta flipped
-        lda frame
+        inc nflip
+        bne +++
+        inc nflip+1
++++     lda frame
         clc
         adc #2
         sta flipat
@@ -796,12 +814,15 @@ irq_top lda $d019
         lda #$08
         sta $d018
         sta $d016
-        lda alpha       ; the galaxy turns
+        lda alphaf      ; the galaxy turns
         sec
         sbc #<DALPHA
+        sta alphaf
+        lda alpha
+        sbc #>DALPHA
         sta alpha
         lda alpha+1
-        sbc #>DALPHA
+        sbc #DALPHA >> 16
         sta alpha+1
         lda #<irq_bot
         sta $0314
@@ -826,9 +847,19 @@ irq_bot lda $d019
         lda xscr
         ora #8
         sta $d016
+        lda #<irq_top   ; the top's interrupt may come in while this one still runs
+        sta $0314
+        lda #>irq_top
+        sta $0315
+        lda #16
+        sta $d012
+        cli
         !if TIMING { lda #6
         sta $d020 }
-        inc frame
+        inc nfr
+        bne +
+        inc nfr+1
++       inc frame
         jsr pl_play
         jsr scroll
         jsr eqdraw
@@ -836,13 +867,11 @@ irq_bot lda $d019
         jsr sparkle
         jsr sprites
         !if TIMING { lda #0
-        sta $d020 }
-        lda #<irq_top
-        sta $0314
-        lda #>irq_top
-        sta $0315
-        lda #16
-        sta $d012
+        sta $d020
+        lda $d012
+        sta $c4f4
+        lda $d011
+        sta $c4f5 }
         jmp irqret
 ; the end of an interrupt (the KERNAL's, for when it is switched off)
 !zone irqret
@@ -960,9 +989,9 @@ showon  ldx #39         ; the text row: blank, its colours fading at the ends;
         sta $83f8,x
         dex
         bpl -
-        lda #<320       ; the equaliser: sprite 7
+        lda #<296       ; the equaliser: sprite 7, twice as wide (columns 34-39)
         sta sprx+7
-        lda #>320
+        lda #>296
         sta sprxh+7
         lda #230
         sta spry+7
@@ -975,8 +1004,9 @@ showon  ldx #39         ; the text row: blank, its colours fading at the ends;
         bpl -
         lda #0
         sta $d01c
-        sta $d01d
         sta $d017
+        lda #$80
+        sta $d01d
         sta $d01b
         sei
         lda #<irq_top
@@ -989,6 +1019,11 @@ showon  ldx #39         ; the text row: blank, its colours fading at the ends;
         clc
         adc #2
         sta flipat
+        lda #0
+        sta nflip
+        sta nflip+1
+        sta nfr
+        sta nfr+1
         cli
         rts
 !zone scrcol

@@ -153,14 +153,20 @@ eqm6    !byte $e0,$0e,$e0,$0e,$e0,$0e
 twinkle lda TWTAB
         beq .x
         sta it+1
-        ldx #0
-.l      lda TWT,x
-        bne .on
-        jsr random      ; 1 in 96 a frame: a twinkle starts
-        cmp #3
-        bcs .nx
+        jsr random      ; now and then a twinkle starts (about 1 in 96 frames each)
+        cmp #80
+        bcs +
+        and #31
+        cmp it+1
+        bcs +
+        tax
+        lda TWT,x
+        bne +
         lda #16
         sta TWT,x
++       ldx #0
+.l      lda TWT,x
+        beq .nx
 .on     dec TWT,x
         txa
         sta it

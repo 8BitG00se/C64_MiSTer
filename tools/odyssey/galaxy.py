@@ -1,25 +1,27 @@
 #!/usr/bin/env python3
 # (C) 2026 Mong00se
 # GALAXY.PY - the stock C64's galaxy for ODYSSEY (2026: An Octophonic Odyssey), by Mong00se: an original, procedural
-# Andromeda-style spiral galaxy in hires (320 x 192, black behind, one colour a cell), and the frames of its turn.
-# Nothing here is a photo: every pixel comes from formulas and a random seed.
+# Andromeda-style spiral galaxy in hires (320 x 192, black behind, one colour a cell). Nothing here is a photo: every
+# pixel comes from formulas and a random seed.
 #
 # THE LOOK: the disk is tilted 60 degrees (an oval 280 x 140), two arms wind out of a bright core, dark dust lanes on
-# their inner edges, blue knots along the outer arms, a soft halo, two small companions (like M32 and M110) and a
-# starfield. Each 8x8 cell has ONE colour, from a ramp by its distance from the centre in the disk's plane (white and
-# yellow at the core, light red and orange, light grey and light blue, blue and dark grey at the edge): the brightness
-# is the density of a fixed (blue noise) dither, scaled by the cell colour's own brightness so it runs on smoothly from
-# one cell to the next. The ramp is round in the disk's plane, so the colours stay the same while the disk turns.
+# their inner edges, knots along the outer arms, a soft halo, two small companions (like M32 and M110) and a starfield.
+# Each 8x8 cell has ONE colour, from a ramp by its distance from the centre in the disk's plane (STEPS: white and
+# yellow at the core, light grey, cyan, blue at the edge); the brightness is the density of a fixed 16x16 blue-noise
+# dither, divided by the cell colour's own brightness so it runs on smoothly from one cell to the next. The ramp is
+# round in the disk's plane, so the colours stay the same while the disk turns.
 #
-# THE TURN: frame k is the disk turned by k/N of half a turn in its own plane (de-tilted, turned, tilted again) and
-# dithered with the same pattern, so only the pixels near a threshold change from frame to frame. The galaxy has two
-# arms and is made the same under a half turn, so frame N is frame 0 and the turn loops.
+# THE TURN (galaxy.asm): the 6502 draws the disk anew, a byte at a time, from a 64x64 texture of dither levels in the
+# disk's own plane, turned and tilted (two texture steps a byte, a nibble of the dither from each). render_rows() here
+# is the same sums, byte for byte, so the pictures show exactly what the C64 shows. The rest (halo, companions, the
+# starfield) stays still in the bitmap.
 #
-# THE LIVE STARS (show.asm turns them): stars along the arms (a log spiral, with scatter), each on a circle in the
-# disk's plane; galaxy.py gives each its radius and angle.
+# THE LIVE STARS: NSTAR stars on NR rings in the disk's plane, seeded along the arms (a log spiral, with scatter); the
+# 6502 moves them (the inner rings faster: the same speed along every ring) and starts a star again behind its arm
+# when it runs too far ahead.
 #
-#   galaxy.py OUTDIR [N]  ->  OUTDIR/galaxy.bin (the disk file), galaxy.png and galaxy_2x.png (frame 0 as the C64
-#                              shows it), frames.png (a few frames of the turn)
+#   galaxy.py OUTDIR [t]  ->  OUTDIR/galaxy.bin (the disk file: pieces of where, how long, packed), galaxy_2x.png and
+#                              galaxy_stars_2x.png (frame 0 as the C64 draws it), with t two frames of the turn too
 import sys, os
 import numpy as np
 from PIL import Image
@@ -169,7 +171,7 @@ KX = TS / (2 * EXT) / A_PX      # texels a pixel (across)
 KY = TS / (2 * EXT) / B_PX      # texels a line
 DUX = 4 * KX                    # texels a group of 4 pixels
 NR = 40                         # rings of live stars
-NSTAR = 200                     # the live stars (at most 255; show.asm moves them all)
+NSTAR = 104                     # the live stars (at most 255; show.asm moves them all)
 STAR_V = 0.30                   # the stars' speed in pixels an update (2 frames)
 
 def thr16():

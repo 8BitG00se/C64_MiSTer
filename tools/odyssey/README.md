@@ -10,8 +10,8 @@ hear is done by the 6502 on the machine; the PC only converts the picture and pr
 | machine | what it does |
 |---|---|
 | Octophonic 64 (OctoVIC 2+ and the .reu) | the picture in 256 colours (2048 x 1186) on OctoVIC's turned-and-sized layer, a camera from a star out to the whole cliffs, along the ridge, up to the stars, into the dust and back; stars twinkle (8 palette groups), sparkles and a comet (sprites, added light), 8 equaliser bars; the waltz on all 8 SIDs |
-| C64 with a second SID ($D420, $D500 or $DE00) | the tour: four multicolour views (the whole picture, the western peak, the ridge and its stars, the eastern cliffs) loaded from the disk while the one before is shown, swapped with an iris or a fade through the C64's colour ramps; twinkles (colour RAM), sparkle and comet sprites, a scroll text naming each view, an equaliser; the waltz in stereo |
-| stock C64 | the same tour, the waltz on 1 SID (melody, bass, the arpeggiated "pah-pah" chords) |
+| C64 with a second SID ($D420, $D500 or $DE00) | our own Andromeda-style spiral galaxy (`galaxy.py`, no photo) in hires: the 6502 turns it and draws it anew (a 64x64 texture of the disk, tilted 60 degrees, a 16x16 dither), ~100 live stars orbit in its arms (the inner ones faster), stars twinkle, glints flash on the brightest, a scroll text and an equaliser in a text row; the waltz in stereo |
+| stock C64 | the same galaxy, the waltz on 1 SID (melody, bass, the arpeggiated "pah-pah" chords) |
 
 ## Files
 
@@ -19,11 +19,12 @@ hear is done by the 6502 on the machine; the PC only converts the picture and pr
 |---|---|
 | `odyssey.asm` | the start: the machine test (OctoVIC's ID and version, our label at the start of the REU, else asks Octophonic Main for the .reu - command `$18`; a second SID told from a mirror by voice 3's OSC3), the BASIC line with the copyright, PETSCII art in the header for OCTOCODE |
 | `player.asm` | the music player: 3 or 6 voices, instruments, hard restart, vibrato, PWM, the chord arpeggio, the equaliser's levels |
-| `show.asm`, `fx.asm`, `iris.asm` | the stock / 2-SID show |
+| `show.asm`, `fx.asm`, `iris.asm`, `galaxy.asm` | the stock / 2-SID show (`galaxy.asm`: the turn and the live stars) |
 | `octo.asm`, `octofx.asm`, `camera.asm` | the Octophonic show (the camera is Mona Lisa's) |
 | `song.asm` | the notes (made by `song.py`) |
 | `song.py` | the arrangement: the 6502 player's note lists for SIDs 1-2, and SIDs 3-8 rendered to register frames for the REU (same timing) |
-| `stockpic.py` | the photo to the four multicolour views (`view0-3.bin`, packed with a small LZ that `show.asm` unpacks while loading) |
+| `galaxy.py` | the stock show's galaxy: the art, the texture, the tables, the live stars' rings (`galaxy.bin`); `galaxy_2x.png` shows frame 0 exactly as the 6502 draws it |
+| `stockpic.py` | the disk packing (`pack()`, a small LZ that `show.asm` unpacks while loading); the old photo-to-views converter |
 | `octopic.py` | the photo to the 256-colour picture, its half and quarter copies, the camera path, the sprites, the .reu |
 | `petscii.py` | the source to PETSCII for the disk (OCTOCODE), with the header art's graphics; `--png` shows it as OCTOCODE will |
 | `build.sh` | `build.sh PICTURE.jpg OUT`: everything, the .d64, the zip |
@@ -41,22 +42,24 @@ photo itself is not in git (the full-size Webb TIF/JPG; any size works).
   between passes, so an `!ifndef` guard would not work. OCTOCODE's compile runs ACME in the folder of the disk on the
   SD card, so the parts must be there too (the .bat copies them). The disk keeps 64 blocks free: OCTOCODE's F5
   writes a part (and the program) anew before the old copy goes; no part is over 50 blocks.
-* **Loading while the show runs (stock).** The KERNAL's serial routines hold the interrupt off while the 1541 looks
-  for a file or reads the next sector; `drready` waits for the drive's CLK line itself, with the interrupt running,
-  so the music never stops. With more than two sprites on a bad line the KERNAL misses the 1541's bits and the load
-  hangs (found in VICE: three sparkles at the top of the screen), so while a view loads there is one sparkle (kept
-  above the equaliser's rows) and no comet. The scroll text is drawn into the bitmap's last row (no split screen:
-  a held-off interrupt would make a split jump).
+* **The stock galaxy.** GALAXY (27 blocks) loads behind the loading screen (with the music: `drready` waits for the
+  drive itself, the interrupt running), then the KERNAL goes off (the texture lives at $E000) and the loading screen
+  cuts straight into the galaxy on a phrase. Two hires bitmaps ($6000, $A000) swap 25 times a second: the live stars
+  are taken off (their bytes put back, the last first) and plotted again in the one not shown; the rest of the time
+  the 6502 draws the disk anew from the texture at the angle of the moment, top to bottom (a pass about every 5 s,
+  into both bitmaps), so the galaxy turns about a quarter turn a song. The last row is a text row (an interrupt at
+  line 238 switches to bank 1's text screen; row 23 is black, so the switch does not show). Measured in VICE: 104
+  stars hold 25 fps (110 just do; 120 drop to 17).
 * **The Octophonic's sleeping SIDs.** A SID other than SID 1 takes no writes of its own until it has had a volume
   and a control write; until then SID 1 gets them too. The stream's first frame put SID 3's filter routing into
   SID 1 (with no filter mode: silent). `oinit` wakes SIDs 3-8 first and the player clears SID 1/2's filter.
-* **Colours.** The stock views are converted for the core's palette 0 (`rtl/fpga64_rgbcolor.vhd`); the VICE
+* **Colours.** The stock galaxy is made for the core's palette 0 (`rtl/fpga64_rgbcolor.vhd`); the VICE
   recordings use the same palette.
 
 ## Tested
 
-* Stock C64 and C64 + second SID at $D420: VICE 3.8 x64sc (stock, true 1541) - the tour through all four views and
-  back, the music without gaps during loads, stereo with 2 SIDs.
+* Stock C64 and C64 + second SID at $D420: VICE 3.8 x64sc (stock, true 1541) - the galaxy loading and turning, 25 fps
+  with 104 live stars, the 6502's drawing byte for byte the same as galaxy.py's, stereo with 2 SIDs.
 * Octophonic 64: the Octophonic 64 emulator (current KERNAL) - the whole loop, 1 frame of 5266 over budget (the
   palette going in), the .reu asked for by name when the browser did not attach it, the 8-SID mix.
 * OCTOCODE: the source loaded from the disk shows the header art; every part assembles to the same program with

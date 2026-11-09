@@ -1,7 +1,7 @@
 #!/bin/bash
-# (C) 2026 Mong00se. All rights reserved.
+# (C) 2026 Mong00se
 # 2026: AN OCTOPHONIC ODYSSEY - builds the package into OUT:
-#   Octophonic Odyssey.d64  ODYSSEY (the program, first: LOAD"*",8,1 and RUN), VIEW0-VIEW3 (the stock pictures),
+#   Octophonic Odyssey.d64  ODYSSEY (the program, first: LOAD"*",8,1 and RUN), GALAXY (the stock show's galaxy),
 #                           and the source as SEQ files for OCTOCODE (ODYSSEY.ASM and its 8 parts)
 #   Octophonic Odyssey.prg  the same program (the Octophonic browser loads it with the .reu beside it, at once)
 #   Octophonic Odyssey.reu  the Octophonic picture, camera path, sprites and the music for SIDs 3-8
@@ -20,13 +20,13 @@ OUT=${2:?OUT folder}
 C1541=${C1541:-$(command -v c1541 || echo /home/claude/emu/build/src/c1541)}
 N=$(sed -n 's/^BUILD *= *\([0-9][0-9]*\).*/\1/p' "$HERE/odyssey.asm" | head -1)
 NAME="Octophonic Odyssey"
-PARTS="odyssey player show fx iris octo octofx camera song"
+PARTS="odyssey player show fx iris galaxy octo octofx camera song"
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 mkdir -p "$OUT"
 python3 "$HERE/song.py" "$W" > "$W/songlen.txt"
 cp "$W/song.asm" "$HERE/song.asm"
 SONGLEN=$(cat "$W/songlen.txt")
-python3 "$HERE/stockpic.py" "$SRC" "$W" > /dev/null
+python3 "$HERE/galaxy.py" "$W" > /dev/null
 python3 "$HERE/octopic.py" "$SRC" "$W/music8.bin" "$SONGLEN" "$W/$NAME.reu"
 (cd "$HERE" && acme -v1 -f cbm -o "$W/odyssey.prg" -Wno-label-indent odyssey.asm) | grep -v '^Saving' || true
 [ -f "$W/odyssey.prg" ]
@@ -38,7 +38,7 @@ done
 D="$OUT/$NAME.d64"
 rm -f "$D"
 args=(-format "odyssey 2026,mg" d64 "$D" -write "$W/odyssey.prg" odyssey)
-for k in 0 1 2 3; do args+=(-write "$W/view$k.bin" "view$k"); done
+args+=(-write "$W/galaxy.bin" galaxy)
 for p in $PARTS; do
   python3 "$HERE/petscii.py" "$HERE/$p.asm" "$W/$p.seq"
   args+=(-write "$W/$p.seq" "$p.asm,s")

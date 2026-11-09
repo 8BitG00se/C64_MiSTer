@@ -14,9 +14,9 @@
 ; own plane ($E000, made by GALAXY.PY). Every line of the disk is drawn
 ; anew, a byte at a time, from the texture turned by the galaxy's angle
 ; and tilted (two texture steps a byte, a nibble of a 16x16 dither from
-; each): the lines 0,4,8.. then 1,5,9.., each quarter at the angle of
-; the moment. This fills the time the stars leave free, into both
-; bitmaps at once. THE STARS: on rings in the disk's plane, the inner
+; each), top to bottom, each pass at the angle of the moment (about 5 s
+; a pass). This fills the time the stars leave free, into both bitmaps
+; at once. THE STARS: on rings in the disk's plane, the inner
 ; ones faster (the same speed along the ring: an angle 1/r a frame), so
 ; the arms wind. A star that runs too far ahead of its arm starts again
 ; behind it. Each is 2 pixels in the bitmap not on show; what it covered
@@ -69,9 +69,11 @@ GLTAB   = $c4a0         ; the glints' stars: n, then n x (sprite x, y)
 
 WAHEAD  = 18            ; a star this far ahead of its arm (256 a turn) ...
 WBACK   = 10            ; ... starts again this far behind it (+0-7)
-DALPHA  = 32768 / songlen       ; the galaxy turns half a turn a song
+DALPHA  = 16384 * 256 / songlen ; the galaxy turns a quarter turn a song (x 256: alphaf is its fraction)
 
 ; ============================================== the live stars
+!macro sto_eal .b { !if .b = 0 { sta EAL0,x } else { sta EAL1,x } }
+!macro sto_eah .b { !if .b = 0 { sta EAH0,x } else { sta EAH1,x } }
 ; plot all the stars into bitmap B (0 or 1)
 !macro starplot .b {
         ldx #0
@@ -129,9 +131,11 @@ DALPHA  = 32768 / songlen       ; the galaxy turns half a turn a song
         clc
         adc XLR,y
         sta pp
+        +sto_eal .b
         lda pp+1
         adc XHR,y
         sta pp+1
+        +sto_eah .b
         lda MR,y
         jmp .plot
 .q1     ; 90-180: left, down
@@ -159,9 +163,11 @@ DALPHA  = 32768 / songlen       ; the galaxy turns half a turn a song
         clc
         adc XLL,y
         sta pp
+        +sto_eal .b
         lda pp+1
         adc XHL,y
         sta pp+1
+        +sto_eah .b
         lda ML,y
         jmp .plot
 .q23    bvs .q3
@@ -188,9 +194,11 @@ DALPHA  = 32768 / songlen       ; the galaxy turns half a turn a song
         clc
         adc XLL,y
         sta pp
+        +sto_eal .b
         lda pp+1
         adc XHL,y
         sta pp+1
+        +sto_eah .b
         lda ML,y
         jmp .plot
 .q3     ; 270-360: right, up
@@ -219,9 +227,11 @@ DALPHA  = 32768 / songlen       ; the galaxy turns half a turn a song
         clc
         adc XLR,y
         sta pp
+        +sto_eal .b
         lda pp+1
         adc XHR,y
         sta pp+1
+        +sto_eah .b
         lda MR,y
 .plot   sta mk
         ldy #0
@@ -229,10 +239,6 @@ DALPHA  = 32768 / songlen       ; the galaxy turns half a turn a song
         !if .b = 0 { sta ES0,x } else { sta ES1,x }
         ora mk
         sta (pp),y
-        lda pp
-        !if .b = 0 { sta EAL0,x } else { sta EAL1,x }
-        lda pp+1
-        !if .b = 0 { sta EAH0,x } else { sta EAH1,x }
         inx
         cpx rend
         beq +
@@ -415,12 +421,8 @@ render  lda rstate
         jmp .line
 +       ldy ysave       ; on along the line
         jmp rbytes
-.quarter                ; a new quarter: the lines k, k+4, ... at the angle now
-        lda rk
-        clc
-        adc #1
-        and #3
-        sta rk
+.quarter                ; a new pass: all the lines, top to bottom, at the angle now
+        lda #0          ; (top to bottom)
         sta ry
         inc nquar
         lda alpha+1
@@ -490,15 +492,12 @@ render  lda rstate
         lda noyield
         beq .again
         lda nquar
-        cmp #4
+        cmp #1
         bcs .whole
 .again  jmp render
 .whole  rts
 +       lda ROWNB,x
         bne +
-        inx
-        inx
-        inx
         inx
         jmp -
 +       stx ry
@@ -768,10 +767,7 @@ rsd     sta $a000,x
 +       dec rcnt
         beq .eol
         jmp rbytes
-.eol    lda ry          ; the line is done
-        clc
-        adc #4
-        sta ry
+.eol    inc ry          ; the line is done
         lda #1
         sta rstate
         jmp render
