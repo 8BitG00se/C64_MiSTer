@@ -152,6 +152,10 @@ grep -q 'Octophonic OS' "$PAY/MiSTer" || die "that MiSTer is not Octophonic Main
 grep -q 'COMPILE' "$PAY/MiSTer" || die "that Main has no COMPILE (octophonic-compile.patch)"
 # the front-screen cards (step 085)
 if [ -d "$HERE/files/tty2oled" ]; then cp -r "$HERE/files/tty2oled" "$PAY/"; else echo "no front-screen cards here (step 085 skips: a fresh card has no tty2oled)"; fi
+# the front screen (Fix 20/27): tty2oled's daemon scripts (step 084), Main's helper oled.sh (087), and the
+# Octophonic screen firmware with its flasher if a build package brought them (088: files/tty2oled-firmware)
+mkdir -p "$PAY/tty2oled"; cp "$REPO/tools/oled/tty2oled/"* "$PAY/tty2oled/"; cp "$REPO/tools/oled/oled.sh" "$PAY/oled.sh"
+[ -d "$HERE/files/tty2oled-firmware" ] && cp -r "$HERE/files/tty2oled-firmware" "$PAY/"
 # OCTOCODE, the code editor, from this commit's source (step 055 puts it in Apps)
 acme -f cbm -o "$PAY/OCTOCODE.PRG" "$REPO/tools/octoos/octocode/octocode.asm"
 echo "OCTOCODE.PRG: $(stat -c %s "$PAY/OCTOCODE.PRG") bytes"
