@@ -13,7 +13,7 @@ both and compares the results; that is the feedback loop.
 | 4 | Code/stock (Fix 9) | border bars only reach mid-screen, the top bars are jagged | steady | raster timing on the real VIC path; compare cycle by cycle |
 | 5 | Pictures/Sunset (Fix 16) | broken | shows | not looked at yet (being replaced anyway, but the cause may hit other pictures) |
 | 6 | RUN/STOP+RESTORE (Fix 1) | does nothing on his 8BitDo keyboard | works | the keyboard mapping on the MiSTer; Fix 1 replaces it with one exit key on both |
-| 7 | Sound level (Fix 28) | very quiet over HDMI (peak about -20 dB) | louder | the core mix; the emulator should match the MiSTer's level once Fix 28's auto-gain is in both |
+| 7 | Sound level (Fix 28) | very quiet over HDMI (peak about -20 dB) | was as quiet (it copied the core's mix) | **fixed on branch `audio-levels` (core) and `audio-levels` (emulator), not yet on the MiSTer.** The mix divided each side by how many SIDs play into it, so 8-SID demos were 13-14 dB under VICE. Now: sum, ~10 Hz DC blocker, gain 1.25 (one SID = VICE's level), an automatic gain that only turns down when the SIDs together would pass the limiter, then the limiter - real 8-SID demos within ~1 dB of VICE, one SID within ~1 dB, nothing clips. The emulator mixes a microsecond at a time with the RTL's integer maths (checked bit for bit). Measurement loop: `sim/level/` |
 | 8 | Mouse in OctoPaint (Fix 26) | n/a | needs Alt+M and a port setting | the emulator should have the mouse working with no setup |
 | 9 | Classic games (e.g. IK+) | load | don't load properly in the old Weaver emulator | parked for the 10-day emulator test |
 

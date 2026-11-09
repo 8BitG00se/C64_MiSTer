@@ -357,6 +357,7 @@ signal sid_isctl    : std_logic;
 signal sid_wakes    : std_logic;                      -- this write wakes its SID
 signal sid_asleep   : std_logic;                      -- the SID picked is still asleep (SID 1 gets it)
 signal mix_l, mix_r : signed(17 downto 0);
+signal sid_pl       : std_logic_vector(7 downto 0);   -- played and awake: the SIDs the mix takes
 signal sid3_do      : unsigned(7 downto 0);
 signal sid3_sel_l   : std_logic;
 signal sid3_sel_r   : std_logic;
@@ -1040,8 +1041,9 @@ sid_rd <= unsigned(mbox_do) when cs_mbox = '1' else
 -- is in the middle, on both sides, so a one-SID game in 8 SIDs mode sounds as it does on the
 -- stock core, a 2SID tune at $D420 is in stereo, and a 4- or 8-SID demo is spread out.
 -- "Played" is a gate opened (a control register written with bit 0 set) or a volume set -
--- a game clearing the whole SID area with zeros does not count; SID 1 always counts. Each side is divided by how many SIDs
--- play into it (1, 2, up to 4, up to 8), so nothing overflows and one SID is never quiet.
+-- a game clearing the whole SID area with zeros does not count; SID 1 always counts.
+-- The level (Fix 28): sid_mix.vhd - each side summed, DC blocked, one SID as loud as in VICE, and
+-- an automatic gain that only turns the SIDs down when together they would go past the limiter.
 process(clk32)
 begin
 	if rising_edge(clk32) then
@@ -1062,76 +1064,28 @@ begin
 	end if;
 end process;
 
-process(clk32)
-	type chip_out is array (0 to 7) of signed(17 downto 0);
-	variable o         : chip_out;
-	variable sl, sr    : signed(20 downto 0);   -- the program's own SIDs (dry)
-	variable fl, fr    : signed(20 downto 0);   -- OctoSID FX: SIDs that only play the effect
-	variable tl, tr    : signed(21 downto 0);
-	variable nl, nr    : integer range 0 to 8;
-	variable onl, onr  : boolean;
-	variable pl, fx    : std_logic_vector(7 downto 0);
+sid_pl <= sid_played and sid_awake;   -- a SID asleep adds nothing
 
-	-- soft limiter: full level up to 3/4 of the range, then a quarter of anything above it, then the rail
-	function soft(x : signed(21 downto 0)) return signed is
-		constant T  : signed(21 downto 0) := to_signed( 98304, 22);
-		constant FS : signed(21 downto 0) := to_signed(131071, 22);
-		variable y  : signed(21 downto 0);
-	begin
-		y := x;
-		if    x >  T then y :=  T + shift_right(x - T, 2); if y >  FS then y :=  FS; end if;
-		elsif x < -T then y := -T + shift_right(x + T, 2); if y < -FS then y := -FS; end if;
-		end if;
-		return y(17 downto 0);
-	end function;
-
-	function scale(x : signed(21 downto 0); n : integer) return signed is
-	begin
-		if    n <= 1 then return x;
-		elsif n = 2  then return shift_right(x, 1);
-		elsif n <= 4 then return shift_right(x, 2);
-		else              return shift_right(x, 3);
-		end if;
-	end function;
-begin
-	if rising_edge(clk32) then
-		o := (signed(sid1_aud_l), signed(sid1_aud_r), signed(sid2_aud_l), signed(sid2_aud_r),
-		      signed(sid3_aud_l), signed(sid3_aud_r), signed(sid4_aud_l), signed(sid4_aud_r));
-		sl := (others => '0'); sr := (others => '0'); fl := (others => '0'); fr := (others => '0');
-		nl := 0; nr := 0;
-		pl := sid_played and sid_awake; pl(0) := '1';   -- SID 1 always: a digi with no gate is still sound; a SID asleep adds nothing
-		fx := (others => '0');
-		-- OctoSID FX: its SIDs play - as the effect, on top of the program's sound, not as more SIDs to share the level with
-		if sidfx_mode(0) = '1' and pl(1) = '0' then fx(1) := '1'; end if;
-		if sidfx_mode(1) = '1' and pl(2) = '0' then fx(2) := '1'; end if;
-		if sidfx_mode(1) = '1' and pl(3) = '0' then fx(3) := '1'; end if;
-		pl := pl or fx;
-		for c in 0 to 7 loop
-			-- which side(s): its own, or both when its partner (c xor 1) has not played
-			if c mod 2 = 0 then
-				onl := true;  onr := pl(c + 1) = '0';
-			else
-				onr := true;  onl := pl(c - 1) = '0';
-			end if;
-			-- a pair past the mode, and a SID that has never played, add nothing
-			if (c >= 2 and sid_quad = '0') or (c >= 4 and sid_oct = '0') or pl(c) = '0' then
-				onl := false; onr := false;
-			end if;
-			if fx(c) = '1' then
-				if onl then fl := fl + resize(o(c), 21); end if;
-				if onr then fr := fr + resize(o(c), 21); end if;
-			else
-				if onl then sl := sl + resize(o(c), 21); nl := nl + 1; end if;
-				if onr then sr := sr + resize(o(c), 21); nr := nr + 1; end if;
-			end if;
-		end loop;
-		-- the dry sound at the level it has with FX off, the effect at half that on top, then the limiter
-		tl := scale(resize(sl, 22) + resize(shift_right(fl, 1), 22), nl);
-		tr := scale(resize(sr, 22) + resize(shift_right(fr, 1), 22), nr);
-		mix_l <= soft(tl);
-		mix_r <= soft(tr);
-	end if;
-end process;
+mix : entity work.sid_mix
+port map (
+	clk     => clk32,
+	reset   => reset,
+	ce      => enableSid,
+	quad    => sid_quad,
+	oct     => sid_oct,
+	played  => sid_pl,
+	fx_mode => sidfx_mode,
+	sid1_l  => sid1_aud_l,
+	sid1_r  => sid1_aud_r,
+	sid2_l  => sid2_aud_l,
+	sid2_r  => sid2_aud_r,
+	sid3_l  => sid3_aud_l,
+	sid3_r  => sid3_aud_r,
+	sid4_l  => sid4_aud_l,
+	sid4_r  => sid4_aud_r,
+	out_l   => mix_l,
+	out_r   => mix_r
+);
 
 audio_l <= sid1_aud_l when sid_quad = '0' else std_logic_vector(mix_l);
 audio_r <= sid1_aud_r when sid_quad = '0' else std_logic_vector(mix_r);

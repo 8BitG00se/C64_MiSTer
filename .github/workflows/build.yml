@@ -28,6 +28,11 @@ jobs:
           sudo apt-get install -y -qq verilator >/dev/null
           sim/regmap/run.sh
 
+      - name: The eight-SID mix in GHDL against the emulator's integer model (Fix 28)
+        run: |
+          sudo apt-get install -y -qq ghdl >/dev/null
+          sim/level/mixtest.sh
+
       - name: Stamp the core's build date (OctoVIC $D6B4-$D6B6)
         run: |
           sed -i "s/localparam \[23:0\] CORE_DATE = 24'h[0-9]*;/localparam [23:0] CORE_DATE = 24'h$(date -u +%y%m%d);/" rtl/octovic/octovic.sv
