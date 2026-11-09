@@ -150,17 +150,22 @@ function [23:0] c64col(input [3:0] i);
 	endcase
 endfunction
 
-// the write FIFO: CPU bytes for the VRAM
-(* ramstyle = "MLAB, no_rw_check" *) reg  [31:0] wf[16];
-reg   [3:0] wf_r, wf_w;
-wire  [3:0] wf_cnt = wf_w - wf_r;
+// the write FIFO: CPU (and REU) bytes for the VRAM. 64 deep: an REU upload writes VDATA once a
+// microsecond, so the DDR3 port may be held for up to 63 us (about 2,000 clocks) before a byte is lost
+// (16 deep it was 15 us - and a lost byte shifts every byte after it in the upload: in a sprite table
+// the sprites from there on land in the wrong places). A byte that still finds it full is counted
+// in LOST ($D6B2), so a real machine can show whether that ever happens.
+(* ramstyle = "MLAB, no_rw_check" *) reg  [31:0] wf[64];
+reg   [5:0] wf_r, wf_w;
+wire  [5:0] wf_cnt = wf_w - wf_r;
+reg   [7:0] vlost;             // VDATA writes lost (the FIFO full) since reset or the last write to $D6B2
 wire        ren_urgent;        // the renderer's line is due next (set by the renderer, below)
 // HEALTH: lines shown before they were fully drawn (the line buffer ran dry) - last frame
 reg   [7:0] h_late, h_late0, h_late1, h_lateo;
 reg   [8:0] h_first;
 reg  [15:0] h_total;
 wire        wf_empty = wf_r == wf_w;
-wire        wf_full  = (wf_w + 4'd1) == wf_r;
+wire        wf_full  = (wf_w + 6'd1) == wf_r;
 
 reg         pf_req;            // a VDATA read wanted (VADDR set or moved on)
 reg   [4:0] rd_delay;          // a CPU read of VDATA: its side effect half a microsecond on
@@ -187,7 +192,7 @@ always @(posedge clk) begin
 		mapbase[0] <= 0; mapbase[1] <= 0; tilebase[0] <= 0; tilebase[1] <= 0; lsbase[0] <= 0; lsbase[1] <= 0;
 		for (ii = 0; ii < 16; ii = ii + 1) vpal[ii] <= c64col(ii[3:0]);
 		backdrop <= 0;
-		wf_w <= 0; pf_req <= 0; rd_delay <= 0;
+		wf_w <= 0; pf_req <= 0; rd_delay <= 0; vlost <= 0;
 		mula <= 0; mulb <= 0; mathctl <= 0; divn <= 0; divd <= 0; divq <= 0; divr <= 0; div_busy <= 0;
 		bsrc <= 0; bdst <= 0; bw <= 0; bh <= 0; bss <= 0; bds <= 0; bfill <= 0; bop <= 0; blt_go <= 0;
 		lx0 <= 0; ly0 <= 0; lx1 <= 0; ly1 <= 0;
@@ -228,9 +233,11 @@ always @(posedge clk) begin
 				8'h02: if (rw_cpu) begin vaddr[23:16] <= rw_d; pf_req <= 1; end
 				8'h03: if (rw_cpu) vinc <= rw_d;
 				8'h04: if (rw_cpu & ~wf_full) begin
-						wf[wf_w] <= {vaddr, rw_d}; wf_w <= wf_w + 4'd1;
+						wf[wf_w] <= {vaddr, rw_d}; wf_w <= wf_w + 6'd1;
 						vaddr <= vaddr + {16'd0, vinc}; pf_req <= 1;
 					end
+					else if (rw_cpu && vlost != 8'hFF) vlost <= vlost + 8'd1;
+				8'hB2: if (rw_cpu) vlost <= 0;
 				8'h05: ctrl <= rw_d;
 				8'h06: key <= rw_d[3:0];
 				8'h0C: xadj <= rw_d;
@@ -327,6 +334,7 @@ always @(*) begin
 		8'hAC: dout = h_wl[7:0];    8'hAD: dout = {7'd0, h_wl[8]};
 		8'hAE: dout = h_latmax;     8'hAF: dout = h_latavg;
 		8'hB0: dout = h_stall;      8'hB1: dout = {6'd0, h_lead};
+		8'hB2: dout = vlost;
 		8'hB4: dout = CORE_DATE[7:0]; 8'hB5: dout = CORE_DATE[15:8]; 8'hB6: dout = CORE_DATE[23:16];
 		8'hB8, 8'hB9, 8'hBA, 8'hBB, 8'hBC, 8'hBD, 8'hBE, 8'hBF: dout = CORE_TAG[8*(7 - addr[2:0]) +: 8];
 		8'h50: dout = mula[7:0];    8'h51: dout = mula[15:8];    8'h52: dout = mulb[7:0];    8'h53: dout = mulb[15:8];
@@ -399,7 +407,7 @@ always @(posedge clk) begin
 		if (accepted_rd) begin tf[tf_w] <= cmd_tag; tf_w <= tf_w + 5'd1; end
 		if (port_free) begin
 			ddr_rd <= 0; ddr_we <= 0;
-			if (ren_urgent && !rqf_empty && room && wf_cnt < 4'd10) begin   // the line is due: its reads go first
+			if (ren_urgent && !rqf_empty && room && wf_cnt < 6'd10) begin   // the line is due: its reads go first
 				ddr_addr <= VBASE + {8'd0, rqf_w[rqf_rp[1:0]]};
 				cmd_tag  <= rqf_t[rqf_rp[1:0]];
 				ddr_rd   <= 1;
@@ -410,7 +418,7 @@ always @(posedge clk) begin
 				ddr_din  <= {8{wf[wf_r][7:0]}};
 				ddr_be   <= 8'd1 << wf[wf_r][10:8];
 				ddr_we   <= 1;
-				wf_r     <= wf_r + 4'd1;
+				wf_r     <= wf_r + 6'd1;
 			end
 			else if (pf_req && !pf_clr && room) begin
 				ddr_addr <= VBASE + {8'd0, vaddr[23:3]};

@@ -39,7 +39,7 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 |---|---|---|
 | 00-02 | VADDR | VRAM byte address, low byte first (24 bits) |
 | 03 | VINC | added to VADDR after every VDATA read or write |
-| 04 | VDATA | write: VRAM[VADDR] = value. Read: VRAM[VADDR] (fetched when VADDR was set or moved on; allow 2 us) |
+| 04 | VDATA | write: VRAM[VADDR] = value (queued: up to 63 bytes wait while the DDR3 is busy - 63 us of an REU upload; a byte that finds the queue full is lost and counted in LOST). Read: VRAM[VADDR] (fetched when VADDR was set or moved on; allow 2 us) |
 | 05 | CTRL | b0 ENABLE (draw the layers and sprites), b1 VICPAL (the VIC's 16 colours from OctoVIC's VIC palette), b2 VICBACK (the VIC behind everything, else in front), b3 KEYEN (with the VIC in front: its KEY colour is see-through, to the layers or else the backdrop), b4 HIDEVIC (with ENABLE: the VIC is left out of the picture - the layers and sprites over the backdrop; see SPLIT SCREENS) |
 | 06 | KEY | the VIC colour (0-15) that is see-through when KEYEN |
 | 07 | - | (reserved) |
@@ -51,7 +51,7 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | 0E | COPCTL | b0 the copper on |
 | 0F | SPRCOUNT | sprites in use, 0-128 |
 | 10-12 | COPBASE | the copper list in VRAM |
-| 13-15 | SATBASE | the sprite table in VRAM (copied in once a frame, before raster line 0 is drawn) |
+| 13-15 | SATBASE | the sprite table in VRAM (copied in once a frame, before raster line 0 is drawn: the copy starts as the beam begins line 309 (PAL; 260 NTSC) - a table uploaded in the vertical blank must be in by then) |
 | 16-18 | SPRGFX | sprite graphics base in VRAM |
 | 19 | PALSEL | 0 the main palette (256), 1 the VIC palette (16), 2 the backdrop (1: shown where the VIC's KEY colour is over no layer pixel) |
 | 1A | PALIDX | the palette entry to write |
@@ -108,6 +108,7 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | AF | LATAVG (r) | memory build: a running average of that round trip, clocks |
 | B0 | STALL (r) | memory build: last frame, the % of the frame the DDR3 port made OctoVIC wait |
 | B1 | LEAD (r) | memory build: last frame, the fewest lines ahead of the beam a line was finished (3 best, 0 = late) |
+| B2 | LOST (r) | VDATA writes lost since reset because the write queue was full (the DDR3 port held for over 63 writes), stops at 255; write anything to clear it. A healthy machine reads 0 (an older core reads $FF) |
 | B4-B6 | BUILD DATE (r) | version 3: the core's build date, BCD: day, month, year (20xx) |
 | B8-BF | CORE NAME (r) | version 3: the core's name, 8 ASCII letters padded with spaces (e.g. CORE7) - shown on the start screen and the F8 settings |
 | C0 | SIDFX | OctoSID FX: b0 chorus, b1 echo (see below); also in the core's menu |

@@ -26,7 +26,16 @@ int main (int argc, char **argv) {
     if (!bcd (dd, 1, 31) || !bcd (mm, 1, 12) || !bcd (yy, 26, 99)) { printf ("FAIL DATE $D6B4-6 = %02X %02X %02X, not a BCD date\n", dd, mm, yy); fails++; }
     printf ("core: OctoVIC version %d, \"%s\", built %02X.%02X.20%02X\n", ver, tag, dd, mm, yy);
     // the meters: 0 after a reset (a core without them reads $FF)
-    for (int a = 0xA0; a <= 0xB1; a++) { int v = rd (a); if (v == 0xFF && a != 0xA4) { printf ("FAIL METER $D6%02X reads $FF (missing?)\n", a); fails++; } }
+    for (int a = 0xA0; a <= 0xB2; a++) { int v = rd (a); if (v == 0xFF && a != 0xA4) { printf ("FAIL METER $D6%02X reads $FF (missing?)\n", a); fails++; } }
+    // LOST ($D6B2): the VDATA write queue holds 63 bytes while the DDR3 port is held; the 64th on are lost and counted
+    want ("LOST after reset", 0xB2, rd (0xB2), 0);
+    t->ddr_busy = 1; wr (0x00, 0); wr (0x01, 0); wr (0x02, 0x40); wr (0x03, 1);
+    for (int i = 0; i < 70; i++) wr (0x04, i);
+    want ("LOST, port held, 70 writes", 0xB2, rd (0xB2), 7);
+    if (!(rd (0x08) & 1)) { printf ("FAIL STATUS b0 (writes queued) clear with 63 queued\n"); fails++; }
+    t->ddr_busy = 0; for (int i = 0; i < 200; i++) tick ();
+    if (rd (0x08) & 1) { printf ("FAIL STATUS b0 still set after the port was freed\n"); fails++; }
+    wr (0xB2, 0); want ("LOST cleared by a write", 0xB2, rd (0xB2), 0);
     // registers that read back what was written
     rw ("VADDR lo", 0x00, 0xFF); rw ("VADDR mid", 0x01, 0xFF); rw ("VADDR hi", 0x02, 0xFF); rw ("VINC", 0x03, 0xFF);
     rw ("KEY", 0x06, 0x0F); rw ("XADJ", 0x0C, 0xFF); rw ("YADJ", 0x0D, 0xFF);

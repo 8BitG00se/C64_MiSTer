@@ -28,6 +28,11 @@ jobs:
           sudo apt-get install -y -qq verilator >/dev/null
           sim/regmap/run.sh
 
+      - name: OctoVIC sprite table, frame by frame against the emulator's model (DDR3 idle, busy, held; no VDATA byte lost)
+        run: |
+          python3 -c "import numpy" 2>/dev/null || pip install -q numpy
+          sim/sprtable/run.sh
+
       - name: The eight-SID mix in GHDL against the emulator's integer model (Fix 28)
         run: |
           sudo apt-get install -y -qq ghdl >/dev/null
