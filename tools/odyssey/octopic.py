@@ -8,7 +8,7 @@
 #   octopic.py SOURCE.jpg MUSIC8.bin SONGLEN OUT.reu   (SOURCE: cliffs_large.jpg if there, else the 1280 copy - any size)
 #
 # The .reu (every part on a 64 KB boundary: the REU's address counter wraps inside each 512 KB):
-#   $000000  "ODYSSEY1", "(C) 2026 MONG00SE. ALL RIGHTS RESERVED.", then at +64 a list of the parts, 6 bytes each
+#   $000000  "ODYSSEY1", "(C) 2026 MONG00SE", then at +64 a list of the parts, 6 bytes each
 #            (REU address, length, 24 bits each): 0 the picture 2048 wide, 1 the half size, 2 the quarter size,
 #            3 the palette (R, G, B x 256), 4 the sprites' graphics, 5 the camera's path, 6 the sparkle stars, 7 the music
 #   The 6502 reads this list, so OCTO.ASM needs no numbers from this script.
@@ -204,7 +204,7 @@ def main():
     mm = bytearray()
     for f in range(songlen): mm += m[f * 192:(f + 1) * 192] + bytes(64)
     put(bytes(mm))
-    hdr = b'ODYSSEY1' + b'(C) 2026 MONG00SE. ALL RIGHTS RESERVED.\0'
+    hdr = b'ODYSSEY1' + b'(C) 2026 MONG00SE\0'
     hdr += bytes(64 - len(hdr))
     for a, n in parts: hdr += b24(a) + b24(n)
     hdr += bytes([gfx['sp0'], gfx['comet'], gfx['eq0'], H0 & 255, H0 >> 8])

@@ -1,24 +1,10 @@
-;(C) 2026 Mong00se
-;            ▗▄▄▄▄▄▄▄▄▄▄▄▖
-;          ▗▀             ▀▖
-;         ▗▘  ┌──┐   ┌──┐  ▝▖
-;         ▌   │ o│   │ o│   ▕
-;         ▌   └──┘   └──┘   ▕
-;         ▝▖     ▝▄▄▄▘     ▗▘
-;          ▝▖             ▗▘
-;        ▗▄▄▘▗▘▗▘ ▌ ▕ ▝▖▝▖▝▄▄▖
-;       ▗▘  ▗▘▗▘ ▗▘ ▕  ▝▖▝▖  ▝▖
-;       ▝▖ ▗▘ ▌ ▗▘  ▕   ▝▖▕  ▗▘
-;      o ▝▄▘ ▗▘ ▌   ▝▖  ▕ ▝▖▝▄▘ o
-;           o ▝▄▘ o  ▝▄▘ o ▝▄ o
-;      2026: AN OCTOPHONIC ODYSSEY
-;     ▗▄▄▖
-;    ▗▘o  ▀▄▖    CODE:  MONG00SE
-;     ▝▖ ▗▄▄▘    MUSIC: STRAUSS II,
-;      ▌ ▕              ARR. MONG00SE
-;      ▌ ▝▖      IMAGE: NASA, ESA,
-;     ▗▘   ▌            CSA, STSCI
-;     ▀▀▀▀▀▝▄▄▄▖
+;┌────────────┐ 2026: AN OCTOPHONIC
+;│  MONG00SE  │ ODYSSEY
+;│ OCTOPHONIC │ (C) 2026 MONG00SE
+;└────────────┘ F2 = COMPILE + RUN
+;
+; MUSIC: J. STRAUSS II, ARR. MONG00SE
+; IMAGE: NASA, ESA, CSA, STSCI
 ;
 ; HOW TO PLAY WITH IT (OCTOCODE):
 ; F2  COMPILE AND RUN (ON ANY PART)
