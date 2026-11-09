@@ -25,6 +25,7 @@ static const uint8_t PAL[16][3] = {   // the "core's palette" for the VIC (delib
 
 static int vic_colour (int R, int y)
 {
+    if (std::getenv ("VICKEY")) return 0;                                    // (a program's run: the VIC all see-through)
     if (R < 32 || R >= 352 || y < 51 || y >= 251) return 14;                 // the border
     int cx = (R - 32) / 8, cy = (y - 51) / 8;
     if ((cx * 3 + cy * 5) % 11 == 0 && ((R + y) & 2)) return 1;               // some "text"
