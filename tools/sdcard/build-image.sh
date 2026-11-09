@@ -155,7 +155,10 @@ if [ -d "$HERE/files/tty2oled" ]; then cp -r "$HERE/files/tty2oled" "$PAY/"; els
 # the front screen (Fix 20/27): tty2oled's daemon scripts (step 084), Main's helper oled.sh (087), and the
 # Octophonic screen firmware with its flasher if a build package brought them (088: files/tty2oled-firmware)
 mkdir -p "$PAY/tty2oled"; cp "$REPO/tools/oled/tty2oled/"* "$PAY/tty2oled/"; cp "$REPO/tools/oled/oled.sh" "$PAY/oled.sh"
-[ -d "$HERE/files/tty2oled-firmware" ] && cp -r "$HERE/files/tty2oled-firmware" "$PAY/"
+# (OCTO_OLED_FW=<folder>: the firmware kit from the front-screen build, else files/tty2oled-firmware here)
+FWD=${OCTO_OLED_FW:-$HERE/files/tty2oled-firmware}
+if [ -d "$FWD" ]; then cp -r "$FWD" "$PAY/tty2oled-firmware"; echo "screen firmware kit: $(ls "$PAY/tty2oled-firmware" | grep -c '_octo.bin$') firmware(s)"
+else echo "no screen firmware kit (step 088 has nothing to put on the screen later)"; fi
 # OCTOCODE, the code editor, from this commit's source (step 055 puts it in Apps)
 acme -f cbm -o "$PAY/OCTOCODE.PRG" "$REPO/tools/octoos/octocode/octocode.asm"
 echo "OCTOCODE.PRG: $(stat -c %s "$PAY/OCTOCODE.PRG") bytes"
@@ -201,6 +204,29 @@ mkdir -p "$CARD/octophonic/recipe"
 cp -r "$HERE/run-steps.sh" "$HERE/octo-step-lib.sh" "$CARD/octophonic/recipe/"
 mkdir -p "$CARD/octophonic/recipe/steps"
 for s in "$HERE"/steps/*.sh; do case "$(basename "$s")" in *-DEV-*) ;; *) cp "$s" "$CARD/octophonic/recipe/steps/" ;; esac; done
+# step 088 cannot run here (the screen is on the MiSTer, not on the build machine): its kit goes on the card
+# beside the recipe (octophonic/files - the payload folder run-steps.sh uses by default), so the card's own
+# recipe can update the screen's firmware on the MiSTer later (OCTO_ONLY=088). Nothing runs it by itself.
+if [ -d "$PAY/tty2oled-firmware" ]; then
+    mkdir -p "$CARD/octophonic/files"; cp -r "$PAY/tty2oled-firmware" "$CARD/octophonic/files/"
+    echo "the screen firmware kit is on the card: octophonic/files/tty2oled-firmware"
+fi
+# what the check afterwards must find, file by file (md5): the payload's pieces as they are on the card
+{
+    for r in $(cd "$PAY" && ls C64_Octophonic_*.rbf); do echo "$(md5sum < "$PAY/$r" | cut -c1-32)  _Computer/.$r"; done
+    echo "$(md5sum < "$PAY/MiSTer" | cut -c1-32)  MiSTer"
+    echo "$(md5sum < "$PAY/SHELL.PRG" | cut -c1-32)  octophonic/SHELL.PRG"
+    echo "$(md5sum < "$PAY/acme" | cut -c1-32)  octophonic/acme"
+    echo "$(md5sum < "$PAY/OCTOCODE.PRG" | cut -c1-32)  games/C64/Apps/OCTOCODE.PRG"
+    echo "$(md5sum < "$PAY/oled.sh" | cut -c1-32)  octophonic/oled.sh"
+    for f in tty2oled.sh S60tty2oled; do echo "$(md5sum < "$PAY/tty2oled/$f" | cut -c1-32)  tty2oled/$f"; done
+    for f in "$HERE/run-steps.sh" "$HERE/octo-step-lib.sh"; do echo "$(md5sum < "$f" | cut -c1-32)  octophonic/recipe/$(basename "$f")"; done
+    [ -s "$PAY/examples/MANIFEST.txt" ] && cat "$PAY/examples/MANIFEST.txt"
+    if [ -d "$PAY/tty2oled-firmware" ]; then
+        for b in "$PAY"/tty2oled-firmware/*_octo.bin; do echo "$(md5sum < "$b" | cut -c1-32)  octophonic/files/tty2oled-firmware/$(basename "$b")"; done
+    fi
+} > "$W/expect.txt"
+echo "the check will compare $(wc -l < "$W/expect.txt") files by md5"
 # the build's own leftovers: its backups of the stock files stay (MiSTer.orig, menu.rbf.stock are
 # the way back), the run's backup folder is renamed so no build-machine time is in the name
 for d in "$CARD"/octophonic/backups/run-*; do [ -d "$d" ] && mv "$d" "$CARD/octophonic/backups/image-build-$BUILD"; done
@@ -222,8 +248,8 @@ say "5. the image"
 IMG="$OUT/$NAME.img"
 SOURCE_DATE_EPOCH=$(git -C "$REPO" log -1 --format=%ct) python3 -I "$HERE/image/octofat.py" "$BASE" "$W/fat" "$IMG" OCTOFUSION
 sed "s/@BUILD@/$BUILD/g; s/@REL@/$REL/g; s/@MRF@/$MRF/g" "$HERE/image/How to flash.txt" > "$OUT/How to flash.txt"
-cp "$HERE/image/Check card.bat" "$OUT/"
+cp "$HERE/image/Check card.bat" "$HERE/image/Update front screen firmware.bat" "$HERE/image/update-front-screen.sh" "$OUT/"
 echo "$(stat -c %s "$IMG") bytes: $IMG"
 
 say "checking the image"
-OFFICIAL_7Z="$W/relparts/$FIRST" bash "$HERE/image/check-image.sh" "$IMG" "$Z" "$W/check"
+OCTO_EXPECT="$W/expect.txt" OFFICIAL_7Z="$W/relparts/$FIRST" bash "$HERE/image/check-image.sh" "$IMG" "$Z" "$W/check"

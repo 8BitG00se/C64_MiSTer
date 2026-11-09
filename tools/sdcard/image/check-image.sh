@@ -63,7 +63,28 @@ grep -qE '^[[:space:]]*bootcore_timeout[[:space:]]*=' "$INI" && bad "a bootcore_
 grep -q '<setname' "$C/_Computer/Octophonic 64.mgl" && okk "the launcher has its setname line" || bad "no setname"
 ls "$C"/_Computer/.C64_Octophonic_*.rbf >/dev/null 2>&1 && okk "the hidden core: $(cd "$C/_Computer" && ls -A | grep '^\.C64_Octophonic')" || bad "no hidden core"
 grep -q 'Octophonic OS' "$C/MiSTer" && okk "MiSTer is Octophonic Main (stock kept as MiSTer.orig: $([ -s "$C/MiSTer.orig" ] && echo yes || echo NO))" || bad "MiSTer is not Octophonic Main"
-[ "$(od -A n -t x1 -N 2 "$C/octophonic/SHELL.PRG" | tr -d ' \n')" = 00c0 ] && okk "octophonic/SHELL.PRG (loads at \$C000)" || bad "SHELL.PRG"
+LA=$(od -A n -t x1 -N 2 "$C/octophonic/SHELL.PRG" | tr -d ' \n')
+[ "$LA" = 00be ] || [ "$LA" = 00c0 ] && okk "octophonic/SHELL.PRG (loads at \$${LA#00}${LA%??})" || bad "SHELL.PRG load address $LA"
+NC=$(ls -A "$C/_Computer" | grep -c '^\.C64_Octophonic_.*\.rbf$')
+[ "$NC" = 1 ] && okk "exactly one Octophonic core in _Computer (no older core can be started by the launcher)" || bad "$NC Octophonic cores in _Computer"
+echo "-- the front screen"
+for f in tty2oled/tty2oled.sh tty2oled/S60tty2oled tty2oled/tty2oled-user.ini octophonic/oled.sh; do
+    [ -s "$C/$f" ] && okk "$f" || bad "no $f"
+done
+grep -q 'tty2oled/S60tty2oled' "$C/linux/user-startup.sh" 2>/dev/null && okk "linux/user-startup.sh starts tty2oled at power-on (the logo at boot)" || bad "tty2oled is not started at power-on"
+grep -q '^TTY2OLED_UPDATE="no"' "$C/tty2oled/tty2oled-user.ini" 2>/dev/null && okk "tty2oled's own updater off (it would flash the stock firmware)" || bad "tty2oled's updater is not off"
+grep -q 'oled.sh' "$C/MiSTer" && okk "Main has the front screen (oled.sh)" || bad "Main has no front screen"
+grep -q 'SHOWCASE' "$C/MiSTer" && okk "Main has the os-fixes (SHOWCASE)" || bad "Main has no os-fixes"
+for o in "$C"/games/C64/Demos/*/*.oled; do [ -e "$o" ] && okk "demo animation: ${o#$C/}"; done
+if [ -n "${OCTO_EXPECT:-}" ] && [ -s "$OCTO_EXPECT" ]; then
+    echo "-- every expected file, by md5 ($(wc -l < "$OCTO_EXPECT"))"
+    EB=0
+    while IFS= read -r line; do
+        sum=${line%%  *}; rel=${line#*  }
+        [ "$(md5sum < "$C/$rel" 2>/dev/null | cut -c1-32)" = "$sum" ] || { bad "$rel is missing or not the right one"; EB=1; }
+    done < "$OCTO_EXPECT"
+    [ "$EB" = 0 ] && okk "all $(wc -l < "$OCTO_EXPECT") match"
+fi
 grep -E '^(enabled|boot|startin|start)=' "$C/octophonic/os.ini" | sed 's/^/  os.ini: /'
 grep -qx 'start=/media/fat/games/C64' "$C/octophonic/os.ini" && okk "os.ini start=/media/fat/games/C64" || bad "os.ini start= is not /media/fat/games/C64"
 grep -qx 'startin=sd' "$C/octophonic/os.ini" && okk "os.ini startin=sd (never waits for a network)" || bad "os.ini startin"

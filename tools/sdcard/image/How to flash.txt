@@ -2,10 +2,22 @@ OCTOPHONIC FUSION build @BUILD@ - one card, flashed once from the PC
 =====================================================================
 
 What it is: a whole MiSTer on one SD card image (MiSTer @REL@, set up by MiSTer's own Mr. Fusion
-@MRF@) with Octophonic 64 already in: the core, Octophonic Main, the browser, and
-OCTOCODE (edit, compile and run) in games/C64/Apps. The other folders are empty, ready for your
-own files. Power on and it goes straight into Octophonic 64. (The installer unpacks the whole card
-in the MiSTer's memory, so the image is kept small: demos come with the updater.)
+@MRF@) with Octophonic 64 already in: Core 8, Octophonic Main, the browser, and OCTOCODE (edit,
+compile and run) in games/C64/Apps. Power on and it goes straight into Octophonic 64.
+
+NEW IN THIS BUILD
+ - Core 8: the louder 8-SID mix, and soft blue raster bars in the border while something loads
+   (no more flashing border).
+ - The start screen: F1 BROWSE and F3 LOAD now have their own titles (F3 = the disk in drive 8),
+   M in the browser mounts a disk in drive 8 without running it, the start screen shows what is
+   in drive 8, and SHOWCASE (no debug numbers, for recording) is on the F8 settings page.
+ - The front screen: tty2oled starts at power-on, so the Octophonic logo is there from the start;
+   a demo with its own animation (a .oled beside it) plays it while it runs.
+ - Four demos with their own front-screen animations in games/C64/Demos: Night City build 3,
+   DNA Wave build 3, Pendulum Wave build 1, Mona Lisa build 1.
+ - The updater on the card now always brings newer versions in (core, Main, SHELL.PRG ...), even
+   for steps it did before - each change is backed up and written in octophonic/update.log.
+The other folders are empty, ready for your own files.
 
 You need: a micro SD card of 2 GB or more (everything on it will be wiped), a card reader, and
 balenaEtcher or Rufus on the PC.
@@ -32,6 +44,25 @@ FIRST POWER-ON
  - Not sure it worked? Card back into the PC and double-click "Check card.bat" (it only reads).
    It says CARD OK, or which file is missing - then flash again.
  - From then on, every power-on goes straight into Octophonic 64.
+
+THE FRONT SCREEN'S FIRMWARE (once, after the first power-on, with the MiSTer on the network)
+ - The logo at power-on works with the Octophonic screen firmware you already have.
+ - For each demo's OWN animation the screen needs firmware OCTO4: double-click
+   "Update front screen firmware.bat" (password 1 if it asks). The MiSTer is NOT restarted, but
+   THE FRONT SCREEN GOES DARK FOR ABOUT 4 MINUTES - leave it alone. Its old firmware is saved
+   first and put back if anything goes wrong. Then run Demos - Night City build 3 and watch it.
+
+WHAT TO CHECK
+ - Power-on: white noise, then the Octophonic start screen; the front screen shows the logo.
+ - The sound is louder than before (same volume setting on the TV/soundbar).
+ - F1, pick a demo with a .reu: soft blue raster bars in the border while it loads, no flashing.
+ - F1 and F3 show their own titles; in the browser M mounts a .d64 in drive 8 (it does not run),
+   and the start screen shows drive 8; F8 has SHOWCASE.
+ - After the firmware update: Night City, DNA Wave, Pendulum Wave and Mona Lisa each play their
+   own animation on the front screen; CTRL+F12 (or Esc held) brings the logo back.
+
+GOING BACK TO CORE 7 (if Core 8 is wrong): Core 7 is not on this card. Flash Octophonic Fusion
+build 6 again - it is Core 7 as before.
 
 OPTIONAL, before the first power-on: with the card still in the PC, a drive called OCTOFUSION
 shows up. Put a wpa_supplicant.conf (Wi-Fi) or samba.sh on it and they are set up too.
