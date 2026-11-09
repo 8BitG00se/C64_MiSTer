@@ -1,0 +1,202 @@
+diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
+index bb99e39..7dfc247 100644
+--- a/support/octo/octo.cpp
++++ b/support/octo/octo.cpp
+@@ -482,6 +482,7 @@ void octo_os_core_init()
+ 	os_log("core: OS active, folder /%s, start in %s, network %s%s", cwd, mode,
+ 		!net_conf ? "none" : nr.empty() ? "not there yet" : nr.c_str(), net_wait ? " (waiting for it)" : "");
+ 	printf("Octophonic OS: active, folder /%s\n", cwd);
++	octo_oled_boot();                                  // the front screen: the Octophonic logo (Fix 20)
+ }
+ 
+ int octo_os_active()
+@@ -799,6 +800,8 @@ static int run_path(const std::string &path, const std::vector<Entry> *folder)
+ 		os_log("  mount #8 %s", p);
+ 		user_io_file_mount(p, 0);
+ 		disk8 = p;
++		const char *anim = octo_oled_program(p);     // the front screen: the disk's own animation, or the logo
++		if (anim[0]) os_log("  front screen: %s", anim);
+ 		return 1;
+ 	}
+ 	int idx = ends_with(p, ".prg") ? 0x01 : ends_with(p, ".crt") ? 0x41 : ends_with(p, ".reu") ? 0x81 : -1;
+@@ -842,6 +845,9 @@ static int run_path(const std::string &path, const std::vector<Entry> *folder)
+ 		mb_reply(ST_DONE, (int)kb64, at, 2);
+ 		return 1;
+ 	}
++	// the front screen first: the program's own animation (or the logo) goes over while the REU loads
++	const char *anim = octo_oled_program(p);
++	if (anim[0]) os_log("  front screen: %s", anim);
+ 	// the demo's REU first, while the 6502 still waits and draws the bar (VALUE 3); then the answer,
+ 	// then the program (its load resets the core, so the answer has to go before it)
+ 	if (!reu.empty() && full_of(reu) == reu_in) os_log("  REU %s is in already", full_of(reu).c_str());
+@@ -1257,6 +1263,7 @@ void octo_exit()
+ {
+ 	if (!os_active) return;
+ 	os_log("CTRL+F12: reset to the start screen (folder /%s)", cwd);
++	octo_oled_logo(1);                                // the front screen: back to the Octophonic logo
+ 	user_io_status_set("[17]", 1);
+ 	user_io_status_set("[17]", 0);
+ }
+@@ -1662,6 +1669,15 @@ void octo_poll()
+ 	snprintf(was, sizeof(was), "%s", cwd);
+ 	last_status = -1;
+ 
++	// the front screen: the browser, the settings or the menu in use - the Octophonic logo (a cold start's SHELL
++	// request too, unless a program has only just been started: its load resets the C64)
++	switch (reg[R_CMD])
++	{
++	case 0x01: case 0x02: case 0x06: case 0x08: case 0x09: case 0x0A: case 0x0B: case 0x12: octo_oled_logo(0); break;
++	case 0x0F: octo_oled_shell(); break;
++	default: break;
++	}
++
+ 	switch (reg[R_CMD])
+ 	{
+ 	case 0x01: cmd_dir(addr, len, reg[R_VALUE]); break;
+diff --git a/support/octo/octo.h b/support/octo/octo.h
+index c4224fe..d4170bf 100644
+--- a/support/octo/octo.h
++++ b/support/octo/octo.h
+@@ -28,4 +28,10 @@ void user_io_octo_menu();
+ // after each piece. 0 if it could not be read whole
+ int  octo_file_send(const char *path, unsigned char index, void (*progress)(uint32_t done, uint32_t total));
+ 
++// the front screen (octo_oled.cpp): a program's own animation while it runs, the Octophonic logo otherwise
++const char *octo_oled_program(const char *path);   // returns the animation used ("" none: the logo)
++void octo_oled_logo(int force);
++void octo_oled_shell();
++void octo_oled_boot();
++
+ #endif
+diff --git a/support/octo/octo_oled.cpp b/support/octo/octo_oled.cpp
+new file mode 100644
+index 0000000..cfbc79c
+--- /dev/null
++++ b/support/octo/octo_oled.cpp
+@@ -0,0 +1,126 @@
++// OCTOPHONIC OS - the front screen (tty2oled): the Octophonic logo animation all the time, a program's own
++// animation while that program runs.
++//
++// A program has its own animation when there is a .oled file beside it: the same name (Night City.prg ->
++// Night City.oled, also for a .d64/.crt/.t64), or the only .oled in its folder. Copying a demo's folder onto the card
++// (FileZilla) with its .oled inside is all it takes. tools/oled/make_anim.py makes them from a GIF or frames.
++//
++// Main never talks to the screen itself: it starts /media/fat/octophonic/oled.sh in the background
++// ("play FILE", "logo", "boot") and carries on at once. oled.sh owns the USB serial line, knows what the screen's
++// firmware can do (an Octophonic one plays animations; an older one gets the still picture in the .oled; none at all:
++// nothing), and when a newer request comes in while it is sending, it finishes the transfer and then does only the
++// newest one. Without oled.sh on the card nothing happens.
++#include <stdio.h>
++#include <string.h>
++#include <strings.h>
++#include <unistd.h>
++#include <dirent.h>
++#include <signal.h>
++#include <sys/stat.h>
++#include <sys/wait.h>
++#include <string>
++#include "../../hardware.h"
++#include "octo.h"
++
++#define OLED_SH "/media/fat/octophonic/oled.sh"
++
++static int oled_logo_on = 0;              // 1: the logo was asked for last (no need to ask again)
++static unsigned long oled_launch = 0;     // when a program was last started (GetTimer clock)
++static int oled_launched = 0;
++
++static void oled_run(const char *what, const char *arg)
++{
++	struct stat st;
++	if (stat(OLED_SH, &st)) return;
++	pid_t p = fork();
++	if (p < 0) return;
++	if (!p)
++	{
++		// the child: a grandchild of its own session does the work, so Main never waits and leaves no zombies
++		setsid();
++		pid_t q = fork();
++		if (!q)
++		{
++			signal(SIGCHLD, SIG_DFL);
++			for (int fd = 3; fd < 256; fd++) close(fd);
++			execl("/bin/sh", "sh", OLED_SH, what, arg, (char *)0);
++			_exit(127);
++		}
++		_exit(0);
++	}
++	waitpid(p, 0, 0);
++}
++
++static bool ends_ci(const std::string &s, const char *e)
++{
++	size_t n = strlen(e);
++	return s.size() >= n && !strcasecmp(s.c_str() + s.size() - n, e);
++}
++
++// the program's own animation: NAME.oled beside it, or the only .oled in its folder ("" none)
++static std::string oled_find(const char *path)
++{
++	std::string p = path;
++	size_t sl = p.rfind('/');
++	std::string dir = sl == std::string::npos ? "." : p.substr(0, sl);
++	std::string file = sl == std::string::npos ? p : p.substr(sl + 1);
++	size_t dot = file.rfind('.');
++	std::string base = dot == std::string::npos ? file : file.substr(0, dot);
++	DIR *d = opendir(dir.c_str());
++	if (!d) return "";
++	std::string same, only;
++	int count = 0;
++	struct dirent *e;
++	while ((e = readdir(d)))
++	{
++		std::string n = e->d_name;
++		if (n[0] == '.' || !ends_ci(n, ".oled")) continue;
++		count++;
++		only = n;
++		if (!strcasecmp(n.substr(0, n.size() - 5).c_str(), base.c_str())) same = n;
++	}
++	closedir(d);
++	if (!same.empty()) return dir + "/" + same;
++	if (count == 1) return dir + "/" + only;
++	return "";
++}
++
++// a program is being started (OPEN or RUN of a .prg/.crt/.d64/...): its animation, or the logo.
++// Returns the animation's file ("" none), for the log.
++const char *octo_oled_program(const char *path)
++{
++	static std::string a;
++	oled_launch = GetTimer(0);
++	oled_launched = 1;
++	a = oled_find(path);
++	if (!a.empty())
++	{
++		oled_run("play", a.c_str());
++		oled_logo_on = 0;
++	}
++	else octo_oled_logo(0);
++	return a.c_str();
++}
++
++// back to the Octophonic logo (CTRL+F12, Esc held, the browser, the start screen). force: even if asked already
++void octo_oled_logo(int force)
++{
++	if (oled_logo_on && !force) return;
++	oled_run("logo", "");
++	oled_logo_on = 1;
++}
++
++// the start screen asked for SHELL.PRG: a cold start - back to the logo, unless a program was started a moment ago
++// (loading a .prg resets the C64, and its cold start asks for SHELL.PRG too)
++void octo_oled_shell()
++{
++	if (oled_launched && !CheckTimer(oled_launch + 10000)) return;
++	octo_oled_logo(0);
++}
++
++// Main has (re)started with the Octophonic core: the logo, if nothing else is looking after the screen
++void octo_oled_boot()
++{
++	oled_run("boot", "");
++	oled_logo_on = 0;                      // not known: the next request that wants the logo asks for it
++}
