@@ -219,6 +219,15 @@ still passed to the C64 as usual, so only a deliberate hold leaves. Main sees th
 level, so it works even when a demo has taken over the C64's keyboard and RESTORE. Not tested on real
 hardware yet.
 
+## The front screen (Fix 27, Fix 20)
+
+The tty2oled screen shows the animated Octophonic logo from power-on (tty2oled's daemon, recipe step 084, sends the
+core's name; the Octophonic screen firmware plays the logo for it). When OPEN (`07`) or RUN (`04`) starts a program
+that has a `.oled` beside it - the same name, or the only one in the folder - Main has `octophonic/oled.sh` send it
+and the screen plays it until the program ends: CTRL+F12, Esc held, the browser (`01 02 06`), the settings
+(`08 09 0A 0B`), MENU (`12`), or a cold start's SHELL request (`0F`, not within 10 s of starting a program) bring
+the logo back. Main never waits for the screen. Details: `tools/oled/README.md`.
+
 ## The pieces
 
 - **The core** (`rtl/octovic/octo_os.sv`): the mailbox, 16 registers at `$D6F0-$D6FF` in OctoVIC's

@@ -16,11 +16,16 @@ tools/sdcard/
     020-os-ini.sh       octophonic/os.ini, with startin=sd
     030-core.sh         the core (hidden .rbf) + the launchers
     040-main.sh         Octophonic Main
+    042-main-front-screen.sh  Octophonic Main with the front screen (a program's own .oled animation)
     050-shell-prg.sh    octophonic/SHELL.PRG
     055-code-tools.sh   octophonic/acme (OCTOCODE's F2 COMPILE on the MiSTer) and Apps/OCTOCODE.PRG
     060-mister-ini.sh   makes sure a MiSTer.ini exists; sets no video
     070-migrate-drop-octophonic-folder.sh   the old games/C64/Octophonic folders, if empty
     080-bootcore.sh     MiSTer.ini: bootcore=Octophonic 64.mgl, every bootcore_timeout off
+    084-oled-daemon.sh  the front screen at power-on: tty2oled's daemon if the card has none, its updater off
+    085-oled-pics.sh    the front screen's title cards (tty2oled/pics_pri)
+    087-oled-script.sh  octophonic/oled.sh, Main's helper for the front screen
+    088-oled-firmware.sh  the screen's firmware to Octophonic OCTO4 (only a screen already on Octophonic firmware)
     095-stock-menu-core.sh  menu.rbf: MiSTer's own (white noise) menu core back, if the old navy one was in
     900-DEV-ssh-key.sh          Neal's ssh key + the startup hook
     910-DEV-mister-ini-crt.sh   Neal's JVC CRT video settings
@@ -79,6 +84,8 @@ files/
   examples/MANIFEST.txt           step 015: "<md5>  games/C64/<path>" a line
   examples/games/C64/...          (the sdcard-examples branch; build-image.sh fetches it,
                                    or OCTO_EXAMPLES=<folder>; OCTO_EXAMPLES=none: no examples)
+  oled.sh, tty2oled/              step 087, 084 (build-image.sh copies them from tools/oled/)
+  tty2oled-firmware/              step 088: esptool.py, serial/ (pyserial), esp32de/lolin32/esp32s3_octo.bin
   dev/octophonic-key.pub          DEV only
 ```
 

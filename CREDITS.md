@@ -13,6 +13,8 @@ forked from, these projects - thank you to everyone who made them:
 | Mr. Fusion, the MiSTer SD card installer image (Octophonic Fusion is built on it) | the MiSTer-devel Mr. Fusion contributors | GNU GPL v3 | https://github.com/MiSTer-devel/mr-fusion |
 | tty2oled, the front-screen firmware (the Octophonic front screen is a fork) | venice1200 and the tty2oled contributors | GNU GPL v3 | https://github.com/venice1200/MiSTer_tty2oled |
 | The front-screen board (tty2oled hardware) | Antonio Villena | - | - |
+| esptool (updates the front screen's firmware from the MiSTer, recipe step 088) | Espressif Systems and contributors | GNU GPL v2 | https://github.com/espressif/esptool |
+| pyserial (used by esptool) | Chris Liechti and contributors | BSD 3-Clause | https://github.com/pyserial/pyserial |
 
 No Commodore ROMs are in this repository or in anything it builds: the emulator and the image use
 the owner's own ROMs, and the KERNAL changes are a patch.
