@@ -45,6 +45,11 @@ jobs:
           docker run --rm -v "$PWD":/build -w /build raetro/quartus:17.0 \
             quartus_sh --flow compile C64.qpf
 
+      - name: The worst hold paths (start and end points, every corner)
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD":/build -w /build raetro/quartus:17.0 quartus_sta -t sim/timing/worst_hold.tcl || true
+
       - name: Name the core
         run: |
           mkdir -p out
@@ -69,6 +74,7 @@ jobs:
           sudo chown -R "$(id -u):$(id -g)" output_files 2>/dev/null || true
           mkdir -p /tmp/reports
           cp output_files/*.summary /tmp/reports/ 2>/dev/null || true
+          cp output_files/worst_hold_*.txt /tmp/reports/ 2>/dev/null || true
           cp out/*.rbf /tmp/reports/ 2>/dev/null || true          # the core itself, so it can be fetched with git
           grep -h -iE "^error|critical warning" output_files/*.rpt 2>/dev/null | head -200 > /tmp/reports/errors.txt || true
           # where the memories went (block RAM or logic), and what each part of the design costs
