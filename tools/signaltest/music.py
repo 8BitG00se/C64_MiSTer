@@ -189,7 +189,7 @@ def build():
     # the end: everything fades over the last chord
     fe = F(END)
     for c in range(8): S.vol[fe:, c] = np.round(S.vol[fe:, c] * np.linspace(1, 0.2, N - fe))
-    S.vol[TONE - 12:TONE, :] = 15
+    S.vol[:TONE, :] = 9                                          # the level tone at the tune's own peak level (15 was 5 dB louder)
     r = regs_soft(S, hard={0, 1, 2, 6, 7})
     m = meters(r)
     stream = r[:, [0, 1, 4, 5, 2, 3, 6, 7], :]                     # into the DMA order (D400 D420 D480 D4A0 D500 D520 D580 D5A0)
