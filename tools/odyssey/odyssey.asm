@@ -48,9 +48,10 @@
 ; file, so it is in parts, each one loads in OCTOCODE on its own:
 ;   ODYSSEY.ASM  this: the start, the machine test, shared bits
 ;   PLAYER.ASM   the music player (1, 2 or the first 2 of 8 SIDs)
-;   SHOW.ASM     the stock / 2-SID show: the tour, loading the views
-;   FX.ASM       its scroll text, equaliser, twinkles, sparkles, comet
-;   IRIS.ASM     its changes: the iris, the fades, the raster bars
+;   SHOW.ASM     the stock / 2-SID show: loading the galaxy, the loop
+;   FX.ASM       its scroll text, equaliser, twinkles, glints
+;   IRIS.ASM     its setting up, its line about the machine
+;   GALAXY.ASM   the galaxy's turn (drawn anew) and its live stars
 ;   OCTO.ASM     the Octophonic show (OctoVIC, 8 SIDs, the REU)
 ;   OCTOFX.ASM   its twinkles, sparkles, comet, sprites, scroll text
 ;   CAMERA.ASM   its camera through the cliffs
@@ -475,6 +476,7 @@ t_noreu !byte 15, 7
         !src "show.asm"
         !src "fx.asm"
         !src "iris.asm"
+        !src "galaxy.asm"
         !src "octo.asm"
         !src "octofx.asm"
         !src "camera.asm"

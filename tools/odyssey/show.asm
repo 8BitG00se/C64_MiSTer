@@ -1,32 +1,62 @@
 ; (C) 2026 Mong00se
 ; SHOW.ASM - the stock C64 / 2-SID show of ODYSSEY.ASM, by Mong00se.
-; A tour of the Webb "Cosmic Cliffs" (NASA, ESA, CSA, STScI): four
-; multicolour bitmaps (VIEW0-VIEW3 on the disk: the whole picture,
-; then three close-ups), each loaded while the one before is shown,
-; into the other VIC bank, then swapped in with an iris or a fade -
-; a step zoom. Stars twinkle (colour RAM), sparkles flash on the
-; brightest ones and a comet crosses now and then (sprites), the
-; scroll text names each view, and the equaliser shows each voice
-; (3 bars a SID). All of it is done here, by the 6502.
+; An Andromeda-style spiral galaxy of our own (GALAXY on the disk, made
+; by GALAXY.PY - no photo), loaded behind the loading screen, which
+; goes straight into it on the beat. The 6502 turns the galaxy and
+; draws it anew, moves its live stars (GALAXY.ASM), twinkles the stars
+; behind it, flashes glints on the brightest, scrolls the text and
+; shows the equaliser (FX.ASM). All of it is done here, by the 6502.
 !ifdef odytop { !set odyp = odytop } else { !set odyp = 0 }
 !if odyp = 0 {
         !src "odyssey.asm"
 } else {
 
-; VIC bank 1 ($4000): screen $4000, text row screen $4400, sprites
-; $4800, letters $5800, bitmap $6000. Bank 2 ($8000): screen $8000,
-; text $8400, sprites $8800, the ROM's letters, bitmap $A000.
-; A view file: 2 bytes, screen colours (1000), colour RAM (1000),
-; its table (256: twinkles, sparkles), the bitmap (8000). The screen
-; and colour bytes go to the bank's own buffer (bank 1: $9000, bank
-; 2: $C000), so the iris and the fades can bring them in.
-FADET   = $c900         ; this step's fade, a byte for each byte
-SQ      = $ce00         ; squares 0-49 (lo), then hi: 100 bytes
+; VIC bank 1 ($4000): screen $4000, the text screen $4400 (the loading
+; screen; then the last row's), sprites $4800, letters $5800, bitmap
+; $6000. Bank 2 ($8000): screen $8000, sprites $8800, bitmap $A000.
+; GALAXY.ASM lists the rest.
 SPST    = $cb00         ; the sparkles' state
-TWT     = $cb40         ; the twinkles' timers (24)
-HW      = $cb60         ; the iris: half widths of rows 0-23
-LINEC   = $cc00         ; the raster bars: a colour a line
+TWT     = $cb40         ; the twinkles' timers (30)
 MSGBUF  = $cd00         ; the scroll text's "detected" line
+
+; zero page for the galaxy (GALAXY.ASM)
+front   = $60           ; the bitmap shown (0: $6000, 1: $A000)
+flipat  = $61           ; the frame it may swap at
+flipreq = $62           ; 1: swap at the top of the next frame
+alpha   = $63           ; 2: the galaxy's angle (65536 a turn)
+flipped = $65           ; 1: swapped (the drawing stops for the stars)
+p1      = $66           ; 2: SQH + r
+p3      = $68           ; 2: NSQH + 255 - r
+pp      = $6a           ; 2: the star's byte
+th      = $6c
+rlo2    = $6d
+mk      = $6e
+xm      = $6f
+rth     = $70
+ringk   = $71
+rend    = $72
+nst0    = $73           ; the stars plotted in $6000, in $A000
+nst1    = $74
+rr      = $75           ; the next star to check against its arm
+tp      = $76           ; 2: the texture's line
+ufr     = $78
+vfr     = $79
+ry      = $7a           ; the line being drawn
+rcnt    = $7b           ; its bytes still to draw
+c8x     = $7c           ; the byte's offset (+8 a byte)
+rstate  = $7d           ; 0 a new quarter, 1 the next line, 2 in a line
+ysave   = $7e
+rk      = $7f           ; the quarter (lines k, k+4, ...)
+ra      = $80           ; its angle
+rc8     = $81           ; cos, sin x 127
+rs8     = $82
+m1      = $83           ; smul: m1 x m2 -> res
+m2      = $84
+res     = $85           ; 2
+acc     = $87           ; 2
+nquar   = $89           ; quarters drawn
+sgn     = $8a
+
 
 ; zero page (the show's own)
 bank    = $1a           ; the bank shown: 0 ($4000) or 1 ($8000)
@@ -64,19 +94,10 @@ lvdr    = $5d           ; the bar: cells drawn
 eqn     = $5e           ; the equaliser: bars
 LST     = $cf00         ; the loading screen's stars: offset lo, hi, timers (72 each)
 
-MINVIEW = 700           ; the least frames from one cut to the next (12 s: a view loads in about 15 s on a 1541)
-NVIEW   = 4             ; the views on the disk (VIEW0-VIEW3)
+TIMING  = 0             ; 1: the border shows the time the stars take (red)
 
 !zone b_dd00
-b_dd00  !byte 2, 1
-!zone b_scr
-b_scr   !byte $40, $80
-!zone b_buf
-b_buf   !byte $90, $c0
-!zone b_bmp
-b_bmp   !byte $60, $a0
-!zone b_d018
-b_d018  !byte $16, $14  ; the text row: screen +$400, letters
+b_dd00  !byte 2, 1        ; $DD00's bank bits: $4000, $8000
 
 ; ======================================================== the show
 !zone show
@@ -88,147 +109,71 @@ show    lda #<irq_t     ; the title's interrupt: the music only
         ldx mode
         beq +
         lda #6
-+       jsr pl_init
++       sta eqn
+        jsr pl_init
         jsr mkmsg
         jsr irqon
         lda #0
-        sta bank
-        sta view
-        sta trans
-        sta fxon
-        sta qview
-        sta inname
+        sta spnext
         jsr setup       ; letters, sprites, black screens
-        lda #0          ; (the equaliser is not sprites any more)
-        sta spry
-        sta spry+1
         jsr loadscr     ; the loading screen: stars, the title, the equaliser, a bar
-        ; the first view, into bank 1
--       lda #0
-        ldx #0
-        jsr loadview
+-       jsr loadgal     ; the galaxy, its tables, the glints
         bcc +
         ldx #<t_disk
         ldy #>t_disk
         lda #7
         jsr print2
         jmp -
-+       lda #40         ; the bar full
++       lda #81         ; the bar full
         sta lvpage
         ldx #<t_ready
         ldy #>t_ready
         lda #1
         jsr print2
--       jsr atcut       ; the picture comes up on the music's next phrase
+        jsr galinit     ; the screens, the stars, the whole galaxy drawn once
+-       jsr atcut       ; the galaxy comes up on the music's next phrase
         bcc -
-        jsr showon      ; the bitmap (all black)
-        lda #1
-        jsr iris_open   ; the iris opens on the whole picture, straight from the loading screen
-        lda #1
-        sta qview
-        sta fxon
-; the tour: load the next view into the bank not shown, wait,
-; swap them with an iris or a fade
-!zone tour
-tour    lda #0
-        sta vtime
-        sta vtime+1
-        ldx view
-        inx
-        cpx #NVIEW
-        bcc +
-        ldx #0
-+       stx nview
-        lda bank
-        eor #1
-        tax
-        lda nview
-        jsr loadview
-        bcs tour        ; (no disk: stay on this view, try again)
--       lda vtime+1     ; at least MINVIEW frames since the last cut ...
-        cmp #>MINVIEW
-        bcc -
+        jsr showon
+; the stars a step on in the bitmap not shown, then swap at the top of a frame,
+; 2 frames after the last swap; the galaxy is drawn on until it has swapped
+!zone galloop
+galloop lda front
         bne +
-        lda vtime
-        cmp #<MINVIEW
-        bcc -
-+       jsr atcut       ; ... then on the music's next phrase
-        bcc -
-        lda #0
-        sta fxon
-        jsr fxoff
-        inc trans
-        lda trans
-        and #1
-        beq +
-        lda #1
-        jsr iris_close
-        jsr swap
-        lda #1
-        jsr iris_open
+        !if TIMING { lda #2
+        sta $d020 }
+        jsr serase1
+        jsr rings
+        jsr respawn
+        jsr splot1
         jmp ++
-+       jsr fade_out
-        jsr swap
-        jsr fade_in
-++      lda nview
-        sta view
-        clc
-        adc #1
-        sta qview
-        lda #1
-        sta fxon
-        jmp tour
-
-; the new bank on show (both are black now)
-!zone swap
-swap    sei
-        jsr scrswap
-        lda bank
-        eor #1
-        sta bank
-        tax
-        lda $dd00
-        and #$fc
-        ora b_dd00,x
-        sta $dd00
++       !if TIMING { lda #2
+        sta $d020 }
+        jsr serase0
+        jsr rings
+        jsr respawn
+        jsr splot0
+++      !if TIMING { lda #0
+        sta $d020 }
         lda #0
-        ldx #23
--       sta HW,x
-        dex
-        bpl -
-        cli
-        rts
+        sta flipped
+        lda #1
+        sta flipreq
+        jsr render
+        jmp galloop
 
-; ================================================== loading a view
-; A = the view (0-4), X = the bank (0/1); carry set: it failed
-!zone loadview
-loadview
-        sta lvn
-        stx lvb
-        sei             ; while a view loads: one sparkle, no comet -
-        lda #1          ; more sprites on the bad lines steal so many
-        sta loading     ; cycles the KERNAL misses the 1541's bits
+; ================================================= loading the galaxy
+; GALAXY on the disk: 2 bytes, then pieces: where (2), how long (2), packed (STOCKPIC.PY's pack());
+; where = 0 ends. Carry set: it failed
+!zone loadgal
+loadgal sei
         lda #0
         sta lvpage
         sta lverr
-        lda #1
-        lda #0
-        sta comety
-        ldx #4
--       sta SPST,x
-        sta SPST+8,x
-        sta spry+2,x
-        dex
-        bne -
-        sta spry+7
+        sta lvdr
         cli
-        lda lvn
-        clc
-        adc #$30
-        sta vname+4
-        lda #5
-        ldx #<vname
-        ldy #>vname
+        lda #6
+        ldx #<gname
+        ldy #>gname
         jsr SETNAM
         lda #2
         ldx $ba         ; the drive it was loaded from (8 if none)
@@ -242,44 +187,36 @@ loadview
         ldx #2
         jsr CHKIN
         bcs .err
-        jsr drready     ; (its two address bytes)
-        jsr CHRIN
-        jsr drready
-        jsr CHRIN
-        jsr READST
+        jsr getb        ; (its two address bytes)
+        jsr getb
+        lda lverr
         bne .err
-        ldx lvb         ; the colours into the bank's buffer
-        lda b_buf,x
-        sta ptr+1
-        lda #0
+.seg    jsr getb
         sta ptr
-        lda #<2256
-        ldx #>2256
+        jsr getb
+        sta ptr+1
+        beq .ok
+        jsr getb
+        pha
+        jsr getb
+        tax
+        pla
         jsr unpack
         bcs .err
-        ldx lvb         ; the bitmap into the bank
-        lda b_bmp,x
-        sta ptr+1
-        lda #0
-        sta ptr
-        lda #<8000
-        ldx #>8000
-        jsr unpack
-        bcs .err
-        jsr CLRCHN
+        jmp .seg
+.ok     jsr CLRCHN
         lda #2
         jsr CLOSE
-        lda #0
-        sta loading
         clc
         rts
 .err    jsr CLRCHN
         lda #2
         jsr CLOSE
-        lda #0
-        sta loading
         sec
         rts
+!zone gname
+gname   !pet "galaxy"
+
 ; A/X bytes unpacked to (ptr) (the packing: STOCKPIC.PY, pack()): a token $00-$7F is
 ; a run of token+1 bytes to copy; $80-$BF copies (token & $3F) + 2 bytes from a distance
 ; (the next byte, 1-255) back; $C0-$FF the same with a 16 bit distance (lo, hi). It is
@@ -370,8 +307,6 @@ getb    lda lverr
         rts
 .z      lda #0
         rts
-!zone vname
-vname   !pet "view0"
 ; wait (the interrupt running) until the drive is ready to send: it
 ; lets go of the CLK line. The KERNAL's CHRIN waits for this with the
 ; interrupt held off - for a whole directory search or the next
@@ -393,7 +328,7 @@ drready lda frame
 ; begin at frame 549 (the end of the introduction), 240 frames (4 bars) apart; scaled
 ; to SONGLEN if the song's length changes (song.asm).
 PHN     = 16
-PHLEAD  = 40
+PHLEAD  = 0
 !zone atcut
 atcut   ldx #0
 .l      lda mfr
@@ -658,16 +593,16 @@ lshine  lda frame
         rts
 !zone shw
 shw     !byte 6,6,14,14,3,3,1,1,3,3,14,14,6,6,6,6
-; the bar: a cell for each pages of the picture unpacked (30 cells for 40 pages)
+; the bar: a cell for each pages of the galaxy unpacked (30 cells for its 81 pages: 3/8 a page)
 !zone lbar
 lbar    ldx lvdr
 .l      lda lvpage
         lsr
         lsr
         sta it
-        lda lvpage
-        sec
-        sbc it
+        lsr
+        clc
+        adc it
         sta it
         cpx it
         bcs .x
@@ -816,7 +751,7 @@ irq_t   lda $d019
         sta $d019
         inc frame
         jsr pl_play
-        jmp $ea81
+        jmp irqret
 
 ; the loading screen's: the music, the equaliser, the twinkling stars, the title's shine, the bar
 !zone irq_l
@@ -828,92 +763,239 @@ irq_l   lda $d019
         jsr ltw
         jsr lshine
         jsr lbar
-        jmp $ea81
+        jmp irqret
 
-; the show's: once a frame at line $FC, below the picture
-!zone irq_s
-irq_s   lda $d019
+; the show's, at the top (line 16): the bitmap shown (swapped if one is ready), hires
+!zone irq_top
+irq_top lda $d019
         sta $d019
-        inc frame
-        inc vtime
-        bne +
-        inc vtime+1
-+       jsr pl_play
-        jsr scroll
-        jsr eqdraw
-        lda fxon
+        lda flipreq
         beq +
-        jsr twinkle
-        jsr sparkle
-        lda loading     ; (no comet while a view loads)
-        bne +
-        jsr comet
-+       jsr sprites
-        jmp $ea81
-
-; the show on: the bitmap (black), the interrupt
-!zone showon
-showon  sei
+        lda frame
+        sec
+        sbc flipat
+        bmi +
+        lda front
+        eor #1
+        sta front
         lda #0
-        sta colbit
-        sta qview       ; (the scroll text starts with the interrupt: these must be clear)
-        sta inname
-        lda #<msg0
-        sta mptr
-        lda #>msg0
-        sta mptr+1
-        ldx #39         ; the scroll text's colours: fading through the greys at the ends
--       lda scrcol,x
-        sta $dbc0,x
-        lda scrscr,x
-        sta $43c0,x
-        sta $83c0,x
-        dex
-        bpl -
-        ldx #0          ; its row of the bitmap: empty
-        lda #0
--       sta $7e00,x
-        sta $7f00,x
-        sta $be00,x
-        sta $bf00,x
-        inx
-        bne -
-        ldx #0          ; colour RAM black (rows 0-23)
-        lda #0
--       sta $d800,x
-        sta $d900,x
-        sta $da00,x
-        sta $dac0,x
-        inx
-        bne -
+        sta flipreq
+        lda #1
+        sta flipped
+        lda frame
+        clc
+        adc #2
+        sta flipat
++       ldx front
         lda $dd00
         and #$fc
-        ora #2
+        ora b_dd00,x
         sta $dd00
         lda #$3b
         sta $d011
         lda #$08
         sta $d018
-        lda #$18
         sta $d016
-        lda #0
-        sta $d020
-        sta $d021
-        lda #<irq_s
+        lda alpha       ; the galaxy turns
+        sec
+        sbc #<DALPHA
+        sta alpha
+        lda alpha+1
+        sbc #>DALPHA
+        sta alpha+1
+        lda #<irq_bot
         sta $0314
-        lda #>irq_s
+        lda #>irq_bot
         sta $0315
-        lda #$fc
+        lda #238
         sta $d012
+        jmp irqret
+
+; and at line 238: the last row a text row of bank 1 (the scroll text), the music, the effects
+!zone irq_bot
+irq_bot lda $d019
+        sta $d019
+        lda $dd00
+        and #$fc
+        ora #2
+        sta $dd00
+        lda #$1b
+        sta $d011
+        lda #$16
+        sta $d018
+        lda xscr
+        ora #8
+        sta $d016
+        !if TIMING { lda #6
+        sta $d020 }
+        inc frame
+        jsr pl_play
+        jsr scroll
+        jsr eqdraw
+        jsr twinkle
+        jsr sparkle
+        jsr sprites
+        !if TIMING { lda #0
+        sta $d020 }
+        lda #<irq_top
+        sta $0314
+        lda #>irq_top
+        sta $0315
+        lda #16
+        sta $d012
+        jmp irqret
+; the end of an interrupt (the KERNAL's, for when it is switched off)
+!zone irqret
+irqret  pla
+        tay
+        pla
+        tax
+        pla
+nmirti  rti
+; the way in with the KERNAL off ($FFFE)
+!zone irqin
+irqin   pha
+        txa
+        pha
+        tya
+        pha
+        jmp ($0314)
+
+; the galaxy ready behind the loading screen: the screens, the bitmaps, the KERNAL off
+; (the texture is under it), the stars, the galaxy drawn whole once, the stars in both
+!zone galinit
+galinit sei
+        lda #<irqin
+        sta $fffe
+        lda #>irqin
+        sta $ffff
+        lda #<nmirti
+        sta $fffa
+        lda #>nmirti
+        sta $fffb
+        lda #$35        ; the KERNAL off: the texture goes to $E000 (loaded into $6000)
+        sta $01
+        cli
+        lda #$60
+        ldx #>TEX
+        ldy #16
+        jsr copypg
+        ldx #0          ; the colours of both screens (loaded into $8000)
+-       lda $8000,x
+        sta $4000,x
+        lda $8100,x
+        sta $4100,x
+        lda $8200,x
+        sta $4200,x
+        lda $82e8,x
+        sta $42e8,x
+        inx
+        bne -
+        lda #$a0        ; the still parts of the bitmap (loaded into $A000) to $6000
+        ldx #$60
+        ldy #32
+        jsr copypg
+        jsr starinit
+        lda #0
+        sta front
+        sta flipreq
+        sta flipped
+        sta rstate
+        sta nquar
+        sta alpha
+        sta alpha+1
+        lda #3
+        sta rk
+        lda #1
+        sta noyield
+        jsr render      ; the whole galaxy, into both
+        lda #0
+        sta noyield
+        sta rstate
+        jsr splot0      ; and the stars into both
+        jsr splot1
+        rts
+
+; Y pages from page A to page X
+!zone copypg
+copypg  sta ptr+1
+        stx ptr2+1
+        ldx #0
+        stx ptr
+        stx ptr2
+        tya
+        tax
+        ldy #0
+-       lda (ptr),y
+        sta (ptr2),y
+        iny
+        bne -
+        inc ptr+1
+        inc ptr2+1
+        dex
+        bne -
+        rts
+
+; the show on (on the beat): its interrupts; the loading screen stays up until
+; the top of the next frame, then the galaxy is there
+!zone showon
+showon  ldx #39         ; the text row: blank, its colours fading at the ends;
+-       lda scrcol,x    ; row 23 black (the change to text happens in it)
+        sta $dbc0,x
+        lda #0
+        sta $db98,x
+        lda #$20
+        sta TROW,x
+        sta TROW-40,x
+        dex
+        bpl -
+        lda #<msg0
+        sta mptr
+        lda #>msg0
+        sta mptr+1
+        ldx #7
+-       lda sprptr,x
+        sta $43f8,x
+        sta $47f8,x
+        sta $83f8,x
+        dex
+        bpl -
+        lda #<320       ; the equaliser: sprite 7
+        sta sprx+7
+        lda #>320
+        sta sprxh+7
+        lda #230
+        sta spry+7
+        lda #14
+        sta $d02e
+        ldx #5
+-       lda glcol,x
+        sta $d027,x
+        dex
+        bpl -
+        lda #0
+        sta $d01c
+        sta $d01d
+        sta $d017
+        sta $d01b
+        sei
+        lda #<irq_top
+        sta $0314
+        lda #>irq_top
+        sta $0315
+        lda #16
+        sta $d012
+        lda frame
+        clc
+        adc #2
+        sta flipat
         cli
         rts
 !zone scrcol
-scrcol  !byte 0,11,11,12,12,15,15,1,1,1,1,1,1,1,1,1,1,1,1,1
-        !byte 1,1,1,1,1,15,15,12,12,11,11,0     ; the scroll text: cells 0-31, fading through the greys at its ends
-        !byte 1,1,1,1,1,1,1,1                   ; the equaliser's cells 32-39: white (bits 11)
-!zone scrscr
-scrscr  !fill 32, 0
-        !fill 8, $6e                            ; the equaliser: bits 01 blue, 10 light blue
+scrcol  !byte 0,11,12,15,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+        !byte 1,1,1,1,1,1,1,1,1,1,15,12,11,0,0,0,0,0,0,0
+glcol   !byte 1,14,1,14,1,14
+sprptr  !byte $22,$23,$22,$23,$22,$23,$20,$20
 
 ; ======================================================= texts
 !zone t_1sid
@@ -923,11 +1005,11 @@ t_1sid  !byte 8, 12
 t_2sid  !byte 8, 8
         !scr "2 sids detected: stereo", 0
 !zone t_load
-t_load  !byte 11, 9
-        !scr "loading the cliffs...", 0
+t_load  !byte 11, 10
+        !scr "loading the galaxy...", 0
 !zone t_ready
-t_ready !byte 11, 9
-        !scr "the cliffs are ready!", 0
+t_ready !byte 11, 10
+        !scr "the galaxy is ready! ", 0
 !zone t_title
 t_title !byte 4, 6
         !scr "2026: an octophonic odyssey", 0
@@ -938,32 +1020,4 @@ t_copy  !byte 6, 11
 t_disk  !byte 22, 2
         !scr "put the odyssey disk in drive 8", 0
 
-; the sparkles (4 sizes) and the comet: sprites $22-$26
-!zone sprdata
-sprdata
-; glint, smallest (multicolour: white core, cyan and light blue spikes)
-        !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-        !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$20
-        !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-        !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-; glint, small (multicolour: white core, cyan and light blue spikes)
-        !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-        !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$30,$00,$00,$30,$00,$00,$ec
-        !byte $00,$00,$30,$00,$00,$30,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-        !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-; glint, big (multicolour: white core, cyan and light blue spikes)
-        !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-        !byte $00,$00,$00,$10,$00,$00,$10,$00,$00,$30,$00,$00,$fc,$00,$01,$ed
-        !byte $00,$00,$fc,$00,$00,$30,$00,$00,$10,$00,$00,$10,$00,$00,$00,$00
-        !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-; glint, biggest (multicolour: white core, cyan and light blue spikes)
-        !byte $00,$00,$00,$00,$10,$00,$00,$10,$00,$00,$10,$00,$00,$10,$00,$00
-        !byte $10,$00,$00,$30,$00,$00,$30,$00,$01,$31,$00,$00,$ec,$00,$17,$ab
-        !byte $50,$00,$ec,$00,$01,$31,$00,$00,$30,$00,$00,$30,$00,$00,$10,$00
-        !byte $00,$10,$00,$00,$10,$00,$00,$10,$00,$00,$10,$00,$00,$00,$00,$00
-; the comet
-        !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-        !byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-        !byte $00,$00,$00,$02,$00,$00,$00,$00,$00,$a0,$00,$02,$00,$00,$38,$00
-        !byte $01,$c0,$00,$3e,$00,$00,$3e,$00,$00,$38,$00,$00,$00,$00,$00,$00
 }
