@@ -63,7 +63,7 @@ def main():
         '--every', 2, '--fps', 12.5, '--bounce', '--gamma', 0.8, '--black', 55, '--levels', 8, '--steady', 0.6, '--max-kb', 64)
     # Pendulum Wave: the row of balls swinging, bounce (a swing backwards is still a swing).
     run(os.path.join(src, 'pend', '*_hdmi_*.png'), o('Pendulum Wave'), '--crop', '0,150,396,99', '--from', 300, '--every', 2,
-        '--fps', 12.5, '--bounce', '--gamma', 0.8, '--black', 50, '--levels', 8, '--steady', 0.6, '--max-kb', 64)
+        '--fps', 12.5, '--bounce', '--gamma', 0.8, '--black', 62, '--levels', 8, '--steady', 0, '--max-kb', 64)
     mona(os.path.join(src, 'mona'), o('Mona Lisa'))
 
 
