@@ -158,9 +158,9 @@ def main():
     ABOVE = (700 * sx, 150 * sy, 0.8)                      # the stars above it
     EAST = (1080 * sx, 230 * sy, 1.2)                      # the eastern cliffs
     DUST = (620 * sx, 560 * sy, 1.1)                       # the deep dust
-    # where it starts and ends: close on the ridge, no star in the middle (build 2 started and ended zoomed on a bright
+    # where it starts and ends: close in the dust below the ridge, no bright star near the middle (build 2 started and ended zoomed on a bright
     # star, which then sat in the screen's centre while the camera moved - it looked as if it followed the watcher)
-    STAR = (590 * sx, 330 * sy, 0.6)
+    STAR = (620 * sx, 520 * sy, 0.6)
     SPEC = [(60, None, 1),                                # black; the palette fades up (event 1)
             (480, WHOLE, 2),                              # out from the star to the whole picture (the introduction)
             (240, None, 0),
