@@ -1,4 +1,4 @@
-; (C) 2026 Mong00se. All rights reserved.
+; (C) 2026 Mong00se
 ; OCTOFX.ASM - the Octophonic show's set-up and effects: the twinkles, the
 ; sparkles, the comet, the sprite table, the scroll text (with OCTO.ASM)
 ; A part of ODYSSEY.ASM (2026: An Octophonic Odyssey), by Mong00se:

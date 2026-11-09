@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# (C) 2026 Mong00se. All rights reserved.
+# (C) 2026 Mong00se
 # ODYSSEY - the source to PETSCII for the disk (OCTOCODE's upper/lower case set), as OCTOCODE's a2p.py does, plus the
 # PETSCII graphics of the header's art: in the .asm they are the Unicode look-alikes below (in comments, so ACME on
 # the PC ignores them); on the disk they are the C64's own characters.

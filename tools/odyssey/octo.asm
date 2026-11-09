@@ -1,4 +1,4 @@
-; (C) 2026 Mong00se. All rights reserved.
+; (C) 2026 Mong00se
 ; OCTO.ASM - the Octophonic show of ODYSSEY.ASM, by Mong00se.
 ; The Webb "Cosmic Cliffs" (NASA, ESA, CSA, STScI) as one picture of
 ; 2048 x 1186 in 256 colours on OctoVIC's turned-and-sized bitmap

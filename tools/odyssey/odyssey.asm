@@ -1,4 +1,4 @@
-;(C) 2026 Mong00se. All rights reserved.
+;(C) 2026 Mong00se
 ;            ▗▄▄▄▄▄▄▄▄▄▄▄▖
 ;          ▗▀             ▀▖
 ;         ▗▘  ┌──┐   ┌──┐  ▝▖
@@ -67,7 +67,7 @@
 ; this disk (VIEW0-VIEW3), the Octophonic picture is in the .reu.
 
 !set odytop = 1         ; (the parts look for this: see above)
-BUILD   = 1
+BUILD   = 2
 
 ; ---------------------------------------------------- the machine
 REU     = $DF00
@@ -96,13 +96,13 @@ rnd     = $10           ; 2: random numbers
 cnt     = $12           ; 2
 
 ; the BASIC line LIST shows:
-; 10 SYS2176:REM (C) 2026 MONG00SE. ALL RIGHTS RESERVED
+; 10 SYS2176:REM (C) 2026 MONG00SE
         * = $0801
         !word basend, 10
         !byte $9e
-        !pet "2176:", $8f, " (c) 2026 mong00se. all rights reserved", 0
+        !pet "2176:", $8f, " (c) 2026 mong00se", 0
 basend  !word 0
-copyr   !text "(C) 2026 MONG00SE. ALL RIGHTS RESERVED.", 0
+copyr   !text "(C) 2026 MONG00SE", 0
         !fill $0880 - *, 0
         jmp start       ; $0880 = 2176
 

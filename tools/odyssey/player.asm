@@ -1,11 +1,14 @@
-; (C) 2026 Mong00se. All rights reserved.
+; (C) 2026 Mong00se
 ; PLAYER.ASM - the music player of ODYSSEY.ASM (2026: An Octophonic
 ; Odyssey), by Mong00se. Plays SONG.ASM: 3 voices on SID 1 (stock),
 ; or 6 (SID 2 too: two SIDs, and the first two of the Octophonic's
 ; eight). Called once a frame (pl_play). Every voice reads its own
-; list of notes (see SONG.ASM); each frame it moves the pulse width,
-; the vibrato and the chord arpeggio, and keeps a level for the
-; equaliser (pv_eq: 0-20).
+; list of notes (see SONG.ASM); each frame it moves the pulse width
+; and a light, late vibrato, bows a tremolo, detunes the second
+; SID's strings a little (an ensemble, not one fiddle), and sets the
+; strings' lowpass from the song's swell table (fcut); it keeps a
+; level for the equaliser (pv_eq: 0-20). Slurred notes ($62) change
+; the pitch without a new bow (no new attack).
 !ifdef odytop { !set odyp = odytop } else { !set odyp = 0 }
 !if odyp = 0 {
         !src "odyssey.asm"
@@ -18,8 +21,6 @@ pv_phi  = PV+$08
 pv_tim  = PV+$10        ; frames left of this note
 pv_ins  = PV+$18        ; the instrument x 10
 pv_note = PV+$20
-pv_shp  = PV+$28        ; the chord x 4
-pv_arp  = PV+$30        ; the arpeggio's step 0-3
 pv_pwl  = PV+$38        ; the pulse width
 pv_pwh  = PV+$40
 pv_pwd  = PV+$48        ; 0 widening, 1 narrowing
@@ -35,6 +36,9 @@ pv_rlo  = PV+$90        ; the voice's SID registers
 pv_rhi  = PV+$98
 mfr     = PV+$a0        ; 2: the song's frame
 nvoice  = PV+$a2        ; 3 or 6
+pl_f17  = PV+$a4        ; 2: SID 1's and SID 2's filter routing (+ resonance)
+pl_sl   = PV+$a6        ; 1: the next note is slurred
+FILTRES = $20           ; the strings' filter: resonance 2, lowpass
 pl_p    = $14           ; 2 (zero page)
 pl_r    = $16           ; 2
 pl_t    = $18           ; 2
@@ -66,28 +70,47 @@ pl_init sta nvoice
         sta pv_rhi+3,x
         dex
         bpl -
-        lda #0          ; no filter (and the volume up)
+        lda #FILTRES    ; the strings' lowpass (cutoff from fcut), volume up
+        sta pl_f17
+        sta pl_f17+1
+        sta $d417
+        lda #0
         sta $d415
         sta $d416
-        sta $d417
-        lda #$0f
+        lda #$1f
         sta $d418
+        lda #$16        ; SID 2's cutoff and routing: SID 1's own without
+        sta pl_c2+1     ; a SID 2 (harmless)
+        lda #$17
+        sta pl_f2+1
+        lda #$d4
+        sta pl_c2+2
+        sta pl_f2+2
         lda nvoice
         cmp #6
         bne pl_rst
+        clc
         lda sid2lo
         sta pl_r
+        adc #$16
+        sta pl_c2+1
+        adc #1
+        sta pl_f2+1
         lda sid2hi
         sta pl_r+1
+        adc #0
+        sta pl_c2+2
+        sta pl_f2+2
         ldy #$15
         lda #0
         sta (pl_r),y
         iny
         sta (pl_r),y
         iny
+        lda #FILTRES
         sta (pl_r),y
         iny
-        lda #$0f
+        lda #$1f
         sta (pl_r),y
 ; the song from the start
 !zone pl_rst
@@ -104,14 +127,16 @@ pl_rst  lda #0
         lda #0
         sta pv_end,x
         sta pv_ins,x
-        sta pv_shp,x
         sta pv_ctl,x
         sta pv_eq,x
         dex
         bpl -
+        sta pl_sl
         rts
 !zone pl_v7
 pl_v7   !byte 0, 1, 2       ; 8v - v = 7v
+pl_vbit !byte 1, 2, 4, 1, 2, 4  ; the voice's filter routing bit
+pl_vsid !byte 0, 0, 0, 1, 1, 1  ; its SID
 
 ; ---------------------------------------------------- every frame
 !zone pl_play
@@ -125,7 +150,30 @@ pl_play inc mfr
         cmp #>songlen
         bne +
         jsr pl_rst
-+       ldx #0
++       lda mfr         ; the strings' cutoff: fcut[mfr / 16]
+        sta pl_t
+        lda mfr+1
+        lsr
+        ror pl_t
+        lsr
+        ror pl_t
+        lsr
+        ror pl_t
+        lsr
+        ror pl_t
+        sta pl_t+1
+        clc
+        lda pl_t
+        adc #<fcut
+        sta pl_t
+        lda pl_t+1
+        adc #>fcut
+        sta pl_t+1
+        ldy #0
+        lda (pl_t),y
+        sta $d416
+pl_c2   sta $d416       ; SID 2's (set by pl_init)
+        ldx #0
 -       jsr pl_voice
         inx
         cpx nvoice
@@ -154,7 +202,9 @@ pl_voice
         sta pl_p+1
         ldy #0
         lda (pl_p),y
-        cmp #$61
+        cmp #$61        ; (nor before a slur)
+        beq .fx
+        cmp #$62
         beq .fx
         jsr pl_off
 .fx     jmp pl_fx
@@ -190,12 +240,9 @@ pl_next lda pv_plo,x
         lda #1          ; the end: quiet until the song starts again
         sta pv_end,x
         jmp pl_off
-+       cmp #$a0
-        bcc +
-        and #$1f        ; a chord
-        asl
-        asl
-        sta pv_shp,x
++       cmp #$62        ; a slur: the next note without a new bow
+        bne +
+        sta pl_sl
         jmp .skip1
 +       cmp #$80
         bcc +
@@ -229,7 +276,12 @@ pl_next lda pv_plo,x
         bne +
         jmp pl_off
 +       sta pv_note,x   ; a note
-        ldy pv_ins,x
+        lda pl_sl
+        beq +
+        lda #0          ; slurred: only the pitch (and the vibrato's step)
+        sta pl_sl
+        jmp pl_vd
++       ldy pv_ins,x
         lda pv_ctl,x    ; still sounding: let go first
         and #1
         beq +
@@ -261,7 +313,6 @@ pl_next lda pv_plo,x
         sta pv_pwh,x
         lda #0
         sta pv_pwd,x
-        sta pv_arp,x
         sta pv_vbp,x
         sta pv_vol,x
         sta pv_voh,x
@@ -269,46 +320,49 @@ pl_next lda pv_plo,x
         sta pv_vbc,x
         lda instr+9,y   ; the equaliser jumps up
         sta pv_eq,x
-        lda pv_note,x   ; the vibrato's step: the note's
-        tay             ; frequency / 256 (depth 8) or / 512 (9)
-        lda freqhi,y
-        ldy pv_ins,x
-        pha
-        lda instr+6,y
-        cmp #9
-        pla
-        bcc +
-        lsr
-+       sta pv_vd,x
+        lda instr+7,y   ; through the filter or not
+        and #16
+        php
+        ldy pl_vsid,x
+        lda pl_f17,y
+        ora pl_vbit,x
+        plp
+        bne +
+        eor pl_vbit,x
++       sta pl_f17,y
+        cpy #0
+        bne +
+        sta $d417
+        jmp ++
++
+pl_f2   sta $d417       ; SID 2's (set by pl_init)
+++      ldy pv_ins,x
         lda instr,y     ; the wave, gate on
         ora #1
         sta pv_ctl,x
         ldy #4
         sta (pl_r),y
+; the vibrato's step: the note's frequency / 256, halved (depth - 1)
+; times: depth 1 about 20 cents, 2 about 10, 3 about 5, 4 about 2.5
+pl_vd   ldy pv_note,x
+        lda freqhi,y
+        sta pl_t
+        ldy pv_ins,x
+        lda instr+6,y
+        beq .x
+        tay
+-       dey
+        beq +
+        lsr pl_t
+        jmp -
++       lda pl_t
+        sta pv_vd,x
 .x      rts
 
-; pulse width, vibrato, arpeggio: the frequency and the pulse
+; pulse width, vibrato, detune, tremolo: the frequency, the pulse
 !zone pl_fx
-pl_fx   ldy pv_ins,x
-        lda instr+7,y   ; the note (+ the chord's step)
-        and #1
-        beq .noarp
-        lda pv_shp,x
-        clc
-        adc pv_arp,x
-        tay
-        lda shapes,y
-        clc
-        adc pv_note,x
-        tay
-        lda pv_arp,x
-        clc
-        adc #1
-        and #3
-        sta pv_arp,x
-        jmp +
-.noarp  ldy pv_note,x
-+       lda freqlo,y
+pl_fx   ldy pv_note,x
+        lda freqlo,y
         sta pl_t
         lda freqhi,y
         sta pl_t+1
@@ -352,7 +406,18 @@ pl_fx   ldy pv_ins,x
         lda pl_t+1
         adc pv_voh,x
         sta pl_t+1
-.novib  ldy #0
+.novib  ldy pv_ins,x    ; detuned (SID 2's strings): + frequency / 256,
+        lda instr+7,y   ; about 7 cents
+        and #8
+        beq +
+        ldy pv_note,x
+        lda freqhi,y
+        clc
+        adc pl_t
+        sta pl_t
+        bcc +
+        inc pl_t+1
++       ldy #0
         lda pl_t
         sta (pl_r),y
         iny
@@ -371,7 +436,7 @@ pl_fx   ldy pv_ins,x
         lda pv_pwh,x
         adc #0
         sta pv_pwh,x
-        cmp #$0e
+        cmp #$0c
         bcc .pw
         lda #1
         sta pv_pwd,x
@@ -383,7 +448,7 @@ pl_fx   ldy pv_ins,x
         lda pv_pwh,x
         sbc #0
         sta pv_pwh,x
-        cmp #$02
+        cmp #$04
         bcs .pw
         lda #0
         sta pv_pwd,x
@@ -393,6 +458,23 @@ pl_fx   ldy pv_ins,x
         iny
         lda pv_pwh,x
         sta (pl_r),y
+        ldy pv_ins,x    ; a tremolo: the bow changes every 2 frames
+        lda instr+7,y
+        and #4
+        beq .eq
+        lda pv_ctl,x
+        lsr
+        bcc .eq         ; (not while let go)
+        lda mfr
+        and #2
+        beq +
+        lda pv_ctl,x
+        bne ++
++       lda pv_ctl,x
+        and #$fe
+++      ldy #4
+        sta (pl_r),y
+.eq
         lda pv_eq,x     ; the equaliser falls to half while the
         beq .x          ; note is held, to 0 after it
         ldy pv_ins,x

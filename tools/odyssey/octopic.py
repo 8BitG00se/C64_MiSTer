@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# (C) 2026 Mong00se. All rights reserved.
+# (C) 2026 Mong00se
 # ODYSSEY - the Octophonic picture: the Webb "Cosmic Cliffs" (NASA, ESA, CSA, STScI) in 256 colours for OctoVIC's turned-
 # and-sized bitmap layer, the camera's path, the sprites' graphics, and the .reu that carries it all (with the music for
 # SIDs 3-8 from song.py). Made from Mona Lisa's gen.py. For Neal's private use (the photo conversion) - not part of a
@@ -168,6 +168,12 @@ def main():
             (420, EAST, 0), (180, None, 0),
             (480, DUST, 0), (240, None, 0),
             (540, WHOLE, 0)]
+    # fitted to the music's tempo map (song.py): the first move ends as the waltz begins, the tour spans the theme
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import song as SG
+    p1, coda = SG.fr(SG.P1, 0), SG.fr(SG.CODA, 0)
+    k = (coda - p1) / float(sum(n for n, _, _ in SPEC[2:]))
+    SPEC = SPEC[:1] + [(p1 - 60, WHOLE, 2)] + [(int(round(n * k)), p, e) for n, p, e in SPEC[2:]]
     used = sum(n for n, _, _ in SPEC)
     rest = songlen - used
     SPEC += [(max(60, rest - 360), None, 3), (360, STAR, 0)]   # hold through the coda (the credit), then back to the star

@@ -1,4 +1,4 @@
-; (C) 2026 Mong00se. All rights reserved.
+; (C) 2026 Mong00se
 ; CAMERA.ASM - the Octophonic camera (as in Mona Lisa): the path's rows, the
 ; eased glide, the turned-and-sized layer's numbers (with OCTO.ASM)
 ; A part of ODYSSEY.ASM (2026: An Octophonic Odyssey), by Mong00se:

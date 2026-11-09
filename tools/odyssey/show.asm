@@ -339,9 +339,8 @@ drready lda frame
 
 ; ===================================================== the phrases
 ; The pictures change on the music's phrases (8 bars), a little early so the new one is
-; in on the beat. phtab: the song frames (mfr) at which a change starts: the phrases
-; begin at frame 549 (the end of the introduction), 240 frames (4 bars) apart; scaled
-; to SONGLEN if the song's length changes (song.asm).
+; in on the beat. phtab: the song frames (mfr) at which a change starts: the theme's
+; 4-bar phrases, both times (made by song.py into SONG.ASM, so they follow its tempo).
 PHN     = 16
 PHLEAD  = 0
 !zone atcut
@@ -366,7 +365,7 @@ atcut   ldx #0
 .y      sec
         rts
 !zone phtab
-phtab   !for k, 0, PHN-1 { !word ((549 + 240*k) * songlen / 4816) - PHLEAD }
+; phtab itself is in SONG.ASM (song.py works out where the phrases fall in its tempo map)
 
 ; ============================================== the loading screen
 ; Text mode in bank 1 (screen $4400, the letters at $5800 with a few of our own: star glints, the bar's
