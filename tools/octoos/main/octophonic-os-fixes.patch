@@ -1,0 +1,173 @@
+diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
+index bb99e39..cb03d86 100644
+--- a/support/octo/octo.cpp
++++ b/support/octo/octo.cpp
+@@ -35,7 +35,16 @@
+ //   0F SHELL    the browser (octophonic/SHELL.PRG) into RAM at its own load address
+ //   12 MENU     out to the MiSTer's own menu (menu.rbf): answered, then the menu core is loaded
+ //               (C=+F1 at READY or in the browser; the 6502 offers it only when NET b5 is set)
+-// NET (the mailbox's $D6FF): b1-0 the network share, b7/b6 a screenshot, b4 always set - Main serves
++//   17 DRIVE8   (os-fixes) the name of the disk in drive 8 at ADDR: PETSCII, at most 32, 0 after it;
++//               RESULT = its length (0: drive 8 is empty)
++//   18 REU      (os-fixes) a running program asks for a .reu by NAME, from its own folder (where
++//               the program Main last started, OCTOCODE last compiled or the disk in drive 8 came
++//               from, then the browser's folder): put in the REU as OPEN does (VALUE 3 and the
++//               blocks while it goes in), then VALUE 2 put in now / 4 it was in already (ARG b0:
++//               load it again anyway), RESULT its size in 64 KB; $81 not found
++//   SETLIST's line 12 (os-fixes): SHOWCASE OFF/ON, os.ini showcase= (0/1), shown as NET b3
++// NET (the mailbox's $D6FF): b1-0 the network share, b3 SHOWCASE (demos leave out their debug rows),
++// b7/b6 a screenshot, b4 always set - Main serves
+ // the OS (the start jingle asks for SHELL.PRG only then), b5 always set - this Main is on a MiSTer
+ // (the Octophonic 64 Emulator's model of Main leaves b5 clear, so it offers no MENU)
+ //
+@@ -104,6 +113,8 @@ static std::string reu_in;                // the .reu last put in the REU (no se
+ static int  last_status = 0;             // the reply of the request being logged
+ static uint8_t cur_seq = 0;              // the 6502's number for the request being answered
+ static std::string disk8;                // the disk last put in drive 8 (COMPILE works beside it)
++static int  os_showcase = 0;             // os.ini showcase=1: NET b3, demos leave out their debug rows
++static std::string prog_dir;             // the folder the running program came from (REU, $18)
+ 
+ // ------------------------------------------------------------------------------------------ log
+ 
+@@ -156,6 +167,7 @@ static void read_ini()
+ 		else if (!strcasecmp(p, "boot")) snprintf(os_boot, sizeof(os_boot), "%s", v);
+ 		else if (!strcasecmp(p, "start")) snprintf(os_start, sizeof(os_start), "%s", v);
+ 		else if (!strcasecmp(p, "startin")) snprintf(os_startin, sizeof(os_startin), "%s", v);
++		else if (!strcasecmp(p, "showcase")) os_showcase = atoi(v) != 0;
+ 	}
+ 	fclose(f);
+ }
+@@ -385,10 +397,11 @@ static std::string net_find()
+ }
+ 
+ static int net_sent = -1;            // the NET byte as last written to the core
++// the NET bits besides the share's: b7/b6 a screenshot under way, b3 SHOWCASE (os.ini showcase=1)
+ static int shot_bits()
+ {
+ 	int st = screenshot_state();
+-	return st == 2 ? 0x80 : st == 1 ? 0x40 : 0;
++	return (st == 2 ? 0x80 : st == 1 ? 0x40 : 0) | (os_showcase ? 0x08 : 0);
+ }
+ 
+ static void net_publish()
+@@ -975,6 +988,7 @@ static void cmd_run(const char *name)
+ 	if (k < 0) { mb_reply(E_NOTFOUND, 0); return; }
+ 	std::vector<Entry> all;
+ 	scan(all, 1);
++	prog_dir = full_of(v[k].name); prog_dir = prog_dir.substr(0, prog_dir.rfind('/'));
+ 	run_path(full_of(v[k].name), &all);
+ }
+ 
+@@ -1040,6 +1054,7 @@ static void cmd_open(int idx)
+ 	os_log("  open %s", e.name.c_str());
+ 	std::vector<Entry> all;
+ 	scan(all, 1);
++	prog_dir = full_of(e.name); prog_dir = prog_dir.substr(0, prog_dir.rfind('/'));
+ 	run_path(full_of(e.name), &all);
+ }
+ 
+@@ -1088,6 +1103,7 @@ static const Opt opts[] = {
+ #define S_CHIPR  2
+ #define S_START  3       // where the OS starts: network / SD card / last used (os.ini startin=)
+ #define S_OPT0   4
++#define S_SHOW   (S_OPT0 + N_OPTS)   // SHOWCASE (os-fixes): os.ini showcase=, NET b3 - the last line
+ static const char *startins[3] = { "net", "sd", "last" };
+ static const char *startnames[3] = { "NETWORK", "SD CARD", "LAST USED" };
+ static int startin_now()
+@@ -1185,8 +1201,10 @@ static void cmd_setlist(uint16_t addr)
+ 		put_field(out, opts[i].label, 20);
+ 		put_field(out, (int)x < opts[i].n ? opts[i].choices[x] : "?", 20);
+ 	}
++	put_field(out, "SHOWCASE", 20);
++	put_field(out, os_showcase ? "ON - NO DEBUG ROWS" : "OFF", 20);
+ 	ram_write(addr, out.data(), out.size());
+-	mb_reply(ST_DONE, S_OPT0 + N_OPTS);
++	mb_reply(ST_DONE, S_SHOW + 1);
+ }
+ 
+ static void cmd_setstep(int line, int dir)
+@@ -1224,6 +1242,15 @@ static void cmd_setstep(int line, int dir)
+ 		mb_reply(ST_DONE, 0);
+ 		return;
+ 	}
++	if (line == S_SHOW)
++	{
++		os_showcase = !os_showcase;
++		write_key("showcase", os_showcase ? "1" : "0");
++		os_log("  showcase %s", os_showcase ? "on" : "off");
++		net_publish();
++		mb_reply(ST_DONE, 0);
++		return;
++	}
+ 	int i = line - S_OPT0;
+ 	if (i < 0 || i >= N_OPTS) { mb_reply(E_BADCMD, 0); return; }
+ 	uint32_t x = user_io_status_get(opts[i].bits);
+@@ -1593,6 +1620,7 @@ static void cmd_go()
+ 	if (at < 0x0400 || end > 0x10000) { mb_reply(E_TOOBIG, 0); return; }   // $0000-$03FF: the 6502's
+ 	ram_write((uint16_t)at, buf + 2, (uint32_t)(n - 2));
+ 	os_log("GO %s.prg: $%04X-$%04X", comp_base.c_str(), at, end - 1);
++	prog_dir = comp_dir;
+ 	mb_reply(ST_DONE, (int)at, (int)(end & 0xFFFF));
+ }
+ 
+@@ -1626,6 +1654,51 @@ static void cmd_prgvram(const char *name)    // build 3 of OCTOCODE: the last go
+ 	mb_reply(ST_DONE, (int)n);
+ }
+ 
++// ------------------------------------------------------------------------- os-fixes: 17, 18
++
++// DRIVE8 ($17): the disk in drive 8, as the core has it (also one mounted from the MiSTer's menu)
++static void cmd_drive8(uint16_t addr)
++{
++	const char *n = get_image_name(0);
++	std::vector<uint8_t> out;
++	int len = 0;
++	if (n) for (; n[len] && len < 32; len++) out.push_back(to_pet(n[len]));
++	out.push_back(0);
++	ram_write(addr ? addr : 0xA000, out.data(), out.size());
++	mb_reply(ST_DONE, len);
++}
++
++// REU ($18): a running program asks for its .reu by name (the next demo, run from OCTOCODE)
++static void cmd_reu(const char *name, int again)
++{
++	std::vector<std::string> dirs;
++	if (!prog_dir.empty()) dirs.push_back(prog_dir);
++	if (!disk8.empty()) dirs.push_back(disk8.substr(0, disk8.rfind('/')));
++	dirs.push_back(std::string(OS_TOP "/") + cwd);
++	std::string want = name, hit;
++	if (want.empty() || want.find('/') != std::string::npos || want.find("..") != std::string::npos) { mb_reply(E_NOTFOUND, 0); return; }
++	for (auto &d : dirs)
++	{
++		DIR *dd = opendir(d.c_str());
++		if (!dd) continue;
++		std::string got;
++		while (struct dirent *de = readdir(dd))
++		{
++			if (!ends_with(de->d_name, ".reu")) continue;
++			if (!strcasecmp(de->d_name, want.c_str()) || !strcasecmp(base_of(de->d_name).c_str(), want.c_str())) { got = de->d_name; break; }
++		}
++		closedir(dd);
++		if (!got.empty()) { hit = d + "/" + got; break; }
++	}
++	if (hit.empty()) { os_log("  REU '%s': not in %s", name, dirs[0].c_str()); mb_reply(E_NOTFOUND, 0); return; }
++	struct stat st;
++	long kb64 = stat(hit.c_str(), &st) ? 0 : (long)((st.st_size + 65535) >> 16);
++	if (hit == reu_in && !again) { os_log("  REU %s is in already", hit.c_str()); mb_reply(ST_DONE, (int)kb64, -1, 4); return; }
++	os_log("  REU %s (asked for by the program)", hit.c_str());
++	reu_load(hit.c_str());                          // VALUE 3 and the blocks while it goes in
++	mb_reply(ST_DONE, (int)kb64, -1, 2);
++}
++
+ void octo_poll()
+ {
+ 	if (!os_active) return;
+@@ -1684,6 +1757,8 @@ void octo_poll()
+ 	case 0x16: cmd_prgvram(name); break;
+ 	case 0x0F: cmd_shell(); break;
+ 	case 0x12: cmd_menu(); break;
++	case 0x17: cmd_drive8(addr); break;
++	case 0x18: cmd_reu(name, reg[R_ARG] & 1); break;
+ 	default:   mb_reply(E_BADCMD, 0); break;
+ 	}
+ 	if (strcmp(was, cwd)) keep_cwd();

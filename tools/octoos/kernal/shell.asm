@@ -8,7 +8,8 @@
 ;   F8 "E" SET     a page of its own: SETTINGS (everything)   (F2/F4/F6 as F1/F3/F5; @@ typed: as F1)
 ; By Mong00se.
 ;   cursor up/down (or joystick port 2)  move          RETURN (or fire)  run / into a folder
-;   F5 / F6   page down / up                            SHIFT+RETURN      a disk: just put it in
+;   F5 / F6   page down / up                            M (or SHIFT+RETURN) a disk: just put it in
+;                                                       (build 5: the bar on a disk says so below)
 ;   F3, DEL or left arrow (joystick left)  up a folder  F2                the start folder
 ;   F1        the drives (SD CARD / NETWORK)            F7 or RUN/STOP    back to READY
 ;   HOME      the top
@@ -43,17 +44,233 @@ GETIN   = $FFE4
 STOP    = $FFE1
 CHROUT  = $FFD2
 AUTORUN = $02A8
+STROUT  = $AB1E         ; BASIC: print the 0-terminated string at A/Y
 seq     = $02AB         ; the request number, shared with the ROM's commands
 ROWS    = 13
 TOP     = 9             ; the first list row (5 the path, 7 the column names, 8 left blank)
-LBUF    = $CDC0         ; Main writes the path (40) and the records (40 each) here (to $CFF0; the settings to $CF80)
+LBUF    = $B800         ; Main writes the path (40) and the records (40 each) here (to $BA30; the settings to $BA08)
+                        ; (build 5: in the RAM under BASIC's ROM, read with BASIC switched out for the moment of
+                        ; each read - recb, compact - so $C000-$CFFF is all the browser's code; it was $CDC0)
 REC     = LBUF + 40
 P       = $FB
 Q       = $FD
 
+; ------------------------------------------------------------- (build 5) $BE00-$BFFF: the jingle
+; In the RAM under BASIC's ROM: SHELL.PRG starts here now (its $C000-$CFFF is all the browser's).
+        * = $BE00
+; ------------------------------------------------------------------------- the start jingle
+; Called by the ROM at a cold start, once the screen is up (Main loads SHELL.PRG for it). About 2 s:
+; C major pentatonic up an octave and back down (C D E G A C, A G E D C), a third above it in the key
+; on the next SID each time, a soft C-G pad under it (SID 1 and 2, voice 1), ending on the C chord.
+; The scale moves over voice 3 of the 8 SIDs (melody left 1 3 5 7, its third right 2 4 6 8), so the
+; start screen's eq shows it. Every note has sustain 0: it dies away by itself whatever happens.
+; The player runs from the IRQ and lives in the tape buffer ($033C, unused on the core), where no
+; program loads: it stops at once (leaving the SIDs alone) when RUN, SYS or LOAD shut the start screen
+; (OCTST 0) or the IRQ vector is no longer its own.
+OCTSTA  = $02A7
+JP      = $033C
+JVOL    = 15            ; the SIDs' volume (build 5: 11, -15.2 dBFS; build 6: 15 and every note
+                        ; on two voices in phase - about -6 dBFS, the eq and the tune as before)
+jingle  sei
+        ldx #0
+-       lda jsrc,x
+        sta JP,x
+        inx
+        cpx #jend-jsrc
+        bne -
+        ldx #7
+-       lda jlo,x               ; each SID: voice 3 triangle, soft attack, decay 750 ms
+        sta jp1+1
+        lda jhi,x
+        sta jp1+2
+        ldy #$13
+        lda #$39
+        jsr jp1
+        ldy #$0C                ; voice 2 the same: it doubles voice 3 (build 6: louder, in phase)
+        jsr jp1
+        iny
+        lda #$09                ; sustain 0, release 9 = the decay (the end lets go of the gates)
+        jsr jp1
+        ldy #$14
+        jsr jp1
+        ldy #$12
+        lda #$10
+        jsr jp1
+        ldy #$0B
+        jsr jp1
+        dex
+        bpl -
+        sei
+        ldx #5                  ; the pad: SID 1-6 voice 1 (1 3 5 C3, 2 4 6 G3: three of each, in
+                                ; phase - build 6, louder), slow attack, long decay
+-       lda jlo,x
+        sta jp1+1
+        lda jhi,x
+        sta jp1+2
+        ldy #0
+        lda padlo,x
+        jsr jp1
+        iny
+        lda padhi,x
+        jsr jp1
+        ldy #5
+        lda #$9B
+        jsr jp1
+        iny
+        lda #$0B                ; sustain 0, release B = the decay
+        jsr jp1
+        ldy #4
+        lda #$08                ; TEST: the two copies' oscillators start together
+        jsr jp1
+        lda #$11
+        jsr jp1
+        dex
+        bpl -
+        lda #<JP
+        sta $0314
+        lda #>JP
+        sta $0315
+        cli
+; build 8: the volume ramp moved here, after the first notes are set going - it was before them, and
+; on its own the SIDs' DC step at each volume step was half a second of low thump before the tune.
+; Now it is the tune's 0.3 s fade-in and the steps are under the notes.
+        lda #1                  ; then the volume up a step a frame (a 6581 clicks at a jump in volume,
+                                ; and at a waveform chosen at full volume: chosen above, at 0)
+        sta jvol
+--      ldx #7
+---     lda jlo,x
+        sta jp1+1
+        lda jhi,x
+        sta jp1+2
+        ldy #$18
+        lda jvol
+        jsr jp1
+        ldy #0                  ; (the SIDs a step each 1.3 ms apart: eight small steps, not one)
+-       dey
+        bne -
+        dex
+        bpl ---
+        lda $A2
+-       cmp $A2
+        beq -
+        inc jvol
+        lda jvol
+        cmp #JVOL+1
+        bne --
+        rts
+jp1     sta $FFFF,y
+        rts
+jvol    !byte 0
+jlo     !byte $00, $20, $00, $20, $80, $A0, $80, $A0
+jhi     !byte $D4, $D4, $D5, $D5, $D4, $D4, $D5, $D5
+padlo   !byte <2227, <3338, <2227, <3338, <2227, <3338
+padhi   !byte >2227, >3338, >2227, >3338, >2227, >3338
+
+jsrc
+!pseudopc JP {
+jirq    lda OCTSTA              ; the start screen shut (a program): stop, the SIDs left alone
+        beq jout
+        dec jwait
+        bne jx
+        lda #7                  ; a step every 7 frames (0.14 s)
+        sta jwait
+        ldy jpos
+        lda jtab,y              ; a step: its third (high nibble) and the melody's note (low)
+        cmp #$FF                ; the end: every gate off - so a POKE that gates a voice at READY
+        beq jfin                ; sounds (build 6; the release rates are the decay rates, so the
+                                ; last notes and the pad still die away as before)
+        inc jpos
+        pha
+        and #$0F
+        ldx jsid
+        jsr jnote
+        pla
+        lsr
+        lsr
+        lsr
+        lsr
+        inx
+        jsr jnote
+        inx
+        txa
+        and #7
+        sta jsid
+jx      jmp $EA31
+jfin    ldx #7                  ; voices 1-3 of the 8 SIDs: triangle, gate off
+-       jsr jaddr
+        lda #$10
+        ldy #$04
+        jsr jw
+        ldy #$0B
+        jsr jw
+        ldy #$12
+        jsr jw
+        dex
+        bpl -
+jout    lda $0315               ; the IRQ back to the KERNAL - only if it is still ours
+        cmp #>JP
+        bne jx
+        lda $0314
+        cmp #<JP
+        bne jx
+        lda #$31
+        sta $0314
+        lda #$EA
+        sta $0315
+        bne jx
+jnote   pha                     ; note A (jfreq) on voices 3 and 2 of SID X: the frequency, both
+        jsr jaddr               ; oscillators reset together (TEST) so they stay in phase - twice
+        pla                     ; the level with no beating - then a new gate.
+        asl
+        tay
+        lda jfreq,y
+        pha
+        lda jfreq+1,y
+        ldy #$0F
+        jsr jw
+        ldy #$08
+        jsr jw
+        pla
+        ldy #$0E
+        jsr jw
+        ldy #$07
+        jsr jw
+        lda #$18                ; TEST + triangle, gate off
+        ldy #$12
+        jsr jw
+        ldy #$0B
+        jsr jw
+        lda #$11                ; triangle, gate on
+        jsr jw
+        ldy #$12
+jw      sta $FFFF,y
+        rts
+jaddr   txa                     ; jw at SID X: $D400 + (X&1)*$20 + (X&4)*$20 + (X&2)*$80
+        and #5
+        asl
+        asl
+        asl
+        asl
+        asl
+        sta jw+1
+        txa
+        lsr
+        and #1
+        ora #$D4
+        sta jw+2
+        rts
+jwait   !byte 1
+jpos    !byte 0
+jsid    !byte 0
+}
+jend
+!if jend - jsrc > 192 { !error "the jingle's player is bigger than the tape buffer" }
+!if jend > $C000 { !error "the jingle is too big for $BE00-$BFFF" }
+        !fill $C000 - *, 0
+
         * = $C000
         jmp start               ; $C000: the browser (the ROM's @@, F1)
-        jmp jingle              ; $C003: the start jingle (the ROM's cold start)
+        jmp jstub               ; $C003: the start jingle (the ROM's cold start)
 start   lda $0202               ; the letter after @@: what the browser is opened for (0: @@ alone)
         sta mode
         jsr jstop               ; the jingle, if still playing, stopped (its player is in the tape buffer)
@@ -97,7 +314,11 @@ mset    lda #0                  ; SETTINGS, everything
         jmp settings
 mload   jmp f3load              ; (build 4) F3: the disk in drive 8, not the browser
 mbrows  jsr netwait             ; a share still connecting: wait for it (any key: the SD card)
-reload  jsr dolist
+reload  lda #$FF                ; (build 5) the hint under the list: drawn again for the bar
+        sta hsel
+        lda #0
+        sta hwas
+        jsr dolist
         jsr drawall
         jsr hilite
         lda reumb               ; a .reu just attached: say so once the list is up
@@ -111,6 +332,7 @@ reload  jsr dolist
         jsr status
 loop    jsr netlite             ; when the share comes or goes, list again
         bcs reload
+        jsr hint                ; (build 5) the bar on a disk: RETURN runs it, M only mounts it
         jsr cpage               ; on a MiSTer: C= held shows the help's second page
         jsr getkey
         beq loop
@@ -132,11 +354,11 @@ loop    jsr netlite             ; when the share comes or goes, list again
         bne +
         jmp pagedn
 +       cmp #134                ; F3
-        beq upfold
+        beq upf
         cmp #20                 ; DEL
-        beq upfold
+        beq upf
         cmp #95                 ; left arrow
-        beq upfold
+upf     beq upfold
         cmp #157                ; cursor left (joystick left)
         beq upfold
         cmp #140                ; F8: settings
@@ -163,6 +385,13 @@ loop    jsr netlite             ; when the share comes or goes, list again
         jmp open
 +       cmp #141                ; SHIFT+RETURN
         bne +
+        lda #1
+        jmp open
++       cmp #$4D                ; (build 5) M: a disk into drive 8, not run
+        bne +
+        jsr seltype
+        cmp #2
+        bne +                   ; (not a disk: nothing)
         lda #1
         jmp open
 +       cmp #136                ; F7
@@ -302,10 +531,45 @@ open    sta mountonly
 f3load  lda #0                  ; F3 LOAD: LOAD"*",8,1 and RUN, a title first
         sta mountonly
         jsr FRAME
-        ldx #m_f3-m_disk
-        bne dmsg
+        jsr d8ask               ; (build 5) which disk: its name in the title, or "empty"
+        bne f3old               ; (an older Main doesn't know DRIVE8: as before)
+        lda d8len
+        beq f3none
+        lda #<m_f3n
+        ldy #>m_f3n
+        jsr STROUT
+        lda #<d8buf
+        ldy #>d8buf
+        jsr STROUT
+        lda #13
+        jsr CHROUT
+        jmp dtype
+f3none  lda #<m_f3e             ; nothing in drive 8: say how to put one in, no LOAD
+        ldy #>m_f3e
+        jsr STROUT
+        jmp READY
+f3old   lda #<m_f3n             ; (no name to show)
+        ldy #>m_f3n
+        jsr STROUT
+        lda #13
+        jsr CHROUT
+        jmp dtype
 disk    jsr FRAME
-        ldx #0
+        lda mountonly
+        beq +
+        lda #<m_mnt             ; (build 5) M: DISK IN DRIVE 8: NAME, and how to run it
+        ldy #>m_mnt
+        jsr STROUT
+        jsr d8ask
+        bne ++
+        lda #<d8buf
+        ldy #>d8buf
+        jsr STROUT
+++      lda #<m_mnt2
+        ldy #>m_mnt2
+        jsr STROUT
+        jmp READY
++       ldx #0
 dmsg    lda m_disk,x
         beq dtype
         jsr CHROUT
@@ -371,7 +635,10 @@ dolist  lda #<LBUF
         beq +
         lda #0
         sta skipup
-        lda REC                 ; ".." first and more after it: start below it
+        lda #0                  ; ".." first and more after it: start below it
+        jsr recat
+        ldx #0
+        jsr recb
         cmp #5
         bne +
         lda count
@@ -615,8 +882,12 @@ fixed   lda #0                  ; (the help's first page)
 drawall ldx #s_browse-strs      ; (build 4) the page's own title, F1
         lda #6
         jsr putrow
+        lda #<LBUF
+        sta recb+5
+        lda #>LBUF
+        sta recb+6
         ldx #39
--       lda LBUF,x
+-       jsr recb
         jsr scr
         sta SCR + 5*40,x
         lda #3
@@ -658,8 +929,11 @@ rowptr  clc
         rts
 
 ; record row (Q/P already at its line)
-drawrec lda row                 ; R = REC + row*40 (row*5*8; ROWS = 14, so row*5 < 256)
-        sta rp
+drawrec lda row
+        jsr recat
+        jmp drawr2
+; recb at record A of the page: REC + A*40 (A*5*8; ROWS = 13, so A*5 < 256)
+recat   sta rp
         asl
         asl
         clc
@@ -681,10 +955,11 @@ drawrec lda row                 ; R = REC + row*40 (row*5*8; ROWS = 14, so row*5
         adc #>REC
         sta rp+1
         lda rp
-        sta recb+1
+        sta recb+5
         lda rp+1
-        sta recb+2
-        ldx #0                  ; the type
+        sta recb+6
+        rts
+drawr2  ldx #0                  ; the type
         jsr recb
         and #7
         sta rtype
@@ -727,8 +1002,98 @@ drawrec lda row                 ; R = REC + row*40 (row*5*8; ROWS = 14, so row*5
         cpy #39
         bne -
         rts
-recb    lda $FFFF,x             ; byte X of the record (the address is put in above)
+recb    lda #$36                ; byte X of the record (the address is put in above): BASIC's ROM
+        sta $01                 ; out for the read (the list is in the RAM under it), then in again
+        lda $FFFF,x
+        pha
+        lda #$37
+        sta $01
+        pla
         rts
+
+; (build 5) the type of the entry under the bar (2 a disk; $FF an empty list)
+seltype lda count
+        beq +
+        lda sel
+        jsr recat
+        ldx #0
+        jsr recb
+        and #7
+        rts
++       lda #$FF
+        rts
+
+; (build 5) the bar moved: on a disk, the status line says what RETURN and M do; off it, clear again
+hint    lda sel
+        cmp hsel
+        bne +
+        lda first
+        cmp hfirst
+        beq hx
++       lda sel
+        sta hsel
+        lda first
+        sta hfirst
+        jsr seltype
+        cmp #2
+        bne hnot
+        ldx #s_hint-strs        ; (on the status line, row 22)
+        lda #22
+        jsr putrow
+        lda #1
+        sta hwas
+        rts
+hnot    lda hwas
+        beq hx
+        lda #0
+        sta hwas
+        ldx #m_none-msgs
+        jmp status
+hx      rts
+
+; (build 5) DRIVE8 ($17): the name of the disk in drive 8 into d8buf (PETSCII, 0 after it). Z set
+; when Main answered, d8len its length (0: empty); Z clear: no answer, or a Main without DRIVE8 ($8F)
+d8ask   lda #<d8buf
+        sta MB_AL
+        lda #>d8buf
+        sta MB_AH
+        lda #0
+        sta d8buf
+        sta d8len
+        lda #$17
+        jsr call
+        bne +
+        ldx MB_RL
+        stx d8len
+        cmp #2
++       rts
+
+; (build 5) at a cold start (the ROM calls the jingle): DRIVE 8: NAME on row 23, over the F-key bar,
+; when a disk is in (after CTRL+F12 or a preset the disk stays in). Nothing when the drive is empty.
+d8row   jsr d8ask
+        bne d8rx
+        lda d8len
+        beq d8rx
+        ldx #0
+-       lda m_d8r,x
+        beq +
+        sta SCR + 23*40,x
+        lda #15
+        sta COL + 23*40,x
+        inx
+        bne -
++       ldy #0
+-       lda d8buf,y
+        beq d8rx
+        jsr scr
+        sta SCR + 23*40,x
+        lda #1
+        sta COL + 23*40,x
+        inx
+        iny
+        cpx #40
+        bne -
+d8rx    rts
 
 ; the bar on row sel: the line reversed
 hilite  lda sel
@@ -970,10 +1335,10 @@ sline40 lda row
         lda rp
         clc
         adc #<LBUF
-        sta recb+1
+        sta recb+5
         lda rp+1
         adc #>LBUF
-        sta recb+2
+        sta recb+6
         ldx #0
         ldy #1
 -       jsr recb
@@ -1001,6 +1366,8 @@ compact ldx view
         sta cv
         lda #0
         sta ck
+        lda #$36                ; (build 5) the list is in the RAM under BASIC's ROM
+        sta $01
 cploop  ldy cv
         lda vmap,y
         tax
@@ -1023,6 +1390,8 @@ cploop  ldy cv
         lda ck
         cmp count
         bcc cploop
+        lda #$37
+        sta $01
 cpdone  rts
 ; the line (of Main's 12) the bar is on: A, Z set when it is line 0
 actual  lda sline
@@ -1071,13 +1440,14 @@ putrow  tay
         bne -
 +       rts
 strs
-s_browse !scr "f1 browse - return runs anything here", 0
+s_browse !scr "f1 browse: return runs, m mounts a disk", 0
 s_set   !scr "settings", 0
 s_sids  !scr "sid chips", 0
 s_dual  !scr "dual screen", 0
 s_setu  !scr "everything, in one list", 0
 s_sidsu !scr "which sids play, and which chips", 0
 s_dualu !scr "c64 on the crt, octovic on hdmi", 0
+s_hint  !scr "return: load+run it   m: mount it only", 0
 
 hirow   jsr rowptr              ; the bar on settings line A
         ldy #39
@@ -1339,7 +1709,16 @@ m_nd      !scr "?not a folder", 0
 m_cant    !scr "?can't run that type of file", 0
 m_preset  !scr "starting the chip preset...", 0
 m_disk    !pet 13, "disk in drive 8", 13, 0
-m_f3      !pet 13, "f3 load - the disk in drive 8", 13, 0
+m_mnt     !pet 13, "disk in drive 8: ", 0
+m_mnt2    !pet 13, "f3 loads and runs it", 13, 0
+m_f3n     !pet 13, "f3 load - drive 8: ", 0
+m_f3e     !pet 13, "f3 load: drive 8 is empty.", 13, "f1: put the bar on a disk, m mounts it", 13, 0
+m_d8r     !scr "drive 8: ", 0
+d8buf     !fill 34, 0
+d8len     !byte 0
+hsel      !byte $FF
+hfirst    !byte 0
+hwas      !byte 0
 
 first   !word 0
 total   !word 0
@@ -1373,110 +1752,14 @@ setonly !byte 0
 jfreq   !word 4455, 5001, 5613, 5947, 6675, 7493, 8410, 8910, 11226
 ; up C D E G A C (their thirds E F G B C E), down A G E D, home C E then G C; $FF the end
 jtab    !byte $20, $31, $42, $64, $75, $87, $75, $64, $42, $31, $20, $74, $FF
-shellend
-!if shellend > LBUF { !error "the browser is too big" }
-
-; ------------------------------------------------------------------------- the start jingle
-; Called by the ROM at a cold start, once the screen is up (Main loads SHELL.PRG for it). About 2 s:
-; C major pentatonic up an octave and back down (C D E G A C, A G E D C), a third above it in the key
-; on the next SID each time, a soft C-G pad under it (SID 1 and 2, voice 1), ending on the C chord.
-; The scale moves over voice 3 of the 8 SIDs (melody left 1 3 5 7, its third right 2 4 6 8), so the
-; start screen's eq shows it. Every note has sustain 0: it dies away by itself whatever happens.
-; The player runs from the IRQ and lives in the tape buffer ($033C, unused on the core), where no
-; program loads: it stops at once (leaving the SIDs alone) when RUN, SYS or LOAD shut the start screen
-; (OCTST 0) or the IRQ vector is no longer its own.
-OCTSTA  = $02A7
-JP      = $033C
-JVOL    = 15            ; the SIDs' volume (build 5: 11, -15.2 dBFS; build 6: 15 and every note
-                        ; on two voices in phase - about -6 dBFS, the eq and the tune as before)
-jingle  sei
-        ldx #0
--       lda jsrc,x
-        sta JP,x
-        inx
-        cpx #jend-jsrc
-        bne -
-        ldx #7
--       lda jlo,x               ; each SID: voice 3 triangle, soft attack, decay 750 ms
-        sta jp1+1
-        lda jhi,x
-        sta jp1+2
-        ldy #$13
-        lda #$39
-        jsr jp1
-        ldy #$0C                ; voice 2 the same: it doubles voice 3 (build 6: louder, in phase)
-        jsr jp1
-        iny
-        lda #$09                ; sustain 0, release 9 = the decay (the end lets go of the gates)
-        jsr jp1
-        ldy #$14
-        jsr jp1
-        ldy #$12
-        lda #$10
-        jsr jp1
-        ldy #$0B
-        jsr jp1
-        dex
-        bpl -
-        sei
-        ldx #5                  ; the pad: SID 1-6 voice 1 (1 3 5 C3, 2 4 6 G3: three of each, in
-                                ; phase - build 6, louder), slow attack, long decay
--       lda jlo,x
-        sta jp1+1
-        lda jhi,x
-        sta jp1+2
-        ldy #0
-        lda padlo,x
-        jsr jp1
-        iny
-        lda padhi,x
-        jsr jp1
-        ldy #5
-        lda #$9B
-        jsr jp1
-        iny
-        lda #$0B                ; sustain 0, release B = the decay
-        jsr jp1
-        ldy #4
-        lda #$08                ; TEST: the two copies' oscillators start together
-        jsr jp1
-        lda #$11
-        jsr jp1
-        dex
-        bpl -
-        lda #<JP
-        sta $0314
-        lda #>JP
-        sta $0315
-        cli
-; build 8: the volume ramp moved here, after the first notes are set going - it was before them, and
-; on its own the SIDs' DC step at each volume step was half a second of low thump before the tune.
-; Now it is the tune's 0.3 s fade-in and the steps are under the notes.
-        lda #1                  ; then the volume up a step a frame (a 6581 clicks at a jump in volume,
-                                ; and at a waveform chosen at full volume: chosen above, at 0)
-        sta jvol
---      ldx #7
----     lda jlo,x
-        sta jp1+1
-        lda jhi,x
-        sta jp1+2
-        ldy #$18
-        lda jvol
-        jsr jp1
-        ldy #0                  ; (the SIDs a step each 1.3 ms apart: eight small steps, not one)
--       dey
-        bne -
-        dex
-        bpl ---
-        lda $A2
--       cmp $A2
-        beq -
-        inc jvol
-        lda jvol
-        cmp #JVOL+1
-        bne --
-        rts
-jp1     sta $FFFF,y
+; (build 5) the ROM's cold start calls $C003: the disk in drive 8 on row 23, then the jingle - its
+; code is in the RAM under BASIC's ROM ($BE00, loaded with the rest of SHELL.PRG), run with BASIC out
+jstub   jsr d8row
+        lda #$36
+        sta $01
+        jsr jingle
+        lda #$37
+        sta $01
         rts
 jstop   lda $0315               ; the browser starting: the jingle's IRQ out, if it is in
         cmp #>JP
@@ -1491,108 +1774,5 @@ jstop   lda $0315               ; the browser starting: the jingle's IRQ out, if
         sta $0315
         cli
 +       rts
-jvol    !byte 0
-jlo     !byte $00, $20, $00, $20, $80, $A0, $80, $A0
-jhi     !byte $D4, $D4, $D5, $D5, $D4, $D4, $D5, $D5
-padlo   !byte <2227, <3338, <2227, <3338, <2227, <3338
-padhi   !byte >2227, >3338, >2227, >3338, >2227, >3338
-
-jsrc
-!pseudopc JP {
-jirq    lda OCTSTA              ; the start screen shut (a program): stop, the SIDs left alone
-        beq jout
-        dec jwait
-        bne jx
-        lda #7                  ; a step every 7 frames (0.14 s)
-        sta jwait
-        ldy jpos
-        lda jtab,y              ; a step: its third (high nibble) and the melody's note (low)
-        cmp #$FF                ; the end: every gate off - so a POKE that gates a voice at READY
-        beq jfin                ; sounds (build 6; the release rates are the decay rates, so the
-                                ; last notes and the pad still die away as before)
-        inc jpos
-        pha
-        and #$0F
-        ldx jsid
-        jsr jnote
-        pla
-        lsr
-        lsr
-        lsr
-        lsr
-        inx
-        jsr jnote
-        inx
-        txa
-        and #7
-        sta jsid
-jx      jmp $EA31
-jfin    ldx #7                  ; voices 1-3 of the 8 SIDs: triangle, gate off
--       jsr jaddr
-        lda #$10
-        ldy #$04
-        jsr jw
-        ldy #$0B
-        jsr jw
-        ldy #$12
-        jsr jw
-        dex
-        bpl -
-jout    lda $0315               ; the IRQ back to the KERNAL - only if it is still ours
-        cmp #>JP
-        bne jx
-        lda $0314
-        cmp #<JP
-        bne jx
-        lda #$31
-        sta $0314
-        lda #$EA
-        sta $0315
-        bne jx
-jnote   pha                     ; note A (jfreq) on voices 3 and 2 of SID X: the frequency, both
-        jsr jaddr               ; oscillators reset together (TEST) so they stay in phase - twice
-        pla                     ; the level with no beating - then a new gate.
-        asl
-        tay
-        lda jfreq,y
-        pha
-        lda jfreq+1,y
-        ldy #$0F
-        jsr jw
-        ldy #$08
-        jsr jw
-        pla
-        ldy #$0E
-        jsr jw
-        ldy #$07
-        jsr jw
-        lda #$18                ; TEST + triangle, gate off
-        ldy #$12
-        jsr jw
-        ldy #$0B
-        jsr jw
-        lda #$11                ; triangle, gate on
-        jsr jw
-        ldy #$12
-jw      sta $FFFF,y
-        rts
-jaddr   txa                     ; jw at SID X: $D400 + (X&1)*$20 + (X&4)*$20 + (X&2)*$80
-        and #5
-        asl
-        asl
-        asl
-        asl
-        asl
-        sta jw+1
-        txa
-        lsr
-        and #1
-        ora #$D4
-        sta jw+2
-        rts
-jwait   !byte 1
-jpos    !byte 0
-jsid    !byte 0
-}
-jend
-!if jend - jsrc > 192 { !error "the jingle's player is bigger than the tape buffer" }
+shellend
+!if shellend > $D000 { !error "the browser is too big" }

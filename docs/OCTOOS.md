@@ -60,11 +60,11 @@ How it is drawn is described in `tools/octoos/kernal/octo.asm`:
 | `@/NAME` | the same, from the start folder; `@/` alone goes back to it; `@A/B` goes two down |
 | `/NAME` | load and run NAME (.prg, or a .crt); a .d64/.g64/.d81 goes into drive 8 |
 | `@!` | out to the MiSTer's own menu (MENU, `12`) |
-| F1 BROWSE | the browser at the drives: SD CARD and NETWORK (always, build 6) |
-| F3 LOAD | the browser in the folder you were last in: RETURN loads and runs - a `.prg`, `.crt` or `.t64` through Main (the core resets), a `.d64`/`.g64`/`.d81` into drive 8, then `LOAD"*",8,1` and RUN; a `.reu` is attached (then RETURN on its `.prg`) |
-| F5 SIDS | the settings, the bar on the SID lines (MY CHIP LEFT) |
-| F7 DUAL | the settings, the bar on SPLIT SCREENS |
-| F8 SET | the settings (F7 there goes straight back to READY) |
+| F1 BROWSE | the browser at the drives: SD CARD and NETWORK, titled `F1 BROWSE: RETURN RUNS, M MOUNTS A DISK` - browse and run anything |
+| F3 LOAD | **no browser**: the disk in drive 8. `F3 LOAD - DRIVE 8: <name>`, then `LOAD"*",8,1` typed and RUN after it. Drive 8 empty: `F3 LOAD: DRIVE 8 IS EMPTY.` and how to put one in (F1, the bar on a disk, M) - nothing is loaded (SHELL.PRG build 5; build 4 had no name) |
+| F5 SIDS | its own page, **SID CHIPS** (which SIDs play, and which chips): chip preset, my chips, left/right models, MY CHIPS, OCTOPHONIC, OCTOSID FX |
+| F7 DUAL | its own page, **DUAL SCREEN** (C64 on the CRT, OctoVIC on HDMI): SPLIT SCREENS |
+| F8 SET | its own page, **SETTINGS**: every line, SHOWCASE last (F7 on any of the three goes straight back to READY) |
 | C=+F1 | the MiSTer's own menu (other cores, MiSTer's settings): types `@!`, only on a MiSTer (NET b5); the emulator ignores it |
 
 The F keys need nothing new from Main: F1 is `02` CHDIR `*`, F3's RETURN is `07` OPEN (VALUE 8: a
@@ -94,8 +94,8 @@ loads `SHELL.PRG` from `/media/fat/octophonic` to `$C000` and runs it; it opens 
 | Key | Does |
 |---|---|
 | cursor up/down, joystick 2 | move the bar |
-| RETURN, fire | a folder: into it; a program or cartridge: load and run; a disk: into drive 8, then LOAD"*",8 and RUN |
-| SHIFT+RETURN | a disk: into drive 8 only |
+| RETURN, fire | a folder: into it; a program or cartridge: load and run; a disk: into drive 8, then LOAD"*",8,1 and RUN |
+| M (or SHIFT+RETURN) | a disk: into drive 8 only, not run (build 5). While the bar is on a disk the status line says `RETURN: LOAD+RUN IT   M: MOUNT IT ONLY`. Then the start screen says `DISK IN DRIVE 8: <name>` / `F3 LOADS AND RUNS IT` |
 | F1 | the drives (SD CARD / NETWORK) |
 | F3, DEL, cursor left, joystick left | up a folder |
 | F5 / F6 | page down / up |
@@ -112,6 +112,17 @@ attached already, so a 16 MB REU is never loaded twice. In each folder the `.prg
 after the folders. `..` shows as `.. (UP A FOLDER)`; sizes are blocks under 1000, else K or M; a
 name the C64 can't show comes out with `?`, never blank. Names use 28 columns; a longer one is cut in
 the middle (`OCTOPHONIC SHOWC..N BUILD 12`) so the build number at its end always shows.
+
+**Which disk is in drive 8 (build 5).** Besides F3's title and M's message, at every cold start
+(power-on, CTRL+F12 / Esc held, a chip preset) the start screen shows `DRIVE 8: <name>` on row 23, just
+above the F-key bar, when a disk is in - the jingle's entry (`$C003`) asks Main (`17` DRIVE8) first.
+Nothing is shown with the drive empty. It is ordinary text: typing scrolls it away like the box.
+
+**SHELL.PRG build 5 loads at `$BE00`** (was `$C000`): the jingle's code lives at `$BE00-$BFFF` in
+the RAM under BASIC's ROM and runs with BASIC switched out ($01 = $36), and the browser's list buffer
+moved from `$CDC0` to `$B800-$BA30`, also under BASIC's ROM (read a byte at a time with BASIC out:
+`recb`, `compact`). `$C000-$CFFF` is all the browser's code. The ROM still calls `$C000` and `$C003`;
+no ROM change. So F1 (and the jingle) now use `$B800-$BFFF` of the RAM under BASIC, besides `$C000-$CFFF`.
 
 ## Drives and the network
 
@@ -160,7 +171,24 @@ CTRL+F11 (OS mode): a screenshot of whatever is running into `Screenshots/Manual
 Cursor up/down picks a line, left/right changes it, RETURN on CHIP PRESET starts it.
 Lines: chip preset (the `_Computer/Octophonic 64*.mgl` launchers; the one started becomes `boot=` in
 os.ini), my chip left/right (the `.CHP` files in `games/C64/My Chips`), START IN (network / SD card / last used), then the core's options:
-Left/Right SIDs, My Chips, Octophonic, OctoSID FX, Split Screens, Turbo mode, Turbo speed.
+Left/Right SIDs, My Chips, Octophonic, OctoSID FX, Split Screens, Turbo mode, Turbo speed, and last
+(line 12, os-fixes) **SHOWCASE**: OFF / ON - NO DEBUG ROWS, saved as `showcase=` (0/1) in os.ini.
+
+**SHOWCASE (Fix 29)** is for recording demos on the real machine. Main shows it as **NET (`$D6FF`)
+bit 3**, from power-on and through every core reset. A demo with technical rows (LATE/REP/BLANK, the
+CORE line) checks it at its start: bit 3 set - start with them hidden and stay that way (its I key may
+still show them); clear - its own default, as before. Default off. Skipping Ball, Punching Cubes and
+Gold Black Hole already start clean (EXAMPLES.md); new demos and the kit should read bit 3:
+
+```
+        lda #$4F        ; OctoVIC's page (the mailbox)
+        sta $D03F
+        lda #$38
+        sta $D03F
+        lda $D6FF       ; NET
+        and #$08        ; SHOWCASE
+        bne clean       ; on: no debug rows
+```
 
 ## Same backend as the MiSTer menu
 
@@ -244,6 +272,9 @@ Commands: `01` DIR (PETSCII text, 0-terminated), `02` CHDIR (NAME `*`: the drive
 `11` APPEND, `0F` SHELL (SHELL.PRG to its load address), `13` COMPILE, `14` COMPLOG, `15` GO (the
 OCTOCODE editor: see below), `12` MENU (answered, then Main loads `menu.rbf`, MiSTer's own menu;
 Main starts the Octophonic core only once per power-on, so the menu stays a menu).
+`17` DRIVE8 (os-fixes): the name of the disk in drive 8 (as the core has it - also one put in from
+the MiSTer's menu) to ADDR, PETSCII, at most 32 characters, 0 after it; RESULT its length (0: empty).
+`18` REU (os-fixes): see "A running program asks for its .reu" below.
 OPEN on a lone `.reu` answers VALUE 2, RESULT its size in 64 KB units, LEN the list entry of its `.prg`
 ($FFFF none).
 
@@ -281,6 +312,57 @@ dropped whole by the core, so a late answer never lands on a newer request; Main
 Main's side, on hps_io's EXT_BUS: `0x70` poll (reply `$6F00` + pending), `0x71` read (each word
 after the reply: the 16 registers, then the 32 name bytes), `0x72` write (each word
 `{register, value}`; STATUS last).
+
+## A running program asks for its .reu (`18`, os-fixes - for "2026: An Octophonic Odyssey")
+
+A program can ask Main to put a `.reu` from its own folder into the REU while it runs - e.g. a demo
+run from OCTOCODE after editing (where the browser's automatic `.reu` didn't happen), or one that
+changes its REU between scenes.
+
+| 6502 gives | Main does | Answer |
+|---|---|---|
+| NAME the `.reu` (with or without `.reu`, no folders), ARG b0: 1 = load it again even if it is in, VALUE 0 | looks for it in: the folder of the program Main last started (browser OPEN, `/NAME`), or where OCTOCODE's last COMPILE/GO worked; then the folder of the disk in drive 8; then the browser's folder. Puts it in as OPEN does (no OSD bar, VALUE 3 and RESULT/LEN the 64 KB blocks while it goes in, STATUS still 1) | STATUS 2, VALUE **2** put in now / **4** it was in already (nothing loaded), RESULT its size in 64 KB; `$81` not found |
+
+The C64 keeps running while it goes in (a 16 MB `.reu` takes several seconds on the MiSTer) - don't
+read the REU until the answer. The tiny example (the whole test is `tools/octoos/test/reureq.asm`):
+
+```
+        lda #$4F        ; OctoVIC's page (the mailbox)
+        sta $D03F
+        lda #$38
+        sta $D03F
+        sta $D6F9       ; NAME: empty
+        ldx #0
+-       lda name,x      ; then its letters
+        beq +
+        sta $D6F8
+        inx
+        bne -
++       lda #0
+        sta $D6F6       ; ARG: not again if it is in already
+        sta $D6F7       ; VALUE 0 (Main writes 3 while loading)
+        lda $D6FE       ; a request number of our own
+        clc
+        adc #1
+        sta seq
+        sta $D6FD       ; SEQ
+        lda #$18        ; REU
+        sta $D6F0       ; CMD
+-       lda $D6F1       ; STATUS: wait while 1 (busy)
+        cmp #1
+        beq -
+        ldx $D6FE       ; ... and until the answer carries our number
+        cpx seq
+        bne -
+        cmp #2          ; 2: done - $D6F7 is 2 (put in) or 4 (in already)
+        bne failed      ; else $81: not found
+        ...
+name    !pet "odyssey part 2", 0
+seq     !byte 0
+```
+
+Tested in the emulator: `REU Request.prg` beside `Part A.reu` and `Part B.reu` (`mkreureq.sh`) asks for
+A (VALUE 2), B (2), B again (4) and shows each one's first 40 bytes from the REU.
 
 ## OCTOCODE: write code, press F2, it runs (`13`-`15`)
 

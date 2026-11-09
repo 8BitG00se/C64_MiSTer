@@ -5,7 +5,7 @@ name: Build Octophonic Main
 
 on:
   push:
-    branches: [ octophonic-v1.1 ]
+    branches: [ octophonic-v1.1, os-fixes ]
     paths: [ 'tools/octoos/main/**', '.github/workflows/octoos-main.yml' ]
   workflow_dispatch:
 
@@ -34,6 +34,8 @@ jobs:
           # build 6: .reu loads with no MiSTer OSD bar (the C64 draws its own), no OSD bar at all while the OS runs
           git apply ../tools/octoos/main/octophonic-quiet-load.patch
           git apply ../tools/octoos/main/octophonic-compile.patch
+          # os-fixes: DRIVE8 ($17), REU ($18) for a running program, SHOWCASE (os.ini, NET b3)
+          git apply ../tools/octoos/main/octophonic-os-fixes.patch
 
       - name: Build
         run: |
@@ -60,4 +62,6 @@ jobs:
           git checkout -q -b octoos-main-build
           git add -A
           git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Octophonic Main: $(cat result.txt)"
-          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" octoos-main-build
+          # the release branch's build goes to octoos-main-build; any other branch's to its own
+          OUT=octoos-main-build; [ "${{ github.ref_name }}" = octophonic-v1.1 ] || OUT=octoos-main-build-${{ github.ref_name }}
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" HEAD:$OUT
