@@ -58,8 +58,12 @@ loading = $56
 colbit  = $57
 glyph   = $58           ; 2
 lvw     = $5a
+lverr   = $5b           ; loading: the drive failed
+lvpage  = $5c           ; loading: pages of the view unpacked so far (the bar)
+lvdr    = $5d           ; the bar: cells drawn
+LST     = $cf00         ; the loading screen's stars: offset lo, hi (40 each), timers
 
-MINVIEW = 750           ; frames each view is shown (15 s)
+MINVIEW = 600           ; the least frames from one cut to the next (12 s: a view loads in about 15 s on a 1541)
 NVIEW   = 4             ; the views on the disk (VIEW0-VIEW3)
 
 !zone b_dd00
@@ -85,25 +89,16 @@ show    lda #<irq_t     ; the title's interrupt: the music only
         lda #6
 +       jsr pl_init
         jsr mkmsg
-        ldx #<t_1sid
-        ldy #>t_1sid
-        lda mode
-        beq +
-        ldx #<t_2sid
-        ldy #>t_2sid
-+       lda #14
-        jsr print
-        ldx #<t_load
-        ldy #>t_load
-        lda #11
-        jsr print
         jsr irqon
         lda #0
         sta bank
         sta view
         sta trans
         sta fxon
+        sta qview
+        sta inname
         jsr setup       ; letters, sprites, black screens
+        jsr loadscr     ; the loading screen: stars, the title, the equaliser, a bar
         ; the first view, into bank 1
 -       lda #0
         ldx #0
@@ -112,9 +107,15 @@ show    lda #<irq_t     ; the title's interrupt: the music only
         ldx #<t_disk
         ldy #>t_disk
         lda #7
-        jsr print
+        jsr print2
         jmp -
-+       jsr bars        ; the telescope opens: raster bars
++       ldx #<t_ready
+        ldy #>t_ready
+        lda #1
+        jsr print2
+-       jsr atcut       ; the picture comes up on the music's next phrase
+        bcc -
+        jsr bars        ; the telescope opens: raster bars
         jsr showon      ; the bitmap (all black), the split
         lda #2
         jsr iris_open   ; the iris opens on the whole picture
@@ -139,11 +140,14 @@ tour    lda #0
         lda nview
         jsr loadview
         bcs tour        ; (no disk: stay on this view, try again)
--       lda vtime+1     ; at least MINVIEW frames on each view
+-       lda vtime+1     ; at least MINVIEW frames since the last cut ...
         cmp #>MINVIEW
         bcc -
+        bne +
         lda vtime
         cmp #<MINVIEW
+        bcc -
++       jsr atcut       ; ... then on the music's next phrase
         bcc -
         lda #0
         sta fxon
@@ -200,6 +204,10 @@ loadview
         lda #1          ; more sprites on the bad lines steal so many
         sta loading     ; cycles the KERNAL misses the 1541's bits
         lda #0
+        sta lvpage
+        sta lverr
+        lda #1
+        lda #0
         sta comety
         ldx #4
 -       sta SPST,x
@@ -242,7 +250,7 @@ loadview
         sta ptr
         lda #<2256
         ldx #>2256
-        jsr .read
+        jsr unpack
         bcs .err
         ldx lvb         ; the bitmap into the bank
         lda b_bmp,x
@@ -251,7 +259,7 @@ loadview
         sta ptr
         lda #<8000
         ldx #>8000
-        jsr .read
+        jsr unpack
         bcs .err
         jsr CLRCHN
         lda #2
@@ -267,33 +275,95 @@ loadview
         sta loading
         sec
         rts
-; A/X bytes to (ptr); carry set if the file ended early or failed
-.read   sta cnt
+; A/X bytes unpacked to (ptr) (the packing: STOCKPIC.PY, pack()): a token $00-$7F is
+; a run of token+1 bytes to copy; $80-$BF copies (token & $3F) + 2 bytes from a distance
+; (the next byte, 1-255) back; $C0-$FF the same with a 16 bit distance (lo, hi). It is
+; unpacked as it comes off the drive, so there is no second buffer. Carry set: failed.
+!zone unpack
+unpack  sta cnt
         stx cnt+1
-.rl     jsr drready
-        jsr CHRIN
+.next   lda cnt
+        ora cnt+1
+        beq .ok
+        jsr getb
+        sta tmp
+        bmi .match
+        sta tmp+1
+.lit    jsr getb
         ldy #0
         sta (ptr),y
-        inc ptr
+        jsr .adv
+        bcs .ok
+        dec tmp+1
+        bpl .lit
+        bmi .chk
+.match  and #$3f
+        clc
+        adc #2
+        sta tmp+1
+        jsr getb
+        sta tmp+2
+        lda #0
+        sta tmp+3
+        lda tmp
+        and #$40
+        beq +
+        jsr getb
+        sta tmp+3
++       sec
+        lda ptr
+        sbc tmp+2
+        sta ptr3
+        lda ptr+1
+        sbc tmp+3
+        sta ptr3+1
+.cp     ldy #0
+        lda (ptr3),y
+        sta (ptr),y
+        inc ptr3
+        bne +
+        inc ptr3+1
++       jsr .adv
+        bcs .ok
+        dec tmp+1
+        bne .cp
+.chk    lda lverr
+        beq .next
+        sec
+        rts
+.ok     lda lverr
+        cmp #1          ; carry set if the drive failed
+        rts
+; one byte out: ptr up, cnt down; carry set when all are done
+.adv    inc ptr
         bne +
         inc ptr+1
-        jsr READST      ; every 256 bytes: still good?
-        and #$83
-        bne .bad
+        inc lvpage
 +       lda cnt
         bne +
         dec cnt+1
 +       dec cnt
         lda cnt
         ora cnt+1
-        beq .ok
-        jsr READST
-        and #$40        ; the end of the file - too soon
-        bne .bad
-        jmp .rl
-.ok     clc
+        beq +
+        clc
         rts
-.bad    sec
++       sec
+        rts
+; the next byte of the file (A); a failed drive is remembered in lverr
+!zone getb
+getb    lda lverr
+        bne .z
+        jsr drready
+        jsr CHRIN
+        pha
+        jsr READST
+        and #$83        ; (the end of the file, $40, is fine on the last byte)
+        beq +
+        sta lverr
++       pla
+        rts
+.z      lda #0
         rts
 !zone vname
 vname   !pet "view0"
@@ -312,6 +382,254 @@ drready lda frame
         bcc -
 +       rts
 
+; ===================================================== the phrases
+; The pictures change on the music's phrases (8 bars), a little early so the new one is
+; in on the beat. phtab: the song frames (mfr) at which a change starts: the phrases
+; begin at frame 549 (the end of the introduction), 480 frames (8 bars) apart; scaled
+; to SONGLEN if the song's length changes (song.asm).
+PHN     = 8
+PHLEAD  = 40
+!zone atcut
+atcut   ldx #0
+.l      lda mfr
+        sec
+        sbc phtab,x
+        sta tmp
+        lda mfr+1
+        sbc phtab+1,x
+        bcc .n
+        bne .n
+        lda tmp
+        cmp #16         ; in the first 16 frames of the window
+        bcc .y
+.n      inx
+        inx
+        cpx #PHN*2
+        bne .l
+        clc
+        rts
+.y      sec
+        rts
+!zone phtab
+phtab   !for k, 0, PHN-1 { !word ((549 + 480*k) * songlen / 4816) - PHLEAD }
+
+; ============================================== the loading screen
+; Text mode in bank 1 (screen $4400, the letters at $5800), what the loading is shown on:
+; stars that twinkle ('.', '+', '*' and back, in the greys), the title with a light
+; running through it, the equaliser (the music is playing) and a bar that fills as the
+; picture comes off the disk.
+!zone loadscr
+loadscr sei
+        ldx #0          ; colour RAM black
+        lda #0
+-       sta $d800,x
+        sta $d900,x
+        sta $da00,x
+        sta $dae8,x
+        inx
+        bne -
+        sta lvdr
+        ldx #0          ; 40 stars: not in the middle rows (the text)
+.st     jsr random
+        and #3
+        sta tmp
+        jsr random
+        sta tmp+1       ; offset tmp/tmp+1: 0-1023
+        lda tmp
+        cmp #3
+        bne +
+        lda tmp+1
+        cmp #$e8
+        bcs .st         ; 1000 up: no
++       lda tmp         ; rows 8-19: offsets 320-799
+        cmp #1
+        beq .st
+        cmp #2
+        beq .st
+        cmp #3
+        bne +
+        lda tmp+1
+        cmp #$20
+        bcc .st
++       lda tmp+1
+        sta LST,x
+        lda tmp
+        sta LST+40,x
+        lda #0
+        sta LST+80,x
+        stx tmp+2
+        jsr ltwput
+        ldx tmp+2
+        inx
+        cpx #40
+        bne .st
+        lda $dd00       ; bank 1, the text screen
+        and #$fc
+        ora #2
+        sta $dd00
+        lda #$16
+        sta $d018
+        lda #$08
+        sta $d016
+        lda #$1b
+        sta $d011
+        lda #0
+        sta $d020
+        sta $d021
+        ldx #<t_title
+        ldy #>t_title
+        lda #6
+        jsr print2
+        ldx #<t_copy
+        ldy #>t_copy
+        lda #12
+        jsr print2
+        ldx #<t_1sid
+        ldy #>t_1sid
+        lda mode
+        beq +
+        ldx #<t_2sid
+        ldy #>t_2sid
++       lda #14
+        jsr print2
+        ldx #<t_load
+        ldy #>t_load
+        lda #12
+        jsr print2
+        lda #<irq_l
+        sta $0314
+        lda #>irq_l
+        sta $0315
+        cli
+        rts
+; star X at its state: the character and colour of its timer (LST+80,x)
+!zone ltwput
+ltwput  lda LST,x
+        sta iptr
+        sta iptr2
+        lda LST+40,x
+        clc
+        adc #$44
+        sta iptr+1
+        lda LST+40,x
+        adc #$d8
+        sta iptr2+1
+        lda LST+80,x
+        lsr
+        tay
+        lda lwch,y
+        ldy #0
+        sta (iptr),y
+        lda LST+80,x
+        lsr
+        tay
+        lda lwc,y
+        ldy #0
+        sta (iptr2),y
+        rts
+!zone lwch
+lwch    !scr ".++**+..",0
+!zone lwc
+lwc     !byte 11,12,15,1,1,15,12,11
+; the twinkles: now and then a star starts, all that are going go on
+!zone ltw
+ltw     jsr random
+        and #63
+        cmp #40
+        bcs .go
+        tax
+        lda LST+80,x
+        bne .go
+        lda #16
+        sta LST+80,x
+.go     ldx #39
+.l      lda LST+80,x
+        beq .nx
+        dec LST+80,x
+        stx it+1
+        jsr ltwput
+        ldx it+1
+.nx     dex
+        bpl .l
+        rts
+; the title's shine: its colours run along a ramp
+!zone lshine
+lshine  lda frame
+        lsr
+        sta it
+        ldx #0
+.l      txa
+        clc
+        adc it
+        and #15
+        tay
+        lda shw,y
+        sta $d800+9*40+6,x
+        inx
+        cpx #27
+        bne .l
+        rts
+!zone shw
+shw     !byte 6,6,14,14,3,3,1,1,3,3,14,14,6,6,6,6
+; the bar: a cell for each page of the picture unpacked (39 in all)
+!zone lbar
+lbar    ldx lvdr
+.l      cpx lvpage
+        bcs .x
+        cpx #40
+        bcs .x
+        lda #$a0
+        sta $4400+18*40,x
+        lda #14
+        sta $d800+18*40,x
+        inx
+        stx lvdr
+        jmp .l
+.x      rts
+
+; print the text at X/Y (row, column, the letters, 0 ends) in colour A on the text screen at $4400
+!zone print2
+print2  stx ptr2
+        sty ptr2+1
+        sta tmp+3
+        ldy #0
+        lda (ptr2),y
+        tax
+        lda rowlo,x
+        sta ptr
+        sta ptr3
+        lda rowhi,x
+        clc
+        adc #$44
+        sta ptr+1
+        lda rowhi,x
+        adc #$d8
+        sta ptr3+1
+        iny
+        lda (ptr2),y
+        clc
+        adc ptr
+        sta ptr
+        sta ptr3
+        bcc +
+        inc ptr+1
+        inc ptr3+1
++       lda ptr2
+        clc
+        adc #2
+        sta ptr2
+        bcc +
+        inc ptr2+1
++       ldy #0
+-       lda (ptr2),y
+        beq +
+        sta (ptr),y
+        lda tmp+3
+        sta (ptr3),y
+        iny
+        bne -
++       rts
+
 ; ==================================================== the interrupts
 !zone irqon
 irqon   sei
@@ -326,12 +644,25 @@ irqon   sei
         cli
         rts
 
-; the title's: the music, nothing else
+; the music only (while the screens are set up)
 !zone irq_t
 irq_t   lda $d019
         sta $d019
         inc frame
         jsr pl_play
+        jmp $ea81
+
+; the loading screen's: the music, the equaliser, the twinkling stars, the title's shine, the bar
+!zone irq_l
+irq_l   lda $d019
+        sta $d019
+        inc frame
+        jsr pl_play
+        jsr eqdraw
+        jsr ltw
+        jsr lshine
+        jsr lbar
+        jsr sprites
         jmp $ea81
 
 ; the show's: once a frame at line $FC, below the picture
@@ -360,11 +691,13 @@ irq_s   lda $d019
 showon  sei
         lda #0
         sta colbit
+        sta qview       ; (the scroll text starts with the interrupt: these must be clear)
+        sta inname
         lda #<msg0
         sta mptr
         lda #>msg0
         sta mptr+1
-        ldx #39         ; the scroll text's colours: dark at the ends
+        ldx #39         ; the scroll text's colours: fading through the greys at the ends
 -       lda scrcol,x
         sta $dbc0,x
         lda #$00
@@ -410,8 +743,8 @@ showon  sei
         cli
         rts
 !zone scrcol
-scrcol  !byte 6,6,14,14,3,3,13,1,1,1,1,1,1,1,1,1,1,1,1,1
-        !byte 1,1,1,1,1,1,1,1,1,1,1,1,1,13,3,3,14,14,6,6
+scrcol  !byte 0,11,11,12,12,15,15,1,1,1,1,1,1,1,1,1,1,1,1,1
+        !byte 1,1,1,1,1,1,1,1,1,1,1,1,1,15,15,12,12,11,11,0
 
 ; ======================================================= texts
 !zone t_1sid
@@ -423,8 +756,17 @@ t_2sid  !byte 13, 8
 !zone t_load
 t_load  !byte 16, 9
         !scr "loading the cliffs...", 0
+!zone t_ready
+t_ready !byte 16, 9
+        !scr "the cliffs are ready!", 0
+!zone t_title
+t_title !byte 9, 6
+        !scr "2026: an octophonic odyssey", 0
+!zone t_copy
+t_copy  !byte 11, 11
+        !scr "(c) 2026 mong00se", 0
 !zone t_disk
-t_disk  !byte 18, 2
+t_disk  !byte 20, 2
         !scr "put the odyssey disk in drive 8", 0
 
 ; the sparkles (4 sizes) and the comet: sprites $22-$26

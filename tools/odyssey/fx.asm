@@ -144,7 +144,7 @@ msg1e   !byte 0
 !zone msg2
 msg2    !scr "every star, sparkle and note is done by the 6502 "
         !scr "- the pictures are loaded from the disk while you "
-        !scr "watch    ...    "
+        !scr "watch, and change with the music    ...    "
 !zone msg2e
 msg2e   !byte 0
 !zone msg3
@@ -155,13 +155,13 @@ msg3e   !byte 0
 !zone vnames
 vnames  !word vn0, vn1, vn2, vn3
 !zone vn0
-vn0     !scr "   * the cosmic cliffs *   ", 0
+vn0     !scr "   * the cliff edge *   ", 0
 !zone vn1
 vn1     !scr "   * the western peak *   ", 0
 !zone vn2
-vn2     !scr "   * the ridge and its stars *   ", 0
+vn2     !scr "   * the golden ridge *   ", 0
 !zone vn3
-vn3     !scr "   * the eastern cliffs *   ", 0
+vn3     !scr "   * the eastern stars *   ", 0
 !zone t_m1
 t_m1    !scr "1 sid detected - a stock commodore 64    ...    ", 0
 !zone t_m2

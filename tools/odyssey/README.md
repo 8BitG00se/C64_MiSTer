@@ -23,7 +23,7 @@ hear is done by the 6502 on the machine; the PC only converts the picture and pr
 | `octo.asm`, `octofx.asm`, `camera.asm` | the Octophonic show (the camera is Mona Lisa's) |
 | `song.asm` | the notes (made by `song.py`) |
 | `song.py` | the arrangement: the 6502 player's note lists for SIDs 1-2, and SIDs 3-8 rendered to register frames for the REU (same timing) |
-| `stockpic.py` | the photo to the four multicolour views (`view0-3.bin`) |
+| `stockpic.py` | the photo to the four multicolour views (`view0-3.bin`, packed with a small LZ that `show.asm` unpacks while loading) |
 | `octopic.py` | the photo to the 256-colour picture, its half and quarter copies, the camera path, the sprites, the .reu |
 | `petscii.py` | the source to PETSCII for the disk (OCTOCODE), with the header art's graphics; `--png` shows it as OCTOCODE will |
 | `build.sh` | `build.sh PICTURE.jpg OUT`: everything, the .d64, the zip |
