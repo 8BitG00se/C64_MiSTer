@@ -11,10 +11,14 @@
 # esptool 3.3.3 (GPL-2) and pyserial 3.5 (BSD) come in the payload and run from there: nothing is installed.
 # Not on an image build (the screen has to be there), and not marked done until it has run on the MiSTer.
 # Payload wanted: files/tty2oled-firmware/{esptool.py, serial/, esp32de_octo.bin, lolin32_octo.bin, esp32s3_octo.bin}
+# OCTO-RECHECK (when WANT goes up, a screen done with an older OCTO firmware is updated again)
 set -u
 . "$(dirname "$0")/../octo-step-lib.sh"
-octo_is_done && { octo_say "already done"; exit 0; }
 WANT=4
+if octo_is_done && grep "^$(octo_name) " "$OCTO_DONE" | grep -q "OCTO$WANT\|left alone"; then
+    octo_say "already done (OCTO$WANT, or a screen this step leaves alone)"; exit 0
+fi
+[ "${OCTO_LIST:-0}" = 1 ] && { octo_say "WOULD CHECK the screen and update it to OCTO$WANT"; exit 0; }
 
 FW="$OCTO_PAYLOAD/tty2oled-firmware"
 [ "$OCTO_ROOT" = /media/fat ] || { octo_say "not on the MiSTer itself - the screen is updated there (skipped, not marked done)"; exit 0; }

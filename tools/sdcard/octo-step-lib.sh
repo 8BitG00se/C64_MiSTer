@@ -4,6 +4,15 @@
 #   - it can be run twice with no harm: it checks first and only changes what needs changing
 #   - it backs up anything it replaces
 #   - on success it writes ONE line to $OCTO_ROOT/octophonic/steps-done.txt
+#   - it never restarts anything (Main, the core, the MiSTer). Restarts are the installer's job, and
+#     the installer writes each one, with its time, to octophonic/update.log
+#
+# Steps that CARRY A FILE (the core, Main, SHELL.PRG, oled.sh ...) have the line
+#     # OCTO-RECHECK
+# near the top. The runner runs those again even when steps-done.txt lists them, and the step itself
+# compares the payload's md5 with what is on the card (octo_skip_if_current): the same -> nothing
+# happens; different -> it installs the new one, backs up the old, and logs "updated <old> -> <new>".
+# That is how a NEWER core / Main / SHELL.PRG reaches a card that ran the step long ago.
 #
 # Settings a caller may pass in:
 #   OCTO_ROOT     the card (default /media/fat). The image build points this at the new card.
@@ -40,7 +49,10 @@ octo_mark_done() {
         grep -v "^$(octo_name) " "$OCTO_DONE" > "$OCTO_DONE.new" 2>/dev/null || :
         mv -f "$OCTO_DONE.new" "$OCTO_DONE"
     fi
-    printf '%s %s %s\n' "$(octo_name)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${1:-ok}" >> "$OCTO_DONE"
+    _note="${1:-ok}"
+    if [ -n "$OCTO_UPDATED" ]; then _note="$OCTO_UPDATED | $_note"; fi
+    printf '%s %s %s\n' "$(octo_name)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_note" >> "$OCTO_DONE"
+    octo_log "$_note"
     sync
 }
 
@@ -55,6 +67,53 @@ octo_backup() {
 }
 
 octo_md5() { md5sum "$1" 2>/dev/null | cut -d' ' -f1; }
+
+# one line to octophonic/update.log (the install log Neal reads)
+octo_log() {
+    mkdir -p "$OCTO_STATE" 2>/dev/null
+    printf '%s %s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$(octo_name)" "$*" >> "$OCTO_STATE/update.log"
+}
+
+# For an OCTO-RECHECK step, called first thing, before anything is changed:
+#   octo_skip_if_current "<payload file>|<file on the card>" ...
+# Not done yet            -> returns (the step runs as normal - a first install).
+# Done, every pair the same md5, or no payload brought this time -> says so and EXITS the step (0).
+# Done, a payload differs -> says old/new, sets OCTO_UPDATED, returns (the step installs it).
+# OCTO_LIST=1: only says what it would do, and exits.
+OCTO_UPDATED=""
+octo_skip_if_current() {
+    if ! octo_is_done; then
+        [ "${OCTO_LIST:-0}" = 1 ] && { octo_say "WOULD RUN (first time)"; exit 0; }
+        return 0
+    fi
+    _diff=""; _have=0
+    for _pair in "$@"; do
+        _p=${_pair%%|*}; _c=${_pair#*|}
+        [ -n "$_p" ] && [ -s "$_p" ] || continue
+        _have=1
+        _pm=$(octo_md5 "$_p"); _cm=$(octo_md5 "$_c"); [ -n "$_cm" ] || _cm=none
+        [ "$_pm" = "$_cm" ] || _diff="$_diff $(basename "$_c") ${_cm} -> ${_pm};"
+    done
+    if [ "$_have" = 0 ]; then
+        octo_say "already done (this update brings no new file for it)"; exit 0
+    fi
+    if [ -z "$_diff" ]; then
+        octo_say "already done, and the card has exactly this version (md5 the same) - nothing changed"; exit 0
+    fi
+    # an OLDER package than the card (its core number is lower than the core in place) changes nothing:
+    # Main and SHELL.PRG must stay with the newer core they were made for
+    _pn=$(tr -dc '0-9' < "$OCTO_PAYLOAD/core-number.txt" 2>/dev/null)
+    _cn=$(sed -n 's/^ORDER=//p' "$OCTO_ROOT/_Octophonic/core.txt" 2>/dev/null | tr -dc '0-9')
+    if [ -n "$_pn" ] && [ -n "$_cn" ] && [ "$_cn" -gt "$_pn" ]; then
+        octo_say "this update is OLDER than the card (its core number $_pn, the card's $_cn) - kept what is there, nothing changed"
+        exit 0
+    fi
+    OCTO_UPDATED="updated:${_diff%;}"
+    if [ "${OCTO_LIST:-0}" = 1 ]; then octo_say "WOULD UPDATE -$_diff"; exit 0; fi
+    octo_say "already done once, but this update brings a different version -$_diff"
+    octo_say "installing it (the old one is backed up)"
+    return 0
+}
 
 # a payload file must be there before a step will change anything
 octo_payload() {

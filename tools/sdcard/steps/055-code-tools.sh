@@ -3,9 +3,10 @@
 # games/C64/Apps/OCTOCODE.PRG (the editor: F3 load, edit, F2 compile and run, F5 save to the disk).
 # Payload wanted: files/acme (ARM, static - built with Main on octoos-main-build), files/OCTOCODE.PRG
 # Nothing else goes in Apps or the other games/C64 folders: they are filled by the user.
+# OCTO-RECHECK (a newer acme / OCTOCODE.PRG in the payload replaces the one on the card)
 set -u
 . "$(dirname "$0")/../octo-step-lib.sh"
-octo_is_done && { octo_say "already done"; exit 0; }
+octo_skip_if_current "$OCTO_PAYLOAD/acme|$OCTO_ROOT/octophonic/acme" "$OCTO_PAYLOAD/OCTOCODE.PRG|$OCTO_ROOT/games/C64/Apps/OCTOCODE.PRG"
 
 A=$(octo_payload acme) || { echo "no acme in $OCTO_PAYLOAD"; exit 1; }
 O=$(octo_payload OCTOCODE.PRG) || { echo "no OCTOCODE.PRG in $OCTO_PAYLOAD"; exit 1; }

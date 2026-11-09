@@ -3,9 +3,10 @@
 # Main starts it to show a program's own animation (NAME.oled beside the program) and to bring the Octophonic logo
 # back. It finds the screen itself and does nothing when there is none, so it is safe on any card.
 # Payload wanted: files/oled.sh
+# OCTO-RECHECK (a newer oled.sh in the payload replaces the one on the card)
 set -u
 . "$(dirname "$0")/../octo-step-lib.sh"
-octo_is_done && { octo_say "already done"; exit 0; }
+octo_skip_if_current "$OCTO_PAYLOAD/oled.sh|$OCTO_STATE/oled.sh"
 
 NEW=$(octo_payload oled.sh) || { echo "no oled.sh in $OCTO_PAYLOAD"; exit 1; }
 sh -n "$NEW" || { echo "oled.sh has a syntax error"; exit 1; }

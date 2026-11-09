@@ -6,12 +6,12 @@
 # The new Main runs from the next time Main starts - WILL RESTART MISTER MAIN: the installer restarts the MiSTer
 # afterwards (and logs it), or it happens at the next power-on.
 # Payload wanted: files/MiSTer (built by .github/workflows/octoos-main.yml)
+# OCTO-RECHECK (a newer Main in the payload replaces the one on the card, even when this step is done)
 set -u
 . "$(dirname "$0")/../octo-step-lib.sh"
-octo_is_done && { octo_say "already done"; exit 0; }
-
-NEW=$(octo_payload MiSTer) || { echo "no MiSTer in $OCTO_PAYLOAD"; exit 1; }
 CUR="$OCTO_ROOT/MiSTer"
+octo_skip_if_current "$OCTO_PAYLOAD/MiSTer|$CUR"
+NEW=$(octo_payload MiSTer) || { echo "no MiSTer in $OCTO_PAYLOAD"; exit 1; }
 octo_say "new Main md5: $(octo_md5 "$NEW")"
 
 if [ -e "$CUR" ] && [ "$(octo_md5 "$CUR")" = "$(octo_md5 "$NEW")" ]; then

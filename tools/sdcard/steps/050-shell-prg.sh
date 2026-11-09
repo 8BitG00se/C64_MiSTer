@@ -5,12 +5,12 @@
 # (tools/octoos/kernal/shell.asm -> acme -f cbm), and it calls into the ROM at fixed addresses.
 # An old SHELL.PRG with a new core is the classic way to get a browser that misbehaves.
 # Payload wanted: files/SHELL.PRG
+# OCTO-RECHECK (a newer SHELL.PRG in the payload replaces the one on the card, even when this step is done)
 set -u
 . "$(dirname "$0")/../octo-step-lib.sh"
-octo_is_done && { octo_say "already done"; exit 0; }
-
-NEW=$(octo_payload SHELL.PRG) || { echo "no SHELL.PRG in $OCTO_PAYLOAD"; exit 1; }
 CUR="$OCTO_ROOT/octophonic/SHELL.PRG"
+octo_skip_if_current "$OCTO_PAYLOAD/SHELL.PRG|$CUR"
+NEW=$(octo_payload SHELL.PRG) || { echo "no SHELL.PRG in $OCTO_PAYLOAD"; exit 1; }
 mkdir -p "$OCTO_ROOT/octophonic" || exit 1
 octo_say "new SHELL.PRG: $(octo_md5 "$NEW")  ($(wc -c < "$NEW") bytes)"
 

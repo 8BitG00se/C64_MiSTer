@@ -3,6 +3,9 @@
 #
 # Runs every step in steps/ that is NOT already listed in
 # $OCTO_ROOT/octophonic/steps-done.txt, in number order, and stops at the first failure.
+# Steps marked "# OCTO-RECHECK" (the ones that carry a file: core, Main, SHELL.PRG ...) are run
+# even when done: each compares the payload's md5 with the card's and installs only if different,
+# so a newer version always reaches a card. Nothing here restarts anything - see update.log.
 # Running it again is always safe: finished steps are skipped, and every step is written so
 # that running it twice changes nothing the second time.
 #
@@ -18,6 +21,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 export OCTO_ROOT OCTO_PAYLOAD
 OCTO_RUNSTAMP="run-$(date -u +%Y%m%d-%H%M%S)"
 export OCTO_RUNSTAMP
+OCTO_LIST="${OCTO_LIST:-0}"; export OCTO_LIST
 
 echo "==================================================================="
 echo " OCTOPHONIC SD RECIPE"
@@ -32,7 +36,7 @@ echo
 mkdir -p "$OCTO_STATE" 2>/dev/null || { echo "cannot write to $OCTO_STATE"; exit 1; }
 [ -f "$OCTO_DONE" ] || : > "$OCTO_DONE"
 
-RAN=0; SKIPPED=0; FAILED=0
+RAN=0; SKIPPED=0; FAILED=0; CHECKED=0
 for S in "$HERE"/steps/*.sh; do
     [ -e "$S" ] || continue
     N=$(basename "$S")
@@ -48,7 +52,18 @@ for S in "$HERE"/steps/*.sh; do
             fi ;;
     esac
 
+    RECHECK=0; grep -q '^# OCTO-RECHECK' "$S" && RECHECK=1
     if [ "${OCTO_FORCE:-0}" != 1 ] && grep -q "^$N " "$OCTO_DONE" 2>/dev/null; then
+        if [ "$RECHECK" = 1 ]; then
+            # done before, but it carries a file: the step compares md5s and updates only if different
+            echo "~~ $N   done ($(grep "^$N " "$OCTO_DONE" | tail -1 | awk '{print $2}')) - checking for a newer version"
+            sh "$S"; RC=$?
+            if [ "$RC" != 0 ]; then
+                echo; echo "!! $N FAILED (exit $RC). Stopping here so nothing further is changed."
+                FAILED=1; break
+            fi
+            CHECKED=$((CHECKED+1)); continue
+        fi
         echo "-- $N   already done ($(grep "^$N " "$OCTO_DONE" | tail -1 | awk '{print $2}'))"
         SKIPPED=$((SKIPPED+1)); continue
     fi
@@ -75,9 +90,9 @@ done
 
 echo "==================================================================="
 if [ "${OCTO_LIST:-0}" = 1 ]; then
-    echo " would run: $RAN    already done or skipped: $SKIPPED"
+    echo " would run: $RAN    already done or skipped: $SKIPPED    done, checked for newer: $CHECKED"
 else
-    echo " ran: $RAN    skipped: $SKIPPED"
+    echo " ran: $RAN    skipped: $SKIPPED    done, checked for newer: $CHECKED"
 fi
 echo "==================================================================="
 if [ "$FAILED" = 1 ]; then echo "RECIPE_FAILED"; exit 1; fi

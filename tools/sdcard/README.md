@@ -40,7 +40,31 @@ tools/sdcard/
    come out the same.
 2. **It backs up anything it replaces**, into `octophonic/backups/<run>/`.
 3. **It writes one line to `octophonic/steps-done.txt`** when it finishes. That file is how the
-   updater knows what is left to do.
+   updater knows what is left to do (and, for a step that carries a file, which version went in).
+
+## Newer versions reach a card that is already set up
+
+Steps that carry a file - 030 (core + launchers), 040/042 (Main), 050 (SHELL.PRG), 055 (acme,
+OCTOCODE), 085 (title cards), 087 (oled.sh), 088 (screen firmware) - have a `# OCTO-RECHECK` line.
+The runner runs them even when `steps-done.txt` lists them, and each compares the payload's md5
+with the file on the card first (`octo_skip_if_current` in `octo-step-lib.sh`):
+
+- the same: nothing happens ("already done, and the card has exactly this version")
+- different: the new one goes in, the old one is backed up, and `steps-done.txt` and
+  `octophonic/update.log` get "updated: <file> <old md5> -> <new md5>"
+- the package is OLDER than the card (its `core-number.txt` is lower than the card's
+  `_Octophonic/core.txt`): nothing happens - Main and SHELL.PRG stay with the newer core
+- the package does not bring that file at all: nothing happens
+
+No step restarts anything (Main, the core or the MiSTer) - restarts are the installer's job, and
+it writes each one with its time to `octophonic/update.log`. The core goes in through
+`install_core.sh`, which moves every older `.C64_Octophonic_*.rbf` to `_Octophonic/old cores`
+first; step 030 then checks there is exactly ONE Octophonic core in `_Computer`, so an old core
+can never be the one `Octophonic 64.mgl` (`<rbf>_Computer/.C64_Octophonic</rbf>`) starts.
+
+`sh tools/sdcard/test/recheck-test.sh` proves it on a fake card folder: first install, the same
+again (nothing changes), a newer package (updates once), the newer again (nothing), the older
+again (nothing - no downgrade). It ends with RECHECK_TEST_OK.
 
 ## Running it
 

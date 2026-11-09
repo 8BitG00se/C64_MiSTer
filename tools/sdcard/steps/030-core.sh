@@ -7,11 +7,22 @@
 # and a NEWER core is never replaced by an older one without force.
 # Payload wanted: files/C64_Octophonic_*.rbf, files/core-number.txt, files/install_core.sh,
 #                 files/_Computer/*.mgl
+# OCTO-RECHECK (a different core in the payload is installed even when this step is done - through
+# install_core.sh, so a NEWER core already on the card is still never replaced by an older one)
+#
+# ONE core only: install_core.sh moves every _Computer/.C64_Octophonic_*.rbf it finds to
+# _Octophonic/old cores (hidden, dot names) before putting the new one in, and the launchers ask for
+# <rbf>_Computer/.C64_Octophonic</rbf> - so the old core can never shadow the new one. This step
+# checks that afterwards: exactly one .C64_Octophonic_*.rbf in _Computer, and it is this payload's.
 set -u
 . "$(dirname "$0")/../octo-step-lib.sh"
-octo_is_done && { octo_say "already done"; exit 0; }
-
 RBF=$(ls "$OCTO_PAYLOAD"/C64_Octophonic_*.rbf 2>/dev/null | head -1)
+INCARD=$(ls "$OCTO_ROOT"/_Computer/.C64_Octophonic_*.rbf 2>/dev/null | head -1)
+PAIRS="${RBF:-}|${INCARD:-$OCTO_ROOT/_Computer/.none}"
+set -- "$PAIRS"
+for m in "$OCTO_PAYLOAD/_Computer"/*.mgl; do [ -e "$m" ] && set -- "$@" "$m|$OCTO_ROOT/_Computer/$(basename "$m")"; done
+WASDONE=0; octo_is_done && WASDONE=1
+octo_skip_if_current "$@"
 [ -n "$RBF" ] && [ -s "$RBF" ] || { echo "no C64_Octophonic_*.rbf in $OCTO_PAYLOAD"; exit 1; }
 NAME=$(basename "$RBF")
 INST=$(octo_payload install_core.sh) || { echo "no install_core.sh in $OCTO_PAYLOAD"; exit 1; }
@@ -35,6 +46,10 @@ else
     RC=$?
     set -e
     rm -f /tmp/octo_install_core.sh "/tmp/$NAME"
+    if [ "$RC" = 3 ] && [ "$WASDONE" = 1 ]; then
+        octo_say "a NEWER core is already on this card - kept (this update's core is older; nothing changed)"
+        exit 0
+    fi
     if [ "$RC" = 3 ]; then
         echo "a NEWER core is already on this card - it was NOT replaced."
         echo "that is deliberate. Re-run this step with OCTO_FORCE=1 only if you mean it."
@@ -61,6 +76,10 @@ if [ -d "$OCTO_PAYLOAD/_Computer" ]; then
 fi
 sync
 
+# exactly one Octophonic core where the launchers look, and it is this one
+NC=$(ls "$OCTO_ROOT"/_Computer/.C64_Octophonic_*.rbf 2>/dev/null | wc -l)
+[ "$NC" = 1 ] || { echo "there are $NC Octophonic cores in _Computer - there must be exactly one"; exit 1; }
+[ "$(octo_md5 "$OCTO_ROOT/_Computer/.$NAME")" = "$(octo_md5 "$RBF")" ] || { echo "the core in _Computer is not this one"; exit 1; }
 octo_say "core.txt: $(cat "$OCTO_ROOT/_Octophonic/core.txt" 2>/dev/null | tr '\n' ' ')"
 octo_say "old cores kept: $(ls -A "$OCTO_ROOT/_Octophonic/old cores" 2>/dev/null | wc -l)"
 octo_mark_done "core $NAME (number $ORDER)"

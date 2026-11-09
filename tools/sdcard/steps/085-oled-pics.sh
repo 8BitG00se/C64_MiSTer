@@ -9,6 +9,7 @@
 # script) - or OCTO_ONLY=085 OCTO_FORCE=1 to lay this set down again.
 # No tty2oled on the card: nothing to do (and not marked done, so it runs once tty2oled is put on).
 # Payload wanted: files/tty2oled/pics_pri/*.gsc
+# OCTO-RECHECK (new or changed cards in the payload are put on even when this step is done)
 set -u
 . "$(dirname "$0")/../octo-step-lib.sh"
 
@@ -18,7 +19,10 @@ if [ ! -d "$OCTO_ROOT/tty2oled" ]; then
     octo_say "no tty2oled on this card - no front screen to give pictures to (skipped, not marked done)"
     exit 0
 fi
-ls "$SRC"/*.gsc >/dev/null 2>&1 || { echo "no .gsc cards in $SRC"; exit 1; }
+# no cards this time: nothing to do (the Octophonic screen firmware plays its own logo - no card needed)
+ls "$SRC"/*.gsc >/dev/null 2>&1 || { octo_say "no title cards in this payload (skipped)"; exit 0; }
+set --; for NEW in "$SRC"/*.gsc; do set -- "$@" "$NEW|$DST/$(basename "$NEW")"; done
+octo_skip_if_current "$@"
 mkdir -p "$DST" || exit 1
 N=0; SAME=0
 for NEW in "$SRC"/*.gsc; do
