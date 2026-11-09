@@ -38,6 +38,7 @@ mfr     = PV+$a0        ; 2: the song's frame
 nvoice  = PV+$a2        ; 3 or 6
 pl_f17  = PV+$a4        ; 2: SID 1's and SID 2's filter routing (+ resonance)
 pl_sl   = PV+$a6        ; 1: the next note is slurred
+pv_flg  = PV+$a8        ; the instrument's flags (a copy, quicker)
 FILTRES = $20           ; the strings' filter: resonance 2, lowpass
 pl_p    = $14           ; 2 (zero page)
 pl_r    = $16           ; 2
@@ -127,6 +128,7 @@ pl_rst  lda #0
         lda #0
         sta pv_end,x
         sta pv_ins,x
+        sta pv_flg,x
         sta pv_ctl,x
         sta pv_eq,x
         dex
@@ -150,7 +152,10 @@ pl_play inc mfr
         cmp #>songlen
         bne +
         jsr pl_rst
-+       lda mfr         ; the strings' cutoff: fcut[mfr / 16]
++       lda mfr         ; the strings' cutoff: fcut[mfr / 16], every 16
+        and #15         ; frames
+        bne .vs
+        lda mfr
         sta pl_t
         lda mfr+1
         lsr
@@ -173,7 +178,7 @@ pl_play inc mfr
         lda (pl_t),y
         sta $d416
 pl_c2   sta $d416       ; SID 2's (set by pl_init)
-        ldx #0
+.vs     ldx #0
 -       jsr pl_voice
         inx
         cpx nvoice
@@ -321,6 +326,7 @@ pl_next lda pv_plo,x
         lda instr+9,y   ; the equaliser jumps up
         sta pv_eq,x
         lda instr+7,y   ; through the filter or not
+        sta pv_flg,x
         and #16
         php
         ldy pl_vsid,x
@@ -406,9 +412,8 @@ pl_fx   ldy pv_note,x
         lda pl_t+1
         adc pv_voh,x
         sta pl_t+1
-.novib  ldy pv_ins,x    ; detuned (SID 2's strings): + frequency / 256,
-        lda instr+7,y   ; about 7 cents
-        and #8
+.novib  lda pv_flg,x    ; detuned (SID 2's strings): + frequency / 256,
+        and #8          ; about 7 cents
         beq +
         ldy pv_note,x
         lda freqhi,y
@@ -458,8 +463,7 @@ pl_fx   ldy pv_note,x
         iny
         lda pv_pwh,x
         sta (pl_r),y
-        ldy pv_ins,x    ; a tremolo: the bow changes every 2 frames
-        lda instr+7,y
+        lda pv_flg,x    ; a tremolo: the bow changes every 2 frames
         and #4
         beq .eq
         lda pv_ctl,x

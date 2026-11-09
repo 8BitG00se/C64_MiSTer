@@ -15,16 +15,16 @@ songlen = 6436            ; frames, then it starts again
 ; vibrato depth (0 none), flags (2 hard restart, 4 tremolo, 8 sharp,
 ; 16 filtered), gate off frames before the next note, equaliser peak
 instr
-        !byte $21,$69,$b8,$80,$00,$16,$03,$10,$02,$14   ; 0 1st violins
+        !byte $21,$69,$f8,$80,$00,$16,$03,$10,$02,$14   ; 0 1st violins
         !byte $41,$88,$68,$70,$03,$1e,$04,$10,$03,$10   ; 1 horn
-        !byte $41,$39,$56,$58,$04,$00,$00,$10,$03,$12   ; 2 cellos, basses
-        !byte $41,$77,$65,$60,$06,$00,$00,$10,$02,$0c   ; 3 violas (after-beats)
+        !byte $41,$39,$66,$30,$02,$00,$00,$10,$03,$12   ; 2 cellos, basses
+        !byte $11,$99,$75,$80,$00,$00,$00,$10,$02,$0c   ; 3 violas (after-beats)
         !byte $21,$44,$54,$80,$00,$00,$00,$14,$02,$0a   ; 4 tremolo
-        !byte $41,$a8,$69,$70,$05,$1e,$04,$10,$04,$0a   ; 5 string pad
+        !byte $21,$a8,$a9,$80,$00,$1e,$04,$10,$04,$0a   ; 5 string pad
         !byte $11,$09,$08,$80,$00,$00,$00,$02,$01,$0e   ; 6 harp
-        !byte $41,$69,$88,$60,$05,$18,$03,$18,$02,$10   ; 7 2nd violins
+        !byte $21,$69,$e8,$80,$00,$18,$03,$18,$02,$10   ; 7 2nd violins
         !byte $11,$57,$68,$80,$00,$10,$03,$00,$02,$0e   ; 8 flute
-        !byte $41,$a9,$3a,$60,$03,$00,$00,$10,$04,$0c   ; 9 low strings held
+        !byte $41,$a9,$4a,$30,$02,$00,$00,$10,$04,$0c   ; 9 low strings held
 ; the show's picture changes: the song frames of the theme's 4-bar phrases
 phtab   !word 1016,1311,1610,1905,2207,2502,2801,3112
         !word 3414,3709,4008,4303,4605,4900,5199,5510

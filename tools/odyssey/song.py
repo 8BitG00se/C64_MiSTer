@@ -277,16 +277,16 @@ def part_harp():
 # strings' lowpass), gate-off frames before the next note, equaliser peak (0-20)
 F_HR, F_TREM, F_DET, F_FILT = 2, 4, 8, 16
 INSTR = [
-    (0x21, 0x69, 0xB8, 0x80, 0, 22, 3, F_FILT, 2, 20),           # 0 1st violins: a saw, a slow bow, a late light vibrato
+    (0x21, 0x69, 0xF8, 0x80, 0, 22, 3, F_FILT, 2, 20),           # 0 1st violins: a saw, a slow bow, a late light vibrato
     (0x41, 0x88, 0x68, 0x70, 3, 30, 4, F_FILT, 3, 16),           # 1 horn: a mid pulse, a soft attack
-    (0x41, 0x39, 0x56, 0x58, 4, 0, 0, F_FILT, 3, 18),            # 2 cellos and basses: a round pulse, bowed
-    (0x41, 0x77, 0x65, 0x60, 6, 0, 0, F_FILT, 2, 12),            # 3 violas' after-beats: soft and held
+    (0x41, 0x39, 0x66, 0x30, 2, 0, 0, F_FILT, 3, 18),            # 2 cellos and basses: a narrow pulse, bowed
+    (0x11, 0x99, 0x75, 0x80, 0, 0, 0, F_FILT, 2, 12),            # 3 violas' after-beats: a soft swell, held
     (0x21, 0x44, 0x54, 0x80, 0, 0, 0, F_FILT | F_TREM, 2, 10),   # 4 tremolo: a saw bowed every 2 frames, soft
-    (0x41, 0xA8, 0x69, 0x70, 5, 30, 4, F_FILT, 4, 10),           # 5 string pad: a sweeping pulse, slow in and out
+    (0x21, 0xA8, 0xA9, 0x80, 0, 30, 4, F_FILT, 4, 10),           # 5 string pad: a saw, slow in and out
     (0x11, 0x09, 0x08, 0x80, 0, 0, 0, F_HR, 1, 14),              # 6 harp: a plucked triangle
-    (0x41, 0x69, 0x88, 0x60, 5, 24, 3, F_FILT | F_DET, 2, 16),   # 7 2nd violins: a sweeping pulse, a few cents sharp
+    (0x21, 0x69, 0xE8, 0x80, 0, 24, 3, F_FILT | F_DET, 2, 16),   # 7 2nd violins: a saw, a few cents sharp
     (0x11, 0x57, 0x68, 0x80, 0, 16, 3, 0, 2, 14),                # 8 flute: a triangle, a little late vibrato
-    (0x41, 0xA9, 0x3A, 0x60, 3, 0, 0, F_FILT, 4, 12),                 # 9 low strings, held (the pedal)
+    (0x41, 0xA9, 0x4A, 0x30, 2, 0, 0, F_FILT, 4, 12),            # 9 low strings, held (the pedal)
 ]
 NAMES = ['1st violins', 'horn', 'cellos, basses', 'violas (after-beats)', 'tremolo', 'string pad', 'harp',
          '2nd violins', 'flute', 'low strings held']
@@ -470,7 +470,7 @@ def render8(path):
     def sus(bar, lo=6, hi=12):
         """a sustain level from the dynamics: the swells"""
         return int(round(lo + (hi - lo) * dyn(bar)))
-    def strings(c, v, ev, det=0.0, wave=SAW, att=7, rel=9, lo=4, hi=11, vdel=20, vdep=6.0, shift=0, pwb=1800, ph=0.0):
+    def strings(c, v, ev, det=0.0, wave=SAW, att=7, rel=9, lo=7, hi=13, vdel=20, vdep=6.0, shift=0, pwb=1800, ph=0.0):
         ev = tie_slurs(ev)
         for e in ev:
             b, bt, d, n = e[:4]; sl = e[5] if len(e) > 5 else 0
@@ -501,10 +501,10 @@ def render8(path):
         if tm == 1 and tb < 17: continue
         a, b = aft_pair(bar, 62, 74)
         if tb == 32: continue
-        S.note(3, 1, F(bar, 1), F(bar, 2), vib(a, 3, 30, 3), PUL, 0x68, (sus(bar, 5, 9) << 4) | 6, pw=pws(1500, 400), gap=2)
-        S.note(3, 2, F(bar, 1), F(bar, 2), vib(b, -3, 30, 3), PUL, 0x68, (sus(bar, 5, 9) << 4) | 6, pw=pws(1700, 400), gap=2)
-        S.note(3, 1, F(bar, 2), F(bar, 2.85), vib(a, 3, 30, 3), PUL, 0x68, (sus(bar, 5, 9) << 4) | 6, pw=pws(1500, 400), gap=0, slur=False)
-        S.note(3, 2, F(bar, 2), F(bar, 2.85), vib(b, -3, 30, 3), PUL, 0x68, (sus(bar, 5, 9) << 4) | 6, pw=pws(1700, 400), gap=0)
+        S.note(3, 1, F(bar, 1), F(bar, 2), vib(a, 3, 30, 3), PUL, 0x88, (sus(bar, 8, 12) << 4) | 6, pw=pws(1500, 400), gap=2)
+        S.note(3, 2, F(bar, 1), F(bar, 2), vib(b, -3, 30, 3), PUL, 0x88, (sus(bar, 8, 12) << 4) | 6, pw=pws(1700, 400), gap=2)
+        S.note(3, 1, F(bar, 2), F(bar, 2.85), vib(a, 3, 30, 3), PUL, 0x88, (sus(bar, 8, 12) << 4) | 6, pw=pws(1500, 400), gap=0, slur=False)
+        S.note(3, 2, F(bar, 2), F(bar, 2.85), vib(b, -3, 30, 3), PUL, 0x88, (sus(bar, 8, 12) << 4) | 6, pw=pws(1700, 400), gap=0)
     S.route[:, 3] = 7; S.mode[:, 3] = LP; S.res[:, 3] = 2
     # ---- SID 5 (index 4): horns
     for b, bt, d, n, s in HORN2 + HORN3:
@@ -523,19 +523,19 @@ def render8(path):
         ts = chord_tones(bar, 57, 69)
         c = chord(bar); r = [n for n in ts if n % 12 == CH[c][0]] or ts[:1]; f5 = [n for n in ts if n % 12 == CH[c][2]] or ts[-1:]
         ln = 4 if tm == 1 else 2
-        S.note(4, 2, F(bar, 0), F(bar + ln, 0) - 3, vib(r[0], 0, 40, 2), PUL, 0x98, (sus(bar, 5, 10) << 4) | 9, pw=2000, tail=60)
+        S.note(4, 2, F(bar, 0), F(bar + ln, 0) - 3, vib(r[0], 0, 40, 2), PUL, 0x98, (sus(bar, 8, 12) << 4) | 9, pw=2000, tail=60)
         if tm == 2:
-            S.note(4, 1, F(bar, 0), F(bar + ln, 0) - 3, vib(f5[0], 3, 40, 2), PUL, 0x98, (sus(bar, 5, 10) << 4) | 9, pw=2000, tail=60)
+            S.note(4, 1, F(bar, 0), F(bar + ln, 0) - 3, vib(f5[0], 3, 40, 2), PUL, 0x98, (sus(bar, 8, 12) << 4) | 9, pw=2000, tail=60)
     S.route[:, 4] = 7; S.mode[:, 4] = LP; S.res[:, 4] = 1
     # ---- SID 6 (index 5): violas (after-beats, low) and cellos
     for bar in range(P1 + 1, CODA):
         tb, tm = tbar(bar)
         a, b = aft_pair(bar, 50, 62)
         if tb == 32:
-            S.note(5, 0, F(bar, 1), F(bar, 2.8), vib(a, -4, 30, 3), SAW, 0x68, (sus(bar, 5, 9) << 4) | 7, gap=2); continue
+            S.note(5, 0, F(bar, 1), F(bar, 2.8), vib(a, -4, 30, 3), SAW, 0x88, (sus(bar, 8, 12) << 4) | 7, gap=2); continue
         for v, nn in ((0, a), (1, b)):
-            S.note(5, v, F(bar, 1), F(bar, 2), vib(nn, (-4, 4)[v], 30, 3), SAW, 0x68, (sus(bar, 5, 9) << 4) | 6, gap=2)
-            S.note(5, v, F(bar, 2), F(bar, 2.85), vib(nn, (-4, 4)[v], 30, 3), SAW, 0x68, (sus(bar, 5, 9) << 4) | 6, gap=0)
+            S.note(5, v, F(bar, 1), F(bar, 2), vib(nn, (-4, 4)[v], 30, 3), SAW, 0x88, (sus(bar, 8, 12) << 4) | 6, gap=2)
+            S.note(5, v, F(bar, 2), F(bar, 2.85), vib(nn, (-4, 4)[v], 30, 3), SAW, 0x88, (sus(bar, 8, 12) << 4) | 6, gap=0)
     # cellos: the rising triads an octave down (both times), and in the second time a long line through the harmony
     cel = [(b, bt, d, n - 12, 0, s) for b, bt, d, n, s in th1 + th2 if n <= 71 and b < CODA]
     strings(5, 2, cel, det=-3, att=6, lo=7, hi=11, vdep=5)
@@ -585,7 +585,7 @@ def render8(path):
     ramp = np.interp(t, [0, F(2, 0), F(6, 0), F(INTRO, 0)], [0.0, 0.45, 0.8, 1.0])
     for c in (2, 3): S.cut[:, c] *= ramp
     S.route[:, 7] = 3
-    vols = {2: 12, 3: 11, 4: 11, 5: 11, 6: 11, 7: 13}
+    vols = {2: 10, 3: 10, 4: 9, 5: 10, 6: 10, 7: 11}
     for c, v in vols.items(): S.vol[:, c] = v
     if ONLY is not None:
         for c in range(2, 8):
