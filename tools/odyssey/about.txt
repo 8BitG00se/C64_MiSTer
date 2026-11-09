@@ -1,0 +1,26 @@
+© 2026 Mong00se. All rights reserved.
+
+2026: AN OCTOPHONIC ODYSSEY - build @N@ - by Mong00se
+
+Image: the "Cosmic Cliffs" in the Carina Nebula, from the James Webb Space Telescope - NASA, ESA, CSA, STScI.
+Music: "The Blue Danube" (An der schoenen blauen Donau, 1866) by Johann Strauss II, arranged by Mong00se.
+
+One program for three machines - it looks at the machine it is on:
+- Octophonic 64 (OctoVIC, 8 SIDs, REU): the picture in 256 colours, 2048 x 1186, a slow camera through the
+  cliffs, the waltz on all 8 SIDs (strings, harp, horns, flute, bells, cellos, timpani), twinkling stars,
+  sparkles, a comet, 8 equaliser bars.
+- C64 with a second SID (at $D420, $D500 or $DE00): a tour of the cliffs in four multicolour pictures loaded
+  from the disk while you watch, the waltz in stereo on 2 SIDs.
+- Stock C64: the same tour, the waltz on 1 SID.
+Everything you see and hear is done by the 6502 on the machine.
+
+Run it
+- Octophonic (MiSTer): run "Install to MiSTer.bat", then pick "Octophonic Odyssey.prg" in the Octophonic browser
+  (it loads the .reu beside it). From the .d64 it works too: the program asks Octophonic Main for its .reu.
+- A real C64 or an emulator: the .d64 in drive 8, LOAD"*",8,1 then RUN. Leave the disk in: the pictures load
+  from it as the show goes (each takes about 40 seconds on a stock 1541 - the music plays on).
+
+The source is on the disk for OCTOCODE: ODYSSEY.ASM and its parts PLAYER, SHOW, FX, IRIS, OCTO, OCTOFX, CAMERA
+and SONG. F3 to load a part, edit, F2 to build and run. F2 on any part builds the whole demo. The parts must also be beside the disk on
+the SD card (the .bat copies them there) - that is where the compile finds them. Keep 50 or more blocks free
+on the disk: F5 writes a part (and the program) anew before the old copy goes.
