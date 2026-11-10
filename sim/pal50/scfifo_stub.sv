@@ -9,7 +9,8 @@ module scfifo #(parameter add_ram_output_register="OFF", intended_device_family=
 reg [lpm_width-1:0] mem [0:lpm_numwords-1];
 reg [lpm_widthu:0] wp = 0, rp = 0;
 assign empty = (wp == rp);
-assign full  = ((wp - rp) == lpm_numwords);
+wire [lpm_widthu:0] cnt = wp - rp;      // (wraps correctly: lpm_widthu+1 bits)
+assign full  = cnt[lpm_widthu];
 always @(posedge clock or posedge aclr) begin
 	if(aclr) begin wp <= 0; rp <= 0; end
 	else begin

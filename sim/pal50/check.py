@@ -65,7 +65,7 @@ print("== 5. 1541 and RTC enables (2.000 s of Exact clk_sys) ==")
 e = kv(re.search(r'^ENABLES .*$', tb, re.M).group(0)); T = int(e['ticks'])
 ok(int(e['drive_pattern_mismatch']) == 0, f"1541 enable pattern identical tick for tick in Original and Exact ({T:,} ticks compared)")
 dpc = int(e['drive_exact']) / (T / 32)
-print(f"   drive 16 MHz enables per C64 cycle: {dpc:.6f} (Original) = {int(e['drive_orig'])/(T/32):.6f} (Exact)  -> 1541 runs {dpc/16:.6f} cycles per C64 cycle")
+print(f"   drive 16 MHz enables per C64 cycle: {int(e['drive_orig'])/(T/32):.6f} (Original) = {dpc:.6f} (Exact)  -> 1541 runs {dpc/16:.6f} cycles per C64 cycle")
 ok(abs(dpc / 16 - 32 * 1e6 / 31527954) < 1e-5, f"1541: {dpc/16:.6f} drive cycles per C64 cycle in both modes (16 MHz / 31,527,954 x 32)")
 print(f"   real time: drive {float(int(e['drive_orig'])*fpal/T)/16e6:.7f} MHz (Original) / {float(int(e['drive_exact'])*fex/T)/16e6:.7f} MHz (Exact)")
 for nm, cnt, f in (("Original", e['rtc_orig'], fpal), ("Exact", e['rtc_exact'], fex)):
