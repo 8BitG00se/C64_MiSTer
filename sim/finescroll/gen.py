@@ -25,7 +25,16 @@ W(0x05, 0x15)                                                         # on, VIC 
 W(0x20, 0x09); W24(0x24, 0)                                           # layer 0: on, bitmap
 W(0x30, 0x09); W24(0x34, L1BM)                                        # layer 1: on, bitmap
 W24(0x13, SAT); W24(0x16, SGFX); W(0x0F, 1)
-for k in range(13):
+COP = 0x040000
+if len(sys.argv) > 3 and sys.argv[3] == "copper":
+    # PARALLAX BANDS: the copper sets L0FINE per band of lines - 0, then 1 from line 120, 2 from 140,
+    # 3 from 160, back to 0 from 200 - and SCROLLX stays 0. (No steps.)
+    ents = [(0, 0x27, 0), (120, 0x27, 1), (140, 0x27, 2), (160, 0x27, 3), (200, 0x27, 0), (0xFFFF, 0, 0)]
+    for i, (ln, rg, v) in enumerate(ents):
+        e = ln | rg << 16 | v << 24
+        for b in range(4): vram[COP + 4 * i + b] = (e >> (8 * b)) & 255
+    W24(0x10, COP); W(0x0E, 1)
+for k in range(13 if len(sys.argv) <= 3 else 0):
     s.append("wait %d 302" % (k + 1))
     q0, q1 = k, 2 * k
     W(0x28, q0 >> 2); W(0x29, 0); W(0x27, q0 & 3)
