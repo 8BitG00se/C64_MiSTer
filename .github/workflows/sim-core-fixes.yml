@@ -7,7 +7,7 @@ name: Core checks (core-fixes)
 on:
   push:
     branches: [ core-fixes ]
-    paths: [ 'rtl/octovic/**', 'sim/**', '.github/workflows/sim-core-fixes.yml' ]
+    paths: [ 'rtl/octovic/**', 'rtl/pal50.sv', 'rtl/cia_tod_clk.vhd', 'rtl/c1530.sv', 'rtl/video_vicII_656x.vhd', 'sim/**', '.github/workflows/sim-core-fixes.yml' ]
   workflow_dispatch:
 
 jobs:
@@ -21,7 +21,7 @@ jobs:
 
       - name: Tools
         run: |
-          sudo apt-get install -y -qq verilator >/dev/null
+          sudo apt-get install -y -qq verilator ghdl >/dev/null
           python3 -c "import numpy, PIL" 2>/dev/null || pip install -q numpy pillow
           verilator --version
 
@@ -42,6 +42,9 @@ jobs:
       - name: Sprite table, frame by frame
         run: sim/sprtable/run.sh
 
+      - name: EXACT 50 Hz (Fix 48) - PLL writes, VIC frame, TOD, 1541/RTC enables, fast-loader handshake, tape
+        run: sim/pal50/run.sh
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -49,3 +52,4 @@ jobs:
           path: |
             /tmp/finescroll/finescroll.png
             /tmp/finescroll/*.txt
+            /tmp/pal50/*.txt

@@ -19,12 +19,14 @@ set_global_assignment -name VHDL_FILE rtl/fpga64_rgbcolor.vhd
 set_global_assignment -name VHDL_FILE rtl/fpga64_keyboard.vhd
 set_global_assignment -name VHDL_FILE rtl/fpga64_buslogic.vhd
 set_global_assignment -name VHDL_FILE rtl/sid_mix.vhd
+set_global_assignment -name VHDL_FILE rtl/cia_tod_clk.vhd
 set_global_assignment -name VHDL_FILE rtl/fpga64_sid_iec.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/drv_overlay.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/tap_scanner.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/tap_time_map.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/tape_counter.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/tape_subsystem.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/pal50.sv
 set_global_assignment -name SYSTEMVERILOG_FILE c64.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/octovic/octovic.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/octovic/sid_fx.sv
