@@ -122,10 +122,9 @@ module drive_rtc_ce
 	output reg rtc_ce = 0
 );
 
+integer sum = 0;                   // (module level: the same static variables as the old inline block)
+integer msum = 31527954;
 always @(posedge clk) begin
-	int sum = 0;
-	int msum;
-
 	msum <= ntsc ? 32727264 : 31527954;
 
 	drive_ce <= 0;

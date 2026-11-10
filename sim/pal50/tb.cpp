@@ -111,13 +111,14 @@ int main(int argc, char** argv)
 	for (int i = 0; i < 300; i++) tap.push_back(seq[i % 3]);
 	t->restart_tape = 1; tick(); tick(); t->restart_tape = 0;
 	t->cass_motor = 0;
-	size_t wp = 0; int old = t->cass_read; uint64_t lastf = 0; std::vector<uint64_t> iv;
+	size_t wp = 0; int old = t->cass_read; uint64_t lastf = 0; std::vector<uint64_t> iv; long errat = -1;
 	for (uint64_t i = 0; i < 60000000ull && iv.size() < 240; i++) {
 		t->tap_wr = 0;
 		if (wp < tap.size() && !t->tap_full) { t->tap_in = tap[wp++]; t->tap_wr = 1; }
 		tick();
 		t->tap_wr = 0;
 		int cr = t->cass_read;
+		if (t->tap_err && errat < 0) errat = (long)iv.size();
 		if (old && !cr) { if (lastf) iv.push_back(ticks - lastf); lastf = ticks; }
 		old = cr;
 	}
@@ -128,11 +129,16 @@ int main(int argc, char** argv)
 		for (size_t i = 10; i < iv.size() - 5 && ok; i++) if (iv[i] != 256ull * seq[(i + o) % 3]) ok = false;
 		if (ok) best = o;
 	}
-	printf("TAPE pulses=%zu err=%d match=%s", iv.size(), t->tap_err, best >= 0 ? "yes" : "no");
+	int mis = -1;
+	if (best < 0 && iv.size() > 12) {   // the phase from pulse 10, then the first pulse that is off
+		for (int o = 0; o < 3; o++) if (iv[10] == 256ull * seq[(10 + o) % 3]) { for (size_t i = 10; i < iv.size(); i++) if (iv[i] != 256ull * seq[(i + o) % 3]) { mis = (int)i; break; } }
+	}
+	printf("TAPE pulses=%zu err=%d err_at_pulse=%ld first_mismatch=%d match=%s", iv.size(), t->tap_err, errat, mis, best >= 0 ? "yes" : "no");
 	for (int i = 0; i < 3 && best >= 0; i++) {
 		for (size_t x = 10; x < iv.size(); x++) if (seq[(x + best) % 3] == seq[i]) { printf(" 0x%02X=%llu", seq[i], (unsigned long long)iv[x]); break; }
 	}
-	if (best < 0) { printf(" first:"); for (size_t i = 0; i < iv.size() && i < 12; i++) printf(" %llu", (unsigned long long)iv[i]); }
+	if (best < 0) { printf(" first:"); for (size_t i = 0; i < iv.size() && i < 12; i++) printf(" %llu", (unsigned long long)iv[i]);
+		if (mis > 0) { printf(" around_mismatch:"); for (int i = std::max(0, mis - 3); i < (int)iv.size() && i < mis + 3; i++) printf(" %llu", (unsigned long long)iv[i]); } }
 	printf("\n");
 
 	delete t;

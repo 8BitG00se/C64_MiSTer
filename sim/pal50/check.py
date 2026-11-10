@@ -66,6 +66,7 @@ e = kv(re.search(r'^ENABLES .*$', tb, re.M).group(0)); T = int(e['ticks'])
 ok(int(e['drive_pattern_mismatch']) == 0, f"1541 enable pattern identical tick for tick in Original and Exact ({T:,} ticks compared)")
 dpc = int(e['drive_exact']) / (T / 32)
 print(f"   drive 16 MHz enables per C64 cycle: {dpc:.6f} (Original) = {int(e['drive_orig'])/(T/32):.6f} (Exact)  -> 1541 runs {dpc/16:.6f} cycles per C64 cycle")
+ok(abs(dpc / 16 - 32 * 1e6 / 31527954) < 1e-5, f"1541: {dpc/16:.6f} drive cycles per C64 cycle in both modes (16 MHz / 31,527,954 x 32)")
 print(f"   real time: drive {float(int(e['drive_orig'])*fpal/T)/16e6:.7f} MHz (Original) / {float(int(e['drive_exact'])*fex/T)/16e6:.7f} MHz (Exact)")
 for nm, cnt, f in (("Original", e['rtc_orig'], fpal), ("Exact", e['rtc_exact'], fex)):
     r = float(int(cnt) * f / T)
@@ -77,7 +78,7 @@ for m in re.finditer(r'^LOADER (\w+) (.*)$', tb, re.M):
     b, a = int(d['min_before']), int(d['min_after'])
     print(f"   {nm:24s} {d['transfers']} transfers, bad {d['bad']}: worst margin before {b/32:.3f} / after {a/32:.3f} C64 cycles"
           f" ({float(b/f)*1e6:.3f} / {float(a/f)*1e6:.3f} us)")
-    ok(int(d['bad']) == 0, f"loader {nm}: every pair read inside its window")
+    ok(int(d['bad']) == 0 and int(d['transfers']) > 1000, f"loader {nm}: every pair read inside its window")
 lo = {m.group(1): kv(m.group(2)) for m in re.finditer(r'^LOADER (\w+) (.*)$', tb, re.M)}
 ok(lo['original']['min_before'] == lo['exact']['min_before'] and lo['original']['min_after'] == lo['exact']['min_after'],
    "loader margins in C64 cycles identical in Original and Exact")
