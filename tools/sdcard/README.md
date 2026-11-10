@@ -19,6 +19,7 @@ tools/sdcard/
     050-shell-prg.sh    octophonic/SHELL.PRG
     055-code-tools.sh   octophonic/acme (OCTOCODE's F2 COMPILE on the MiSTer) and Apps/OCTOCODE.PRG
     060-mister-ini.sh   makes sure a MiSTer.ini exists; sets no video
+    065-mister-ini-vsync.sh   vsync_adjust=2: HDMI follows the core's 50 Hz (Fix 43; release, not DEV)
     070-migrate-drop-octophonic-folder.sh   the old games/C64/Octophonic folders, if empty
     080-bootcore.sh     MiSTer.ini: bootcore=Octophonic 64.mgl, every bootcore_timeout off
     095-stock-menu-core.sh  menu.rbf: MiSTer's own (white noise) menu core back, if the old navy one was in

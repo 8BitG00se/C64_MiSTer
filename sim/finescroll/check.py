@@ -23,7 +23,7 @@ base = None
 for k in range(13):
     f = q1[k + 2]
     l0 = first_start(f, 100, 150, 4 * 40)
-    l1 = first_start(f, 250, 245, 4 * 60)
+    l1 = first_start(f, 250, 245, 4 * 20)
     sp = edge(f, 154, 250)
     # the stripe's width (sharp: 16 sub-pixels, 4 C64 pixels) and the colours on line 250
     row = f[250, :, 0].astype(int); m = row == 245
@@ -37,6 +37,13 @@ for k in range(13):
     # sharp: on the stripe line, every sub-pixel is the stripe's colour or a layer 0 column colour, never a mix
     px = f[250, :4 * 396, :].astype(int)
     if not (np.all(px[:, 0] == px[:, 1]) and np.all(px[:, 1] == px[:, 2])): print("   FAIL: a colour on line 250 is not one of the art's"); fails += 1
+# the picture as text, a character a sub-pixel (4 a C64 pixel): S the sprite, # layer 1's stripe, . anything else
+print("sub-pixels 716-771 of line 154 (sprite) | 216-271 of line 250 (layer 1 stripe), each step:")
+for k in range(13):
+    f = q1[k + 2]
+    a = "".join("S" if v == 250 else "." for v in f[154, 716:772, 0])
+    b = "".join("#" if v == 245 else "." for v in f[250, 216:272, 0])
+    print("  Q=%2d  %s | %s" % (k, a, b))
 # identical to before
 same0 = [k for k in range(15) if np.array_equal(q0[k], old[k])]
 print("QUARTER=0 (no 4x clock): frames identical to the old OctoVIC: %d of %d" % (len(same0), 15))
