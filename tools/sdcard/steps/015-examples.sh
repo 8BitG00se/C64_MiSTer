@@ -3,7 +3,7 @@
 #
 #   Demos/        every Octophonic demo build (a folder each: its .prg and the .reu it needs),
 #                 Demos/Stock64/ the stock one-SID versions
-#   Games/ Apps/ Code/ Music/ SIDs/ Pictures/ My Chips/ Disks/ Screenshots/ Saves/
+#   Games/ Tools/ Code/ Music/ SIDs/ Pictures/ My Chips/ Disks/ Screenshots/ Saves/
 #                 one or more examples each, all original 6502 work (no Commodore ROMs, no
 #                 third-party games or tunes). Code/ has the OCTOCODE examples' .asm sources and
 #                 their programs; Disks/ the same examples as .d64s (each runs from its disk).

@@ -152,7 +152,7 @@ grep -q 'Octophonic OS' "$PAY/MiSTer" || die "that MiSTer is not Octophonic Main
 grep -q 'COMPILE' "$PAY/MiSTer" || die "that Main has no COMPILE (octophonic-compile.patch)"
 # the front-screen cards (step 085)
 if [ -d "$HERE/files/tty2oled" ]; then cp -r "$HERE/files/tty2oled" "$PAY/"; else echo "no front-screen cards here (step 085 skips: a fresh card has no tty2oled)"; fi
-# OCTOCODE, the code editor, from this commit's source (step 055 puts it in Apps)
+# OCTOCODE, the code editor, from this commit's source (step 055 puts it in Tools)
 acme -f cbm -o "$PAY/OCTOCODE.PRG" "$REPO/tools/octoos/octocode/octocode.asm"
 echo "OCTOCODE.PRG: $(stat -c %s "$PAY/OCTOCODE.PRG") bytes"
 # no menu core in the payload: since build 4 the stock (white noise) menu.rbf stays; step 095 puts

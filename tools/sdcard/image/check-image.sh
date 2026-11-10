@@ -41,19 +41,22 @@ echo "  _Computer:"; ls -A "$C/_Computer" | sed 's/^/    /'
 echo "  octophonic:"; ( cd "$C/octophonic" && find . -mindepth 1 | sort | sed 's|^\./|    |' )
 echo "  games/C64 files (the example set, step 015): $(find "$C/games/C64" -type f | wc -l), $(du -sh "$C/games/C64" | cut -f1)"
 if [ "${OCTO_EXAMPLES:-}" = none ]; then
-    [ "$(find "$C/games/C64" -type f ! -path "*/Apps/OCTOCODE.PRG" | wc -l)" = 0 ] && okk "games/C64 is empty but Apps/OCTOCODE.PRG (OCTO_EXAMPLES=none)" || bad "files in games/C64"
-    [ -s "$C/games/C64/Apps/OCTOCODE.PRG" ] && okk "Apps/OCTOCODE.PRG (step 055)" || bad "no Apps/OCTOCODE.PRG"
+    [ "$(find "$C/games/C64" -type f ! -path "*/Tools/OCTOCODE.PRG" | wc -l)" = 0 ] && okk "games/C64 is empty but Tools/OCTOCODE.PRG (OCTO_EXAMPLES=none)" || bad "files in games/C64"
+    [ -s "$C/games/C64/Tools/OCTOCODE.PRG" ] && okk "Tools/OCTOCODE.PRG (step 055)" || bad "no Tools/OCTOCODE.PRG"
     [ -s "$C/octophonic/acme" ] && okk "octophonic/acme (F2 COMPILE on the MiSTer)" || bad "no octophonic/acme"
 else
     grep -q '^015-examples.sh ' "$C/octophonic/steps-done.txt" && okk "step 015 put the example set in" || bad "step 015 (the example set) did not run"
 fi
-for d in Demos Games Apps Code Music SIDs Pictures "My Chips" Disks Screenshots Saves; do
+for d in Demos Games Tools Code Music SIDs Pictures "My Chips" Disks Screenshots Saves; do
     [ -d "$C/games/C64/$d" ] || bad "no games/C64/$d"
     [ "${OCTO_EXAMPLES:-}" = none ] || [ -n "$(ls -A "$C/games/C64/$d")" ] || bad "games/C64/$d is empty"
 done
 
 echo "-- straight into Octophonic"
 INI="$C/MiSTer.ini"
+[ ! -e "$C/games/C64/Apps" ] && okk "no old games/C64/Apps (it is Tools now, Fix 45)" || bad "games/C64/Apps is on the card"
+[ "$(grep -E '^[[:space:]]*vsync_adjust[[:space:]]*=' "$INI" | sed 's/;.*//' | tr -d ' \t\r' | sort -u)" = "vsync_adjust=2" ] \
+    && okk "MiSTer.ini vsync_adjust=2 (HDMI follows the core's 50 Hz, step 065)" || bad "MiSTer.ini has no vsync_adjust=2 (step 065)"
 BC=$(grep -E '^[[:space:]]*bootcore[[:space:]]*=' "$INI" | sed 's/[[:space:]]*;.*//')
 echo "  MiSTer.ini: $BC"
 grep -E '^[[:space:]]*;?[[:space:]]*bootcore_timeout' "$INI" | sed 's/^/  MiSTer.ini: /'

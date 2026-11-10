@@ -10,10 +10,10 @@ Octophonic 64 core (OctoVIC 2 or later): a stock C64 gets a message and nothing 
 1. Find the MiSTer's IP address (the MiSTer menu, or your router's list).
 2. Open FileZilla and connect: protocol SFTP, host = the MiSTer's IP, user `root`, password `1`
    (unless you changed it), port 22.
-3. On the MiSTer side go to `/media/fat/games/C64/Apps/`.
+3. On the MiSTer side go to `/media/fat/games/C64/Tools/`.
 4. Drag `OCTOPAINT.PRG` (from the zip) there. The disk `OctoPaint Disk build 1.d64` goes in the same
    folder (or in `/media/fat/games/C64/Disks/`). It has OCTOPAINT and two example pictures.
-5. Start the Octophonic 64 core. Press F1 (the browser), pick OCTOPAINT.PRG in Apps, and RETURN. Or
+5. Start the Octophonic 64 core. Press F1 (the browser), pick OCTOPAINT.PRG in Tools, and RETURN. Or
    mount the disk in the OSD and type `LOAD"*",8,1` then `RUN`.
 
 **The mouse.** Open the core's OSD and set `Pot 1/2` to `Mouse`. The mouse then acts as a 1351 in port 1

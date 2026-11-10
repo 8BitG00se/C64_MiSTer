@@ -3,7 +3,7 @@ OCTOPHONIC FUSION build @BUILD@ - one card, flashed once from the PC
 
 What it is: a whole MiSTer on one SD card image (MiSTer @REL@, set up by MiSTer's own Mr. Fusion
 @MRF@) with Octophonic 64 already in: the core, Octophonic Main, the browser, and
-OCTOCODE (edit, compile and run) in games/C64/Apps. The other folders are empty, ready for your
+OCTOCODE (edit, compile and run) in games/C64/Tools. The other folders are empty, ready for your
 own files. Power on and it goes straight into Octophonic 64. (The installer unpacks the whole card
 in the MiSTer's memory, so the image is kept small: demos come with the updater.)
 
