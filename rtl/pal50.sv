@@ -136,10 +136,9 @@ always @(posedge clk) begin
 	end
 end
 
+reg [25:0] rsum = 0;               // < rmod, so rsum + 16M < 49M fits 26 bits
+reg [25:0] rmod = 26'd31527954;
 always @(posedge clk) begin
-	reg [25:0] rsum = 0;           // < rmod, so rsum + 16M < 49M fits 26 bits
-	reg [25:0] rmod = 26'd31527954;
-
 	rmod <= ntsc ? 26'd32727264 : exact ? 26'd31449600 : 26'd31527954;
 
 	rtc_ce <= 0;
