@@ -56,6 +56,11 @@ int main (int argc, char **argv) {
     rw ("IRQLINE lo", 0x80, 0xFF); rw ("IRQLINE hi", 0x81, 0x01, 0x01, 0x00);
     rw ("IRQEN", 0x82, 0x0F, 0x00, 0x00); rw ("COLLIDX", 0x84, 0x0F, 0x03, 0x05);
     rw ("COPPER on", 0x0E, 0x01, 0x00, 0x00);
+    // FINE SCROLL (Fix 42): L0FINE $27, L1FINE $37, SPRFINE $07 (b1-0, the rest read 0); STATUS b4 = the 4x clock on, b5 = 0
+    for (int a : { 0x07, 0x27, 0x37 }) { want ("FINE after reset", a, rd (a), 0); wr (a, 0x03); want ("FINE", a, rd (a), 0x03); wr (a, 0xFE); want ("FINE (b7-2 read 0)", a, rd (a), 0x02); wr (a, 0); }
+    t->quarter = 1; if ((rd (0x08) & 0x30) != 0x10) { printf ("FAIL STATUS b4/b5 with quarter pixels on: $%02X\n", rd (0x08)); fails++; }
+    t->quarter = 0; if ((rd (0x08) & 0x30) != 0x00) { printf ("FAIL STATUS b4/b5 with quarter pixels off: $%02X\n", rd (0x08)); fails++; }
+    if (ver < 4) { printf ("FAIL VERSION $D61F = %d, want 4 or more (FINE SCROLL)\n", ver); fails++; }
     printf (fails ? "REGMAP: %d FAILED\n" : "REGMAP: all registers right\n", fails);
     delete t; return fails ? 1 : 0;
 }

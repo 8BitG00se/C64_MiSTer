@@ -81,6 +81,8 @@ port(
 	-- SPLIT SCREENS: the VIC's picture alone (for the VGA output), in step with r/g/b
 	vic_rgb_out : out std_logic_vector(23 downto 0);
 	split       : in  std_logic := '0';
+	-- FINE SCROLL (Fix 42): the 4x pixel clock reaches the output (OctoVIC's quarter pixels on)
+	quarter     : in  std_logic := '0';
 
 	-- cartridge port
 	game        : in  std_logic;
@@ -492,6 +494,7 @@ port (
 	rgb            : out std_logic_vector(23 downto 0);
 	rgb_vic        : out std_logic_vector(23 downto 0);
 	split          : in  std_logic;
+	quarter        : in  std_logic;
 	ddr_addr       : out std_logic_vector(28 downto 0);
 	ddr_burstcnt   : out std_logic_vector(7 downto 0);
 	ddr_rd         : out std_logic;
@@ -905,6 +908,7 @@ port map (
 	rgb            => octo_rgb,
 	rgb_vic        => vic_rgb_out,
 	split          => split,
+	quarter        => quarter,
 	ddr_addr       => ogx_ddr_addr,
 	ddr_burstcnt   => ogx_ddr_burstcnt,
 	ddr_rd         => ogx_ddr_rd,

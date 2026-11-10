@@ -110,6 +110,7 @@ localparam CONF_STR = {
 	"P1O[5:4],Aspect Ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"P1O[10:8],Scandoubler Fx,None,HQ2x-320,HQ2x-160,CRT 25%,CRT 50%,CRT 75%;",
 	"P1O[102],Split Screens,Off,VGA C64 + HDMI Octo;",
+	"P1O[103],Quarter Pixels,On,Off;",
 	"d1P1O[32],Vertical Crop,No,Yes;",
 	"P1O[31:30],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 	"P1-;",
@@ -981,6 +982,7 @@ wire [17:0] audio_l,audio_r;
 wire  [7:0] r,g,b;
 wire [23:0] vic_rgb;                       // SPLIT SCREENS: the VIC's picture alone, in step with r/g/b
 wire        split = status[102];
+wire        quarter;                       // FINE SCROLL (Fix 42): OctoVIC's quarter pixels reach the output (set below)
 assign VGA2_EN = split;                    // SPLIT SCREENS: the VGA output shows the VIC alone
 
 wire        ntsc_req = status[2];
@@ -1016,6 +1018,7 @@ fpga64_sid_iec fpga64
 	.b(b),
 	.vic_rgb_out(vic_rgb),
 	.split(split),
+	.quarter(quarter),
 
 	.game(game),
 	.exrom(exrom),
@@ -1331,6 +1334,10 @@ always @(posedge clk_sys) begin
 	end
 end
 
+// FINE SCROLL (Fix 42): OctoVIC's quarter pixels need the picture taken 4 times a C64 pixel (31.5 MHz,
+// every other clk64) - on unless the menu says Off, and only without the scandoubler/HQ2x (their line
+// buffers are 768 wide) and without a gamma curve (gamma_corr needs 4 clocks a pixel). STATUS b4 says.
+reg  quarter_v;
 reg ce_pix;
 always @(posedge CLK_VIDEO) begin
 	reg [2:0] div;
@@ -1338,10 +1345,12 @@ always @(posedge CLK_VIDEO) begin
 
 	div <= div + 1'b1;
 	if(&div) lores <= ~lores;
-	ce_pix <= (~lores | ~hq2x160) && !div;
+	quarter_v <= quarter;
+	ce_pix <= quarter_v ? div[0] : ((~lores | ~hq2x160) && !div);
 end
 
 wire scandoubler = status[10:8] || forced_scandoubler;
+assign quarter = ~status[103] & ~scandoubler & ~gamma_bus[19];
 
 assign CLK_VIDEO = clk64;
 assign VGA_SL    = (status[10:8] > 2) ? status[9:8] - 2'd2 : 2'd0;
