@@ -97,3 +97,14 @@ To fit for sure: about 100-300 ALMs must come out of the Octophonic core (Neal's
   (4,198 LABs each). Every fitter setting tried fails for card8 + scope + rgb256; only card8 + scope fits (seeds 3, 8).
 - GitHub runners couldn't reach security.ubuntu.com 13:50-14:51 (apt for Verilator/GHDL failed): re-run if a
   build fails in its first steps.
+
+## 11 Nov evening: Core 10 = card8 + OCTOSCOPE only (RGB 256 stays off this card) - branch core10
+- core10: CORE_TAG "CORE10  ", core-number.txt 12, How to flash (Core 10, OCTOSCOPE), seed 8. Build core
+  run 43056506517 (2469855): fits, 41,426 ALMs, 553/553 M10K, 82 DSP; HDMI setup -0.093 ns (all else met).
+  Seed 21 (run 43056520092): no fit (4,196 LABs). Seed 2: run 43068066964 (reports build-reports-core10-s2).
+- So the card uses the fallback: the seed-8 core with every timing path met (run 43011675130, fa80dc8 -
+  the same RTL but its tag reads CORE9), put on the card as C64_Octophonic_20261111_core10.rbf, core number 12.
+- Octophonic Fusion build 9: Main from octoos-main-build-card8 (Main patches same as card8), OCTO_EXAMPLES=none:
+  RECIPE_OK, check-image IMAGE_OK (with OFFICIAL_7Z = the release's .7z.001), RECHECK_TEST_OK.
+- build.yml (core10): apt for the checks tries 5 times; the checks can't block the core build (the Ubuntu mirror
+  was out all afternoon - they passed locally: regmap CORE10, sprtable, octoscope).
