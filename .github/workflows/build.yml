@@ -88,15 +88,15 @@ jobs:
             | grep -E "Compilation Hierarchy Node|octovic|ddram_arb|fpga64_sid_iec:fpga64\||sid_top|emu\|" | head -60 > /tmp/reports/entities.txt || true
           # every RAM the fitter placed (its size, M10Ks or MLABs) and each part of the design's ALMs and M10Ks -
           # where block RAM can be found for a new feature (OCTOSCOPE, Fix 55)
-          awk '/; Fitter RAM Summary/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' output_files/C64.fit.rpt 2>/dev/null | sed 's/  */ /g' > /tmp/reports/fit_rams.txt || true
-          awk '/; Fitter Resource Utilization by Entity/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' output_files/C64.fit.rpt 2>/dev/null | sed 's/  */ /g' > /tmp/reports/fit_entities.txt || true
+          awk '/; Fitter RAM Summary/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' output_files/C64.fit.rpt 2>/dev/null | cut -c1-700 > /tmp/reports/fit_rams.txt || true
+          awk '/; Fitter Resource Utilization by Entity/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' output_files/C64.fit.rpt 2>/dev/null | cut -c1-400 > /tmp/reports/fit_entities.txt || true
           echo "${{ steps.compile.outcome }} $(git rev-parse --short HEAD) $(date -u +%Y-%m-%dT%H:%MZ)" > /tmp/reports/result.txt
           cd /tmp/reports
           git init -q
           git checkout -q -b build-reports
           git add -A
           git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Reports: $(cat result.txt)"
-          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" HEAD:build-reports-fix55
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" build-reports
 
       - name: Fail if Quartus failed
         if: steps.compile.outcome != 'success'
