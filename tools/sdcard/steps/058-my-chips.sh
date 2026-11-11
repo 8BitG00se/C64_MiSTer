@@ -1,14 +1,14 @@
 #!/bin/sh
-# 058 - games/C64/Chips: Neal's own measured SID chips (.CHP) for the core menu's "Load My Chip" lines and
+# 058 - games/C64/My Chips: Neal's own measured SID chips (.CHP) for the core menu's "Load My Chip" lines and
 # OctoPlay's F3/F5 (MOS 6581 5084, MOS 6581 3184, CSG 8580R5 3591, MOS 8580R5 4687 - docs/CHIPS.md).
 # Payload wanted: files/chips/*.CHP (the image build copies them from chips/).
 # OCTO-RECHECK (a changed .CHP in the payload replaces the one on the card)
 set -u
 . "$(dirname "$0")/../octo-step-lib.sh"
 set --
-for S in "$OCTO_PAYLOAD"/chips/*.CHP; do set -- "$@" "$S|$OCTO_ROOT/games/C64/Chips/$(basename "$S")"; done
+for S in "$OCTO_PAYLOAD"/chips/*.CHP; do set -- "$@" "$S|$OCTO_ROOT/games/C64/My Chips/$(basename "$S")"; done
 octo_skip_if_current "$@"
-D="$OCTO_ROOT/games/C64/Chips"
+D="$OCTO_ROOT/games/C64/My Chips"
 mkdir -p "$D" || exit 1
 n=0
 for S in "$OCTO_PAYLOAD"/chips/*.CHP; do

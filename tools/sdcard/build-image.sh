@@ -171,7 +171,7 @@ echo "OCTOCODE.PRG: $(stat -c %s "$PAY/OCTOCODE.PRG") bytes"
 sh "$REPO/tools/spec/build.sh" "$PAY/SPEC.PRG"
 # TESTCARD, the monitor test card, from this commit's source (step 057 puts it in Tools)
 sh "$REPO/tools/testcard/build.sh" "$PAY/TESTCARD.PRG"
-# MY CHIPS, Neal's measured SID chips (step 058 puts them in games/C64/Chips)
+# MY CHIPS, Neal's measured SID chips (step 058 puts them in games/C64/My Chips)
 mkdir -p "$PAY/chips" && cp "$REPO"/chips/*.CHP "$PAY/chips/"
 # no menu core in the payload: since build 4 the stock (white noise) menu.rbf stays; step 095 puts
 # it back on a card that had the navy one
@@ -231,7 +231,7 @@ fi
     echo "$(md5sum < "$PAY/OCTOCODE.PRG" | cut -c1-32)  games/C64/Tools/OCTOCODE.PRG"
     echo "$(md5sum < "$PAY/SPEC.PRG" | cut -c1-32)  games/C64/Tools/SPEC.PRG"
     echo "$(md5sum < "$PAY/TESTCARD.PRG" | cut -c1-32)  games/C64/Tools/TESTCARD.PRG"
-    for c in "$PAY"/chips/*.CHP; do echo "$(md5sum < "$c" | cut -c1-32)  games/C64/Chips/$(basename "$c")"; done
+    for c in "$PAY"/chips/*.CHP; do echo "$(md5sum < "$c" | cut -c1-32)  games/C64/My Chips/$(basename "$c")"; done
     echo "$(md5sum < "$PAY/oled.sh" | cut -c1-32)  octophonic/oled.sh"
     for f in tty2oled.sh S60tty2oled; do echo "$(md5sum < "$PAY/tty2oled/$f" | cut -c1-32)  tty2oled/$f"; done
     for f in "$HERE/run-steps.sh" "$HERE/octo-step-lib.sh"; do echo "$(md5sum < "$f" | cut -c1-32)  octophonic/recipe/$(basename "$f")"; done
