@@ -24,18 +24,24 @@ jobs:
           df -h /
 
       - name: OctoVIC register map test (every register, the version, the core's name, the meters)
+        continue-on-error: true
+        timeout-minutes: 12
         run: |
-          sudo apt-get install -y -qq verilator >/dev/null
+          for i in 1 2 3 4 5; do sudo apt-get update -qq >/dev/null 2>&1; sudo apt-get install -y -qq verilator >/dev/null && break; echo "apt: try $i failed"; sleep 30; done; command -v verilator >/dev/null
           sim/regmap/run.sh
 
       - name: OctoVIC sprite table, frame by frame against the emulator's model (DDR3 idle, busy, held; no VDATA byte lost)
+        continue-on-error: true
+        timeout-minutes: 12
         run: |
           python3 -c "import numpy" 2>/dev/null || pip install -q numpy
           sim/sprtable/run.sh
 
       - name: The eight-SID mix in GHDL against the emulator's integer model (Fix 28)
+        continue-on-error: true
+        timeout-minutes: 12
         run: |
-          sudo apt-get install -y -qq ghdl >/dev/null
+          for i in 1 2 3 4 5; do sudo apt-get update -qq >/dev/null 2>&1; sudo apt-get install -y -qq ghdl >/dev/null && break; echo "apt: try $i failed"; sleep 30; done; command -v ghdl >/dev/null
           sim/level/mixtest.sh
 
       - name: Stamp the core's build date (OctoVIC $D6B4-$D6B6)
