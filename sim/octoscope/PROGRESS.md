@@ -93,3 +93,7 @@ fix55-on-card8 (card8 + scope, no rgb256) at seed 8 fits with every path met: ru
 build-reports-fix55 (C64_Octophonic_20261111_core9.rbf). rgb256's changes to the Octophonic core are no-ops
 there (pixTag unread, hk_reset = hk_kernal), but they move the fitter: the device is ~0.1% over.
 To fit for sure: about 100-300 ALMs must come out of the Octophonic core (Neal's choice what), or the scope waits.
+- 15:36: register duplication OFF (run 43042717462) and OPTIMIZATION_MODE BALANCED (run 43042727841): no fit
+  (4,198 LABs each). Every fitter setting tried fails for card8 + scope + rgb256; only card8 + scope fits (seeds 3, 8).
+- GitHub runners couldn't reach security.ubuntu.com 13:50-14:51 (apt for Verilator/GHDL failed): re-run if a
+  build fails in its first steps.
