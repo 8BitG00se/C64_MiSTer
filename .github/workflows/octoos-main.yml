@@ -5,7 +5,7 @@ name: Build Octophonic Main
 
 on:
   push:
-    branches: [ octophonic-v1.1, os-fixes, oled-anims, tonight ]
+    branches: [ octophonic-v1.1, os-fixes, oled-anims, tonight, rgb256 ]
     paths: [ 'tools/octoos/main/**', '.github/workflows/octoos-main.yml' ]
   workflow_dispatch:
 
@@ -38,6 +38,8 @@ jobs:
           git apply ../tools/octoos/main/octophonic-os-fixes.patch
           # Fix 27/20: the front screen - a program's own animation (.oled beside it), the Octophonic logo otherwise
           git apply ../tools/octoos/main/octophonic-oled.patch
+          # Fix 60: C64RGB 256 - a game with a .rgb recolour pack beside it starts in the recolour core; SHIFT+F1 back
+          git apply ../tools/octoos/main/octophonic-rgb256.patch
 
       - name: Build
         run: |

@@ -1,0 +1,150 @@
+diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
+index 1be2061..09aa36d 100644
+--- a/support/octo/octo.cpp
++++ b/support/octo/octo.cpp
+@@ -115,6 +115,7 @@ static uint8_t cur_seq = 0;              // the 6502's number for the request be
+ static std::string disk8;                // the disk last put in drive 8 (COMPILE works beside it)
+ static int  os_showcase = 0;             // os.ini showcase=1: NET b3, demos leave out their debug rows
+ static std::string prog_dir;             // the folder the running program came from (REU, $18)
++static int  rgb_core = 0;                // C64RGB 256 (Fix 60): the core running is the recolour core
+ 
+ // ------------------------------------------------------------------------------------------ log
+ 
+@@ -448,6 +449,8 @@ void octo_os_core_init()
+ 	uint16_t w = mb_poll();
+ 	if ((w >> 8) != OCTO_MAGIC) { os_log("core: no mailbox (poll %04X) - the OS is off for this core", w); return; }
+ 	os_active = 1;
++	rgb_core = (w & 2) ? 1 : 0;                      // C64RGB 256 (Fix 60): the poll word's b1
++	if (rgb_core) os_log("core: the C64RGB 256 core (recolour packs)");
+ 
+ 	// where to start: os.ini's startin= (network, SD card, the last folder); without it the SD
+ 	// card, always - Main never waits for a network unless os.ini asks for one (startin=net).
+@@ -803,10 +806,112 @@ static void reu_load(const char *path)
+ 	reu_in = path;
+ }
+ 
++// ------------------------------------------------------------ C64RGB 256 (Fix 60, docs/RGB256.md)
++// A game with a recolour pack beside it (<game>.rgb, the same name) starts in the C64RGB 256 core
++// (_Computer/.C64RGB256_<date>.rbf, hidden like the Octophonic core) with its pack; a game without one,
++// picked while the C64RGB 256 core runs, goes back to the Octophonic core. Both are an .mgl written to
++// octophonic/rgb256.mgl and started as the menu starts one - MiSTer's own way of loading a core with files.
++// SHIFT+F1 held in the C64RGB 256 core (the mailbox's poll word, b2) - back to the Octophonic core.
++#define RGB_MGL   OS_DIR "/rgb256.mgl"
++
++static std::string rgb_pack_of(const std::string &game)
++{
++	size_t sl = game.rfind('/');
++	std::string dir = game.substr(0, sl), base = base_of(game.substr(sl + 1));
++	DIR *d = opendir(dir.c_str());
++	if (!d) return "";
++	std::string hit;
++	while (struct dirent *de = readdir(d))
++	{
++		std::string n = de->d_name;
++		if (ends_with(n.c_str(), ".rgb") && !strcasecmp(base_of(n).c_str(), base.c_str())) { hit = dir + "/" + n; break; }
++	}
++	closedir(d);
++	return hit;
++}
++
++static int rgb_core_there()
++{
++	DIR *d = opendir(OS_TOP "/_Computer");
++	if (!d) return 0;
++	int n = 0;
++	while (struct dirent *de = readdir(d))
++		if (!strncasecmp(de->d_name, ".C64RGB256_", 11) && ends_with(de->d_name, ".rbf")) n++;
++	closedir(d);
++	return n;
++}
++
++static void xml_attr(FILE *f, const char *s)      // a path, safe inside an XML attribute
++{
++	for (; *s; s++)
++	{
++		if (*s == '&') fputs("&amp;", f);
++		else if (*s == '"') fputs("&quot;", f);
++		else if (*s == '<') fputs("&lt;", f);
++		else if (*s == '>') fputs("&gt;", f);
++		else fputc(*s, f);
++	}
++}
++
++// start a core (rbf: "_Computer/.C64RGB256" or "_Computer/.C64_Octophonic") with the pack and the game
++static void rgb_switch(const char *rbf, const char *pack, const char *game)
++{
++	FILE *f = fopen(RGB_MGL, "w");
++	if (!f) { os_log("  RGB 256: cannot write %s", RGB_MGL); return; }
++	fprintf(f, "<mistergamedescription>\n    <rbf>%s</rbf>\n    <setname same_dir=\"1\">Octophonic64</setname>\n", rbf);
++	if (pack && pack[0]) { fputs("    <file delay=\"1\" type=\"f\" index=\"4\" path=\"", f); xml_attr(f, pack); fputs("\"/>\n", f); }
++	if (game && game[0])
++	{
++		int disk = ends_with(game, ".d64") || ends_with(game, ".g64") || ends_with(game, ".t64") || ends_with(game, ".d81");
++		fprintf(f, "    <file delay=\"1\" type=\"%s\" index=\"%s\" path=\"", disk ? "s" : "f", disk ? "0" : "1");
++		xml_attr(f, game); fputs("\"/>\n", f);
++	}
++	fputs("</mistergamedescription>\n", f);
++	fclose(f);
++	os_log("  RGB 256: %s, pack %s, game %s", rbf, pack && pack[0] ? pack : "-", game && game[0] ? game : "-");
++	xml_load(RGB_MGL);
++}
++
++// back to the Octophonic core - its launcher, as at power-on (SHIFT+F1 held, or Esc/CTRL+F12)
++static void rgb_home()
++{
++	char full[1024];
++	snprintf(full, sizeof(full), "%s%s%s", os_boot[0] == '/' ? "" : OS_TOP, os_boot[0] == '/' ? "" : "/", os_boot);
++	os_log("RGB 256: back to the Octophonic core (%s)", full);
++	octo_oled_logo(1);
++	if (ends_with(full, ".mgl") && !access(full, R_OK)) xml_load(full);
++	else rgb_switch("_Computer/.C64_Octophonic", NULL, NULL);
++}
++
+ // a file, exactly as picking it in the menu does it (the core's F1 PRGCRTREU and S0 entries)
+ static int run_path(const std::string &path, const std::vector<Entry> *folder)
+ {
+ 	const char *p = path.c_str();
++	// C64RGB 256: a game (not a .reu) with a pack beside it runs in the recolour core; one without, picked
++	// in the recolour core, runs in the Octophonic core
++	if (!ends_with(p, ".reu"))
++	{
++		std::string pack = rgb_pack_of(path);
++		if (!pack.empty() && !rgb_core && rgb_core_there())
++		{
++			mb_reply(ST_DONE, 0, -1, 1);            // the core goes away now: the reply goes first
++			octo_oled_program(p);
++			rgb_switch("_Computer/.C64RGB256", pack.c_str(), p);
++			return 1;
++		}
++		if (!pack.empty() && rgb_core)
++		{
++			os_log("  RGB 256: pack %s (index 4)", pack.c_str());
++			if (!octo_file_send(pack.c_str(), 4, NULL)) os_log("  RGB 256: the pack could not be read");
++		}
++		else if (pack.empty() && rgb_core)
++		{
++			mb_reply(ST_DONE, 0, -1, 1);
++			octo_oled_program(p);
++			rgb_switch("_Computer/.C64_Octophonic", NULL, p);
++			return 1;
++		}
++	}
+ 	if (ends_with(p, ".d64") || ends_with(p, ".g64") || ends_with(p, ".t64") || ends_with(p, ".d81"))
+ 	{
+ 		mb_reply(ST_DONE, 0, -1, 8);                // VALUE 8: a disk went into drive 8
+@@ -1289,6 +1394,7 @@ static void cmd_setapply()
+ void octo_exit()
+ {
+ 	if (!os_active) return;
++	if (rgb_core) { rgb_core = 0; rgb_home(); return; }    // C64RGB 256: the start screen is the Octophonic core's
+ 	os_log("CTRL+F12: reset to the start screen (folder /%s)", cwd);
+ 	octo_oled_logo(1);                                // the front screen: back to the Octophonic logo
+ 	user_io_status_set("[17]", 1);
+@@ -1728,6 +1834,7 @@ void octo_poll()
+ 	poll_timer = GetTimer(4);
+ 
+ 	uint16_t w = mb_poll();
++	if ((w >> 8) == OCTO_MAGIC && (w & 4) && rgb_core) { rgb_core = 0; rgb_home(); return; }   // SHIFT+F1 held
+ 	if ((w >> 8) != OCTO_MAGIC || !(w & 1)) return;
+ 
+ 	uint8_t reg[16];
