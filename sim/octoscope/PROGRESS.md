@@ -80,3 +80,16 @@ octovic 9,701 ALMs needed (baseline 8,723; octoscope.sv 451), each sid_top ~2,25
   43021988903; seeds 1 / 13: core10-trial-s1 / -s13 (runs 43025733059, 43025741707).
 - The device is full (99% ALMs, 100% M10K): the fit depends on the seed. Any later change to Core 10 needs a
   fresh build (and maybe another seed) before the burn.
+
+### 11 Nov 14:45: Core 10 (with C64RGB 256 merged) does not fit reliably
+Octophonic core of core10-trial (card8 + OCTOSCOPE + rgb256), all seed 8 unless said:
+- seed 3: no fit (4,191 LABs); seed 8: no fit (4,198); seed 1: no fit (4,193); seed 13: no fit (4,198);
+- ALM_REGISTER_PACKING_EFFORT MEDIUM: no fit (4,194); HIGH: no fit (fitter failed after 89 min);
+- PHYSICAL_SYNTHESIS_REGISTER_DUPLICATION OFF (core10-trial-nodup) and OPTIMIZATION_MODE BALANCED
+  (core10-trial-bal): their runners failed to install Verilator (Ubuntu mirror down) - re-run.
+The C64RGB 256 core WITH the scope fits every time (41,012-41,029 ALMs, 533 M10K), timing met at seed 3,
+HDMI -0.340 ns with packing HIGH.
+fix55-on-card8 (card8 + scope, no rgb256) at seed 8 fits with every path met: run 43011675130, fa80dc8, rbf on
+build-reports-fix55 (C64_Octophonic_20261111_core9.rbf). rgb256's changes to the Octophonic core are no-ops
+there (pixTag unread, hk_reset = hk_kernal), but they move the fitter: the device is ~0.1% over.
+To fit for sure: about 100-300 ALMs must come out of the Octophonic core (Neal's choice what), or the scope waits.
