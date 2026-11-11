@@ -6,8 +6,10 @@ rem  The password is 1 each time.
 cd /d "%~dp0"
 set /p ORDER=<core-number.txt
 for %%F in (C64_Octophonic_*.rbf) do set "RBF=%%F"
+set "RGB="
+for %%F in (C64RGB256_*.rbf) do set "RGB=%%F"
 echo Sending the core (%RBF%, core number %ORDER%) ...
-scp -o StrictHostKeyChecking=accept-new "%RBF%" install_core.sh root@MiSTer:/tmp/
+scp -o StrictHostKeyChecking=accept-new "%RBF%" %RGB% install_core.sh root@MiSTer:/tmp/
 if errorlevel 1 goto fail
 ssh root@MiSTer "sh /tmp/install_core.sh '%RBF%' %ORDER%"
 if errorlevel 255 goto fail

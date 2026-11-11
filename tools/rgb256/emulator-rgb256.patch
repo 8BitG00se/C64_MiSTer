@@ -1,0 +1,173 @@
+--- a/src/viciisc/vicii-draw-cycle.c
++++ b/src/viciisc/vicii-draw-cycle.c
+@@ -114,6 +114,12 @@
+ 
+ static uint8_t pixel_buffer[8];
+ 
++/* C64RGB 256 (Fix 60): what made each pixel, as the core's VIC tags it - (kind << 8) | code:
++   kind 0 graphics (code: the screen byte), 1 sprite (code: its number), 2 border. In step with dbuf. */
++static uint16_t tag_render[8];
++static uint16_t tag_pixel[8];
++uint16_t octo_rgbtag[VICII_DRAW_BUFFER_SIZE];
++
+ /* color resolution registers */
+ static uint8_t cregs[0x2f];
+ static uint8_t last_color_reg;
+@@ -225,6 +231,7 @@
+     }
+ 
+     render_buffer[i] = cc;
++    tag_render[i] = vbuf_reg;
+     pri_buffer[i] = pixel_pri;
+ }
+ 
+@@ -429,6 +436,7 @@
+                 default:
+                     break;
+             }
++            if (sbuf_pixel_reg[as]) tag_render[i] = 0x100 | as;
+         }
+         /* if there was a foreground pixel, trigger collision */
+         if (pixel_pri) {
+@@ -566,6 +574,7 @@
+     /* early exit for the continuous border case */
+     if (border_state && vicii.main_border) {
+         memset(render_buffer, COL_D020, 8);
++        for (int k = 0; k < 8; k++) tag_render[k] = 0x200;
+         return;
+     }
+ #endif
+@@ -577,15 +586,18 @@
+     if (csel) {
+         if (border_state) {
+             memset(render_buffer, COL_D020, 8);
++            for (int k = 0; k < 8; k++) tag_render[k] = 0x200;
+         }
+         border_state = vicii.main_border;
+     } else {
+         if (border_state) {
+             memset(render_buffer, COL_D020, 7);
++            for (int k = 0; k < 7; k++) tag_render[k] = 0x200;
+         }
+         border_state = vicii.main_border;
+         if (border_state) {
+             render_buffer[7] = COL_D020;
++            tag_render[7] = 0x200;
+         }
+     }
+ }
+@@ -615,8 +627,10 @@
+ 
+     /* draw pixel to buffer */
+     vicii.dbuf[offs + i] = pixel_buffer[i];
++    octo_rgbtag[offs + i] = tag_pixel[i];
+ 
+     pixel_buffer[i] = render_buffer[i];
++    tag_pixel[i] = tag_render[i];
+ }
+ 
+ static DRAW_INLINE void draw_colors_8565(int offs, int i)
+@@ -635,8 +649,10 @@
+ 
+     /* draw pixel to buffer */
+     vicii.dbuf[offs + i] = pixel_buffer[i];
++    octo_rgbtag[offs + i] = tag_pixel[i];
+ 
+     pixel_buffer[i] = render_buffer[i];
++    tag_pixel[i] = tag_render[i];
+ }
+ 
+ static DRAW_INLINE void draw_colors8(void)
+--- a/src/octophonic/octovic.c
++++ b/src/octophonic/octovic.c
+@@ -70,6 +70,65 @@
+ static uint32_t line_bd[NL];
+ static uint32_t line_vpal[NL][16];      /* the VIC palette as the beam got there */
+ static uint8_t vicidx[NL][RW];          /* the VIC-II's colour indices */
++
++/* --- C64RGB 256 (Fix 60): the recolour pack on the PC, as rtl/rgb256.sv does it (docs/RGB256.md).
++   OCTO_RGBPACK=file.rgb recolours the HDMI picture (the CRT one stays stock - before and after);
++   OCTO_RGBPAL=n (0-7) picks the palette. OCTO_TAGDUMP=file + OCTO_TAGFRAMES=f1,f2,.. write those
++   frames' colour indices and tags (the sim's input: sim/rgb256, tools/rgb256). */
++extern uint16_t octo_rgbtag[];
++static uint16_t victag[NL][RW];
++static uint8_t rgbpack[0x3800]; static int rgb_on = -1, rgb_pal = 0, rgb_x0 = 32;   /* R of the window's first pixel: the core's tag X (X0 in rtl/rgb256.sv) */
++static int rgb_class(int line, int R, int kind, int code)
++{
++    int dx = R - rgb_x0, dy = line - 51, cell = 1000;
++    (void)kind;
++    if (dx >= 0 && dx < 320 && dy >= 0 && dy < 200) cell = (dy >> 3) * 40 + (dx >> 3);
++    int c = rgbpack[0x400 + cell] & 15;
++    if (!c) c = rgbpack[0x300 + code] & 15;
++    return c > 13 ? 13 : c;
++}
++static uint32_t rgb_colour(int vi, uint16_t tag, int R, int line)
++{
++    int kind = tag >> 8, code = tag & 255, band = rgbpack[0x100 + line] & 15, group;
++    if (kind == 1) group = 0xF0 | (code & 7);
++    else if (kind == 2) group = 0xE0 | band;
++    else group = (rgb_class(line, R, kind, code) << 4) | band;
++    int slot = rgbpack[0x800 + group * 16 + (vi & 15)];
++    const uint8_t *p = rgbpack + 0x1800 + (rgb_pal * 256 + slot) * 4;
++    return ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | p[2];
++}
++static void rgb_init(void)
++{
++    rgb_on = 0;
++    const char *f = getenv("OCTO_RGBPACK");
++    if (getenv("OCTO_RGBPAL")) rgb_pal = atoi(getenv("OCTO_RGBPAL")) & 7;
++    if (getenv("OCTO_RGBX0")) rgb_x0 = atoi(getenv("OCTO_RGBX0"));
++    if (!f) return;
++    FILE *fp = fopen(f, "rb");
++    if (!fp) return;
++    rgb_on = fread(rgbpack, 1, sizeof rgbpack, fp) == sizeof rgbpack && !memcmp(rgbpack, "RGB256PK", 8);
++    fclose(fp);
++    fprintf(stderr, "C64RGB 256: pack %s %s, palette %d\n", f, rgb_on ? "loaded" : "NOT loaded (bad file)", rgb_pal + 1);
++}
++static void tag_dump(unsigned int fno)
++{
++    static FILE *tf; static int init; static int frames[64], nf;
++    if (!init) {
++        init = 1;
++        const char *f = getenv("OCTO_TAGDUMP"), *l = getenv("OCTO_TAGFRAMES");
++        if (!f || !l) return;
++        tf = fopen(f, "wb");
++        while (*l && nf < 64) { frames[nf++] = atoi(l); while (*l && *l != ',') l++; if (*l) l++; }
++    }
++    if (!tf) return;
++    for (int i = 0; i < nf; i++) if (frames[i] == (int)fno) {
++        uint32_t hdr[4] = { fno, RW, OCTO_H, (uint32_t)rgb_x0 };
++        fwrite(hdr, 4, 4, tf);
++        for (int yy = OCTO_FIRST; yy <= OCTO_LAST; yy++) fwrite(vicidx[yy], 1, RW, tf);
++        for (int yy = OCTO_FIRST; yy <= OCTO_LAST; yy++) fwrite(victag[yy], 2, RW, tf);
++        fflush(tf);
++    }
++}
+ static uint32_t hdmi[OCTO_H * OCTO_W], crt[OCTO_H * OCTO_W];
+ static int any_enable, frame_enable;
+ /* Fix 42 FINE SCROLL (scratchpad/e115/SPEC.md): OCTO_QPX=1 models the 4x pixel output with Quarter Pixels on
+@@ -599,13 +658,15 @@
+ /* the frame is complete (beam past line 299): mix the HDMI picture, as the core does */
+ static void composite(void)
+ {
++    if (rgb_on < 0) rgb_init();
++    tag_dump(frame_no);
+     for (int yy = OCTO_FIRST; yy <= OCTO_LAST; yy++) {
+         uint32_t *oh = hdmi + (yy - OCTO_FIRST) * OCTO_W, *oc = crt + (yy - OCTO_FIRST) * OCTO_W;
+         int ctrl = line_ctrl[yy], key = line_key[yy];
+         const int32_t *lb = line_drawn[yy] ? linebuf[yy] : NULL;
+         for (int R = 0; R < RW; R++) {
+             int vi = vicidx[yy][R] & 15;
+-            uint32_t vc = (ctrl & 2) ? line_vpal[yy][vi] : corepal[vi], c;
++            uint32_t vc = (ctrl & 2) ? line_vpal[yy][vi] : rgb_on ? rgb_colour(vi, victag[yy][R], R, yy) : corepal[vi], c;
+             int32_t lp = lb ? lb[R] : -1;
+             oc[R] = corepal[vi];
+             if (!(ctrl & 1)) c = vc;
+@@ -649,6 +710,7 @@
+     for (int R = 0; R < RW; R++) {
+         int i = vic_xoff + R;
+         vicidx[line][R] = (i >= 0 && i < dbuf_len) ? dbuf[i] : dbuf[dbuf_len - 1];
++        victag[line][R] = (i >= 0 && i < dbuf_len) ? octo_rgbtag[i] : octo_rgbtag[dbuf_len - 1];
+     }
+     memcpy(line_vpal[line], vpal, sizeof vpal);
+     /* OctoVIC draws ahead of the beam */

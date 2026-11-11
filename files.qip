@@ -36,3 +36,4 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/octovic/ddram_arb2.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/octovic/ovram.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/octovic/octoscope.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/video_mixer_split.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/rgb256.sv

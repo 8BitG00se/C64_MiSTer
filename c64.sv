@@ -89,6 +89,11 @@ localparam CONF_STR = {
 	"O[76],Mount Write Protected,Off,On;",
 	"-;",
 	"F1,PRGCRTREU;",
+`ifdef RGB256
+	// C64RGB 256 (Fix 60): the recolour pack (docs/RGB256.md) and which of its palettes - SHIFT+F3 held cycles them
+	"FC4,RGB,Load Recolour Pack;",
+	"O[108:105],Recolour,Palette 1,Palette 2,Palette 3,Palette 4,Palette 5,Palette 6,Palette 7,Palette 8,Off;",
+`endif
 	"hAdBR[61],Save cartridge;",
 	"hAO[62],Autosave,Off,On;",
 	"h3-;",
@@ -130,7 +135,9 @@ localparam CONF_STR = {
 	"P1FC3,CHP,Load My Chip: Right SIDs;",
 	"P1O[101],My Chips,On,Off;",
 	"P1-;",
+`ifndef RGB256
 	"P1O[12],Sound Expander,Disabled,OPL2;",
+`endif
 	"P1O[41:40],DigiMax,Disabled,DE00,DF00;",
 	"P1O[19:18],Stereo Mix,None,25%,50%,100%;",
 
@@ -237,6 +244,12 @@ reg reset_n;
 reg reset_wait = 0;
 wire [15:0] sdram_sz;                        // Fix 59: from Main (hps_io)
 wire hk_kernal, hk_brk, hk_wipe, hk_spare;   // Fix 58: SHIFT+F1-F4 hot keys (rtl/hotkeys.sv)
+wire hk_reset;                               // SHIFT+F1's reset (C64RGB 256: only if Main doesn't switch cores)
+`ifdef RGB256
+reg         rgb_home = 0;                    // C64RGB 256: SHIFT+F1 held - Main is asked for the Octophonic core
+reg [127:0] rgb_status_in;                   // C64RGB 256: SHIFT+F3 sets the OSD's palette line
+reg         rgb_status_set = 0;
+`endif
 reg ntsc_prev = 0;
 
 always @(posedge clk_sys) begin
@@ -256,7 +269,7 @@ always @(posedge clk_sys) begin
 	reset_n <= !reset_counter;
 	old_download <= ioctl_download;
 
-	if (RESET | status[0] | status[17] | buttons[1] | hk_kernal | hk_wipe | !pll_locked | (ntsc_prev != ntsc) | (exact_prev != exact)) begin
+	if (RESET | status[0] | status[17] | buttons[1] | hk_reset | hk_wipe | !pll_locked | (ntsc_prev != ntsc) | (exact_prev != exact)) begin
 		if(RESET | hk_wipe) do_erase <= 1;
 		reset_counter <= 100000;
 	end
@@ -331,7 +344,13 @@ wire [35:0] EXT_BUS;
 wire        os_ext_act;
 wire [15:0] os_ext_dout;
 assign EXT_BUS[32]   = os_ext_act;
+`ifdef RGB256
+// C64RGB 256 (Fix 60): the mailbox's poll word ($6Fxx) also says b1 "this is the C64RGB 256 core" and
+// b2 "SHIFT+F1 held: back to the Octophonic core, please" (Main's octophonic-rgb256.patch)
+assign EXT_BUS[15:0] = os_ext_dout | ((os_ext_dout[15:8] == 8'h6F) ? {13'd0, rgb_home, 2'b10} : 16'd0);
+`else
 assign EXT_BUS[15:0] = os_ext_dout;
+`endif
 
 hps_io #(.CONF_STR(CONF_STR), .VDNUM(2), .BLKSZ(1)) hps_io
 (
@@ -350,6 +369,10 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(2), .BLKSZ(1)) hps_io
 	.paddle_3(pd4),
 
 	.status(status),
+`ifdef RGB256
+	.status_in(rgb_status_in),
+	.status_set(rgb_status_set),
+`endif
 	.status_menumask({~status[54], ezfl_mod || ezfl_save_en, cart_ezfl, ~status[69], ~status[66], status[58], (status[47:46] != 2'd1), status[16], status[13], tap_loaded, 1'b0, |vcrop, status[56]}), .buttons(buttons), .sdram_sz(sdram_sz),
 	.forced_scandoubler(forced_scandoubler),
 	.gamma_bus(gamma_bus),
@@ -945,6 +968,62 @@ wire        UMAXromH;
 
 wire [17:0] audio_l,audio_r;
 wire  [7:0] r,g,b;
+wire  [7:0] vr, vg, vb;                    // the picture to the output (C64RGB 256: recoloured)
+
+`ifdef RGB256
+// ------------------------------------------------------------------ C64RGB 256 (Fix 60, docs/RGB256.md)
+wire  [3:0] rgb_index;
+wire [28:0] rgb_tag;
+wire [23:0] rc_rgb;
+wire  [3:0] rc_npal;
+wire        rc_loaded;
+wire  [3:0] rc_sel = status[108:105];      // 0-7 a palette, 8 (or more) off
+rgb256 recolour
+(
+	.clk(clk_sys),
+	.ld_download(ioctl_download && ioctl_index == 8'd4),
+	.ld_wr(ioctl_wr),
+	.ld_addr(ioctl_addr),
+	.ld_data(ioctl_data),
+	.index(rgb_index),
+	.tag(rgb_tag),
+	.palette(rc_sel[2:0]),
+	.npal(rc_npal),
+	.rgb(rc_rgb),
+	.loaded(rc_loaded)
+);
+wire rc_on = rc_loaded && !rc_sel[3] && (rc_sel[2:0] < rc_npal[2:0] || rc_npal[3]);
+assign {vr, vg, vb} = rc_on ? rc_rgb : {r, g, b};
+
+// SHIFT+F3 held: the next palette (1, 2, ... the pack's last, Off, 1 ...) - set in the OSD's status, so
+// the OSD shows it and it is saved with the core's settings
+always @(posedge clk_sys) begin
+	rgb_status_set <= 0;
+	if (hk_spare && rc_loaded) begin
+		rgb_status_in <= status;
+		rgb_status_in[108:105] <= (rc_sel[3] || rc_npal == 0) ? 4'd0 :
+		                          ({1'b0, rc_sel[2:0]} + 4'd1 >= rc_npal) ? 4'd8 : rc_sel + 4'd1;
+		rgb_status_set <= 1;
+	end
+end
+
+// SHIFT+F1 held: ask Main for the Octophonic core (the mailbox's poll word, b2). With no Main to answer
+// within ~4 s (no Octophonic OS on the card), the KERNAL reset as in the Octophonic core.
+reg [26:0] rgb_home_t = 0;
+reg        rgb_home_rst = 0;
+always @(posedge clk_sys) begin
+	rgb_home_rst <= 0;
+	if (hk_kernal) begin rgb_home <= 1; rgb_home_t <= 0; end
+	else if (rgb_home) begin
+		rgb_home_t <= rgb_home_t + 1'd1;
+		if (&rgb_home_t) begin rgb_home <= 0; rgb_home_rst <= 1; end
+	end
+end
+assign hk_reset = rgb_home_rst;
+`else
+assign {vr, vg, vb} = {r, g, b};
+assign hk_reset = hk_kernal;
+`endif
 wire [23:0] vic_rgb;                       // SPLIT SCREENS: the VIC's picture alone, in step with r/g/b
 wire        split = status[102];
 wire        quarter;                       // FINE SCROLL (Fix 42): OctoVIC's quarter pixels reach the output (set below)
@@ -1001,6 +1080,10 @@ fpga64_sid_iec fpga64
 	.r(r),
 	.g(g),
 	.b(b),
+`ifdef RGB256
+	.rgb_index(rgb_index),
+	.rgb_tag(rgb_tag),
+`endif
 	.vic_rgb_out(vic_rgb),
 	.split(split),
 	.quarter(quarter),
@@ -1558,9 +1641,9 @@ video_mixer_split #(.GAMMA(1)) video_mixer
 	.gamma_bus(gamma_bus),
 
 	.ce_pix(ce_pix),
-	.R((ovl_color & 4) ? 8'hFF : ovl_color ? 8'h00 : r),
-	.G((ovl_color & 2) ? 8'hFF : ovl_color ? 8'h00 : g),
-	.B((ovl_color & 1) ? 8'hFF : ovl_color ? 8'h00 : b),
+	.R((ovl_color & 4) ? 8'hFF : ovl_color ? 8'h00 : vr),
+	.G((ovl_color & 2) ? 8'hFF : ovl_color ? 8'h00 : vg),
+	.B((ovl_color & 1) ? 8'hFF : ovl_color ? 8'h00 : vb),
 	.ALT_R((ovl_color & 4) ? 8'hFF : ovl_color ? 8'h00 : vic_rgb[23:16]),
 	.ALT_G((ovl_color & 2) ? 8'hFF : ovl_color ? 8'h00 : vic_rgb[15:8]),
 	.ALT_B((ovl_color & 1) ? 8'hFF : ovl_color ? 8'h00 : vic_rgb[7:0]),
@@ -1584,6 +1667,12 @@ video_mixer_split #(.GAMMA(1)) video_mixer
 	.VGA_DE(vga_de)
 );
 
+`ifdef RGB256
+// C64RGB 256: no Sound Expander (its room goes to the recolour unit; old games don't use it)
+wire        opl_en = 1'b0;
+wire [15:0] opl_out = 16'd0;
+wire  [7:0] opl_dout = 8'd0;
+`else
 wire        opl_en = status[12];
 wire [15:0] opl_out;
 wire  [7:0] opl_dout;
@@ -1600,6 +1689,7 @@ opl3 #(.OPLCLK(47291931)) opl_inst
 
 	.sample_l(opl_out)
 );
+`endif
 
 reg ioe_we, iof_we;
 always @(posedge clk_sys) begin

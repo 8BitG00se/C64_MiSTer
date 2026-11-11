@@ -1,11 +1,14 @@
 # OCTOPHONIC: builds the core on GitHub - every push to master, or by hand from the
 # Actions tab (Run workflow). The core comes out as the artifact "C64_Octophonic":
 # open the run, download it, unzip, and copy the .rbf to the MiSTer's _Computer folder.
+# C64RGB 256 (Fix 60): the same commit also builds the recolour core (C64RGB256.qpf: C64.qsf plus
+# the RGB256 macro) on a second runner, as the artifact "C64RGB256". Both cores and both sets of
+# reports go onto the build-reports branch in one commit (the RGB 256 reports in rgb256/).
 name: Build core
 
 on:
   push:
-    branches: [ master, octovic, octovic2, octophonic-v1.1, octovic-mem, octophonic-core3 ]
+    branches: [ master, octovic, octovic2, octophonic-v1.1, octovic-mem, octophonic-core3, rgb256 ]
   workflow_dispatch:
 
 permissions:
@@ -15,6 +18,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [ octophonic, rgb256 ]
     steps:
       - uses: actions/checkout@v4
 
@@ -24,57 +31,88 @@ jobs:
           df -h /
 
       - name: OctoVIC register map test (every register, the version, the core's name, the meters)
+        if: matrix.variant == 'octophonic'
         run: |
           sudo apt-get install -y -qq verilator >/dev/null
           sim/regmap/run.sh
 
       - name: OctoVIC sprite table, frame by frame against the emulator's model (DDR3 idle, busy, held; no VDATA byte lost)
+        if: matrix.variant == 'octophonic'
         run: |
           python3 -c "import numpy" 2>/dev/null || pip install -q numpy
           sim/sprtable/run.sh
 
       - name: The eight-SID mix in GHDL against the emulator's integer model (Fix 28)
+        if: matrix.variant == 'octophonic'
         run: |
           sudo apt-get install -y -qq ghdl >/dev/null
           sim/level/mixtest.sh
 
+      - name: The recolour unit against its model, every pixel of tagged VIC-II frames (Fix 60)
+        if: matrix.variant == 'rgb256'
+        run: |
+          sudo apt-get install -y -qq verilator >/dev/null
+          pip install -q numpy pillow
+          sim/rgb256/run.sh
+
       - name: Stamp the core's build date (OctoVIC $D6B4-$D6B6)
         run: |
           sed -i "s/localparam \[23:0\] CORE_DATE = 24'h[0-9]*;/localparam [23:0] CORE_DATE = 24'h$(date -u +%y%m%d);/" rtl/octovic/octovic.sv
-          grep -n "CORE_TAG\|CORE_DATE" rtl/octovic/octovic.sv | head -2
+          grep -n "CORE_TAG\|CORE_DATE" rtl/octovic/octovic.sv | head -6
+
+      - name: The project to build
+        id: proj
+        run: |
+          if [ "${{ matrix.variant }}" = rgb256 ]; then
+            # C64RGB256.qsf is C64.qsf plus the macro - made fresh here so the two can never drift apart
+            cp C64.qsf C64RGB256.qsf
+            echo 'set_global_assignment -name VERILOG_MACRO "RGB256=1"' >> C64RGB256.qsf
+            printf 'QUARTUS_VERSION = "17.0"\nDATE = "00:00:00  January 01, 2026"\n\nPROJECT_REVISION = "C64RGB256"\n' > C64RGB256.qpf
+            echo "rev=C64RGB256" >> $GITHUB_OUTPUT
+          else
+            echo "rev=C64" >> $GITHUB_OUTPUT
+          fi
 
       - name: Compile with Quartus 17.0 Lite
         continue-on-error: true
         id: compile
         run: |
           docker run --rm -v "$PWD":/build -w /build raetro/quartus:17.0 \
-            quartus_sh --flow compile C64.qpf
+            quartus_sh --flow compile ${{ steps.proj.outputs.rev }}.qpf
 
       - name: The worst hold paths (start and end points, every corner)
+        if: matrix.variant == 'octophonic'
         continue-on-error: true
         run: |
           docker run --rm -v "$PWD":/build -w /build raetro/quartus:17.0 quartus_sta -t sim/timing/worst_hold.tcl || true
 
       - name: Name the core
+        continue-on-error: true
         run: |
           mkdir -p out
-          TAG=$(sed -n 's/^localparam \[63:0\] CORE_TAG *= *"\([^"]*\)".*/\1/p' rtl/octovic/octovic.sv | tr -d ' ' | tr 'A-Z' 'a-z')
-          cp output_files/C64.rbf "out/C64_Octophonic_$(date -u +%Y%m%d)_${TAG}.rbf"
-          grep -h -A3 "Fitter Resource Usage Summary" output_files/*.fit.summary output_files/*.fit.rpt 2>/dev/null | head -20 || true
-          cat output_files/C64.fit.summary || true
+          REV=${{ steps.proj.outputs.rev }}
+          if [ "$REV" = C64RGB256 ]; then
+            cp output_files/C64RGB256.rbf "out/C64RGB256_$(date -u +%Y%m%d).rbf"
+          else
+            # (the last CORE_TAG line: the Octophonic one - the RGB 256 one sits in an `ifdef above it)
+            TAG=$(sed -n 's/^localparam \[63:0\] CORE_TAG *= *"\([^"]*\)".*/\1/p' rtl/octovic/octovic.sv | tail -1 | tr -d ' ' | tr 'A-Z' 'a-z')
+            cp output_files/C64.rbf "out/C64_Octophonic_$(date -u +%Y%m%d)_${TAG}.rbf"
+          fi
+          cat output_files/$REV.fit.summary || true
 
       - uses: actions/upload-artifact@v4
         with:
-          name: C64_Octophonic
+          name: ${{ matrix.variant == 'rgb256' && 'C64RGB256' || 'C64_Octophonic' }}
           path: |
             out/*.rbf
             output_files/*.summary
 
       # the reports where they can be read without downloading anything: the fit (how full the
       # FPGA is) and the timing (whether it runs fast enough), kept even when the build fails
-      - name: Keep the reports
+      - name: Gather the reports
         if: always()
         run: |
+          REV=${{ steps.proj.outputs.rev }}
           # Quartus ran as root in its container: its files are root's
           sudo chown -R "$(id -u):$(id -g)" output_files 2>/dev/null || true
           mkdir -p /tmp/reports
@@ -83,21 +121,55 @@ jobs:
           cp out/*.rbf /tmp/reports/ 2>/dev/null || true          # the core itself, so it can be fetched with git
           grep -h -iE "^error|critical warning" output_files/*.rpt 2>/dev/null | head -200 > /tmp/reports/errors.txt || true
           # where the memories went (block RAM or logic), and what each part of the design costs
-          grep -h -E "uninferred|Inferred .*RAM|ram_block|altsyncram" output_files/C64.map.rpt 2>/dev/null | head -100 > /tmp/reports/rams.txt || true
-          awk '/Analysis & Synthesis Resource Utilization by Entity/{f=1} f{print; n++} n>400{exit}' output_files/C64.map.rpt 2>/dev/null \
-            | grep -E "Compilation Hierarchy Node|octovic|ddram_arb|fpga64_sid_iec:fpga64\||sid_top|emu\|" | head -60 > /tmp/reports/entities.txt || true
+          grep -h -E "uninferred|Inferred .*RAM|ram_block|altsyncram" output_files/$REV.map.rpt 2>/dev/null | head -100 > /tmp/reports/rams.txt || true
+          awk '/Analysis & Synthesis Resource Utilization by Entity/{f=1} f{print; n++} n>400{exit}' output_files/$REV.map.rpt 2>/dev/null \
+            | grep -E "Compilation Hierarchy Node|octovic|ddram_arb|fpga64_sid_iec:fpga64\||sid_top|rgb256|emu\|" | head -60 > /tmp/reports/entities.txt || true
           # every RAM the fitter placed (its size, M10Ks or MLABs) and each part of the design's ALMs and M10Ks -
           # where block RAM can be found for a new feature (OCTOSCOPE, Fix 55)
-          awk '/; Fitter RAM Summary/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' output_files/C64.fit.rpt 2>/dev/null | cut -c1-700 > /tmp/reports/fit_rams.txt || true
-          awk '/; Fitter Resource Utilization by Entity/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' output_files/C64.fit.rpt 2>/dev/null | cut -c1-400 > /tmp/reports/fit_entities.txt || true
+          awk '/; Fitter RAM Summary/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' output_files/$REV.fit.rpt 2>/dev/null | cut -c1-700 > /tmp/reports/fit_rams.txt || true
+          awk '/; Fitter Resource Utilization by Entity/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' output_files/$REV.fit.rpt 2>/dev/null | cut -c1-400 > /tmp/reports/fit_entities.txt || true
           echo "${{ steps.compile.outcome }} $(git rev-parse --short HEAD) $(date -u +%Y-%m-%dT%H:%MZ)" > /tmp/reports/result.txt
-          cd /tmp/reports
-          git init -q
-          git checkout -q -b build-reports
-          git add -A
-          git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Reports: $(cat result.txt)"
-          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" build-reports
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports-${{ matrix.variant }}
+          path: /tmp/reports/
 
       - name: Fail if Quartus failed
         if: steps.compile.outcome != 'success'
         run: exit 1
+
+  # both cores' reports onto build-reports in ONE commit: the Octophonic core's as before (top level, so
+  # tools/sdcard/build-image.sh finds C64_Octophonic_*.rbf and result.txt where it always did), the
+  # C64RGB 256 core's in rgb256/ with its rbf (C64RGB256_*.rbf) also at the top
+  reports:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: reports-octophonic
+          path: /tmp/reports
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: reports-rgb256
+          path: /tmp/reports/rgb256
+        continue-on-error: true
+      - name: Keep the reports
+        run: |
+          mkdir -p /tmp/reports/rgb256
+          [ -s /tmp/reports/result.txt ] || echo "failure ${GITHUB_SHA::7} $(date -u +%Y-%m-%dT%H:%MZ)" > /tmp/reports/result.txt
+          [ -s /tmp/reports/rgb256/result.txt ] || echo "failure ${GITHUB_SHA::7} $(date -u +%Y-%m-%dT%H:%MZ)" > /tmp/reports/rgb256/result.txt
+          mv /tmp/reports/rgb256/C64RGB256_*.rbf /tmp/reports/ 2>/dev/null || true
+          cd /tmp/reports
+          git init -q
+          # the rgb256 work branch keeps its own (build-reports-rgb256), so trying it never replaces the cores
+          # a card is being built from
+          OUTB=build-reports; [ "${GITHUB_REF_NAME}" = rgb256 ] && OUTB=build-reports-rgb256
+          git checkout -q -b "$OUTB"
+          git add -A
+          git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Reports: $(cat result.txt) - RGB 256: $(cat rgb256/result.txt)"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "$OUTB"

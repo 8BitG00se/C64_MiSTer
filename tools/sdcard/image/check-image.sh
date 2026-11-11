@@ -71,6 +71,11 @@ LA=$(od -A n -t x1 -N 2 "$C/octophonic/SHELL.PRG" | tr -d ' \n')
 [ "$LA" = 00be ] || [ "$LA" = 00c0 ] && okk "octophonic/SHELL.PRG (loads at \$${LA#00}${LA%??})" || bad "SHELL.PRG load address $LA"
 NC=$(ls -A "$C/_Computer" | grep -c '^\.C64_Octophonic_.*\.rbf$')
 [ "$NC" = 1 ] && okk "exactly one Octophonic core in _Computer (no older core can be started by the launcher)" || bad "$NC Octophonic cores in _Computer"
+# Fix 60: the C64RGB 256 core is allowed - hidden (a dot name, never in the menu), one only, and Main knows it
+NR=$(ls -A "$C/_Computer" | grep -c '^\.C64RGB256_.*\.rbf$')
+[ "$NR" = 1 ] && okk "the hidden C64RGB 256 core: $(cd "$C/_Computer" && ls -A | grep '^\.C64RGB256_')" || bad "$NR C64RGB 256 cores in _Computer (one, hidden, wanted - step 032)"
+ls -A "$C/_Computer" | grep -q '^C64RGB256' && bad "a C64RGB 256 core without the dot (the menu would list it)" || okk "no C64RGB 256 core in the menu"
+grep -q 'rgb256.mgl' "$C/MiSTer" && okk "Main switches to it for a game with a .rgb pack (octophonic-rgb256.patch)" || bad "Main has no C64RGB 256 switch"
 echo "-- the front screen"
 for f in tty2oled/tty2oled.sh tty2oled/S60tty2oled tty2oled/tty2oled-user.ini octophonic/oled.sh; do
     [ -s "$C/$f" ] && okk "$f" || bad "no $f"

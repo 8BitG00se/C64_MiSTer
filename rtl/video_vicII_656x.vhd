@@ -71,6 +71,12 @@ entity video_vicii_656x is
 		rasterXo : out unsigned(9 downto 0);
 		rasterYo : out unsigned(8 downto 0);
 
+		-- C64RGB 256 (Fix 60): what made the pixel in colorIndex, latched with it (docs/RGB256.md):
+		-- [28:27] 0 graphics, 1 sprite, 2 border, 3 blank; [26:19] the char code (the screen byte;
+		-- for a sprite its number in [21:19]); [18:9] the raster X and [8:0] the raster Y it was drawn at.
+		-- Nothing reads it in the Octophonic core, so it costs nothing there.
+		pixTag : out unsigned(28 downto 0);
+
 		-- Debug outputs
 		debugX  : out unsigned(9 downto 0);
 		debugY  : out unsigned(8 downto 0);
@@ -1389,6 +1395,18 @@ calcBitmap: process(clk)
 			
 			if enaPixel = '1' then
 				colorIndex <= myColor;
+				-- C64RGB 256: the pixel's tag, from the same state as its colour
+				if muxColor /= "00" then
+					pixTag(28 downto 27) <= "01";
+					pixTag(26 downto 19) <= "00000" & muxSprite;
+				else
+					pixTag(28 downto 27) <= "00";
+					pixTag(26 downto 19) <= shiftingChar_d(7 downto 0);
+				end if;
+				pixTag(18 downto 9) <= rasterX;
+				pixTag(8 downto 0) <= rasterY;
+				if MainBorder = '1' then pixTag(28 downto 27) <= "10"; end if;
+				if hBlack = '1' then pixTag(28 downto 27) <= "11"; end if;
 
 -- Krestage 3 debugging routine
 --				if (cs = '1' and aRegisters = "011100") then

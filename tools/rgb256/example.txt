@@ -1,0 +1,42 @@
+# An example C64RGB 256 description - every kind of section (it is also the sim's test pack)
+# (c) 2026 Mong00se
+name: Example
+palettes: Day, Dusk, Night, Mono
+
+# every pixel of these colours, unless a later section says otherwise
+[everywhere]
+blue       = #2a50d8 | #5a3a9a | #102050 | #303030
+lightblue  = #7aa8ff | #d090c0 | #3a5aa0 | #a0a0a0
+green      = #3cb44c | #8aa02a | #1a5a4a | #707070
+white      = same    | #fff0d0 | #c0d0ff | #ffffff
+
+# a sky: light blue fading down the top half, the ground darker lower down
+[lines 51-130]
+lightblue  = #b8e0ff .. #5a8cf0 | #ffb070 .. #c04a60 | #1a2a60 .. #0a1030 | #e0e0e0 .. #808080
+[lines 131-250]
+brown      = #8a6030 .. #3a2810 | #9a5020 .. #4a2010 | #202a30 .. #0a1014 | #606060 .. #202020
+
+# the score panel at the top of the screen
+[area cols 0-39 rows 0-1]
+white      = #ffe060 | #ffd040 | #c0c8e0 | #ffffff
+black      = #101830 | #201018 | #000008 | #000000
+
+# chars 128-255 (a game's walls, say) in stone colours
+[chars 128-255]
+grey       = #8a8070 | #9a7a60 | #2a3a48 | #808080
+darkgrey   = #4a4438 | #5a4030 | #101c28 | #404040
+
+# outside the 25 rows (an opened border)
+[outside]
+black      = #080808 | #100808 | #000004 | #000000
+
+# each sprite its own colours
+[sprite 0]
+white      = #ffffff | #ffe0c0 | #e0ecff | #ffffff
+red        = #ff3040 | #ff5030 | #a04060 | #808080
+[sprites 1-7]
+red        = #c02020 | #d04010 | #602040 | #606060
+
+# the border: a gradient of its own
+[border lines 0-311]
+lightblue  = #405080 .. #101830 | #603040 .. #200810 | #101420 .. #000000 | #404040 .. #000000
