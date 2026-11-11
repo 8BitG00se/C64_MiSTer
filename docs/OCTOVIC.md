@@ -276,23 +276,26 @@ the screen for each voice (OctoPlay draws up to 24 bands, each with a palette ch
 with the registers as the copper leaves them for it, like CTRL (written by the 6510, they show up to three lines
 early).
 
-**What it costs.** Nothing on the DDR3: the captures are in block RAM inside OctoVIC. Drawing a scope line takes
-about 80 clocks (4 pixels a clock), after the pixels drawn before it on the line (sprites behind it) are in.
+**What it costs.** The captures are in the DDR3, above the VRAM (byte $33000000, 29 KB - see
+docs/OCTOVIC_MEMORY.md), so nothing of the 16 MB VRAM is used. Writing them is light: each channel gathers 8
+samples into one word before it is written - a note of a few hundred Hz is a word every few hundred microseconds,
+24 voices at the very top of the range under 2 words a microsecond - and those writes wait for the renderer's
+reads. Drawing a scope line takes about 160 clocks (2 pixels a clock) after the pixels drawn before it on the line
+are in; when a line shows a different channel from the line before (a new band) or a new frame's captures, its
+304 samples are first fetched into a line cache: 38 reads, like a line of a bitmap layer.
 
 **How the hardware does it (rtl/octovic/octoscope.sv).** One clock per channel: 32 clocks are one microsecond, so the
 32 channels are taken one after the other, the voices' values held from the microsecond's edge (sid_voice, through
-a record each SID pair hands over on request). Each channel has three slots of 304 samples in block RAM - the one
+a record each SID pair hands over on request). Each channel has three slots of 304 samples in the DDR3 - the one
 being captured, the newest complete one, the one shown - and only the slot numbers change (no copying): a complete
-capture becomes the newest, the free slot is the next one captured into, and at line 0 the newest becomes the shown
-one, at the end of a whole microsecond. The two places where a capture would write many samples at once (the jump
-to cycle 2 after a sync or test-bit wrap, and the rest of an early-ended cycle) are kept as a rule of the slot (a
-range with one value) that the renderer applies when it reads, so a capture writes at most one sample a
-microsecond. The renderer reads 4 samples a clock and puts its pixels into the same pipeline as the layers'. The
-emulator's code for all this (sc_store, scope_line) is the reference; sim/octoscope checks the hardware against it
-sample for sample and pixel for pixel.
-
-Block RAM: 3 slots x 32 channels x 304 bytes = 29 KB, about 29 M10Ks (the rules and the capture state are in MLABs).
-See docs/OCTOVIC_MEMORY.md for where they come from.
+capture becomes the newest, the free slot is the next one captured into, and the frame's latch (at the end of a
+whole microsecond) makes the newest the shown one; each channel takes that up as the engine next passes it, and the
+renderer reads a frame's slots only once that is done and every word queued before the latch is in the DDR3 - so a
+frame never shows a half-written capture. The two places where a capture would write many samples at once (the
+jump to cycle 2 after a sync or test-bit wrap, and the rest of an early-ended cycle) are kept as a rule of the slot
+(a range with one value) that the renderer applies when it reads. The renderer draws 2 pixels a clock into the same
+pipeline as the layers' pixels. The emulator's code for all this (sc_store, scope_line) is the reference;
+sim/octoscope checks the hardware against it sample for sample and pixel for pixel, with the DDR3 busy and held.
 
 ## Animation
 

@@ -37,7 +37,12 @@ module tb_top
 	output     [23:0] dbg_osc[24],
 	output     [15:0] dbg_freq[24],
 	output     [17:0] dbg_aud[8],
-	output            dbg_tick, dbg_latch
+	output            dbg_tick, dbg_latch,
+	output            dbg_comp, dbg_dbl, dbg_bad, dbg_rok,
+	output      [4:0] dbg_ch,
+	output      [1:0] dbg_slot,
+	output      [8:0] dbg_wptr, dbg_rptr,
+	output     [15:0] dbg_lost
 );
 wire [2:0]  sc_sel;
 wire [39:0] rec[4];
@@ -73,6 +78,15 @@ octovic octo
 );
 assign dbg_tick  = octo.scope.tick_done;
 assign dbg_latch = octo.scope.latch_now;
+assign dbg_comp  = octo.scope.comp_w;
+assign dbg_ch    = octo.scope.ch_w;
+assign dbg_slot  = octo.scope.cp_w;
+assign dbg_dbl   = octo.scope.dbl_w;
+assign dbg_bad   = octo.scope.bad_w;
+assign dbg_rok   = octo.scope.r_ok;
+assign dbg_wptr  = octo.scope.wptr;
+assign dbg_rptr  = octo.scope.rptr;
+assign dbg_lost  = octo.scope.lost;
 
 assign dbg_dac[0] = sp[0].s.chip[0].v1.dac_out;  assign dbg_env[0] = sp[0].s.chip[0].v1.env_dac[7:0];  assign dbg_osc[0] = sp[0].s.chip[0].v1.oscillator;  assign dbg_freq[0] = sp[0].s.chip[0].v1.freq;
 assign dbg_dac[1] = sp[0].s.chip[0].v2.dac_out;  assign dbg_env[1] = sp[0].s.chip[0].v2.env_dac[7:0];  assign dbg_osc[1] = sp[0].s.chip[0].v2.oscillator;  assign dbg_freq[1] = sp[0].s.chip[0].v2.freq;

@@ -35,3 +35,13 @@ Plan (coordinator): 1) captures to DDR3 (byte $33000000, above VRAM), small on-c
 Builds of this branch push their reports to build-reports-fix55 (not build-reports: card8's build uses that).
 Measured cost of the BRAM version (trial vs baseline "ALMs needed"): octovic +1,450 (octoscope.sv 569),
 each sid_top +~135 (+540): about 2,000 ALMs; baseline headroom 2,239.
+
+### Step 1 done (11 Nov): the captures in the DDR3
+- octoscope.sv: slots at byte $33000000 (96 x 304 bytes); per-channel 8-byte gathering word + 256-word write queue
+  (block RAM), lazy latch per channel (gen bit), r_ok = latch applied + queue past the latch mark.
+- octovic.sv: scope writes after the renderer's reads (before them when the queue is over half full), 22-bit
+  request addresses, a 38-word line cache loaded on a channel/frame change, 2 pixels a clock with shared
+  per-sample compare flags (no min/max/clip: shown equal to scope_line on every drawn line).
+- sim/octoscope PASS: seed 1 (20% busy), seed 2 (50% busy, 20-80 clocks), seed 3 (30%, port held a line a
+  frame): 1,762 captures, 14 latches x 32, 1,462,032 pixels, 434 trace joins, 0 words lost, no late lines.
+- Next: GitHub build of fix55-octoscope (reports to build-reports-fix55), then step 2 (lean) from its numbers.

@@ -2,7 +2,8 @@
 // (c) 2026 Mong00se.
 //
 // The RTL: OctoVIC and the four SID pairs (tb_top.sv), the VIC's timing, a DDR3 that is busy and late at random
-// (as sim/finescroll). Eight SIDs play synthetic voices through their registers: a triangle, a saw, a pulse whose
+// (as sim/finescroll), and can be held for a whole line once a frame. The captures live in that DDR3 (byte $33000000):
+// what is compared is what the core wrote there. Eight SIDs play synthetic voices through their registers: a triangle, a saw, a pulse whose
 // width keeps changing, noise, a FREQ sweeping from high to under 839 and back, the test bit, hard sync, ring
 // modulation, note changes in the middle of a capture, gates going off and on, FREQ 839 and 838 (either side of the
 // line), a test bit toggled every few microseconds, volume writes on the right chips.
@@ -139,8 +140,9 @@ int main (int argc, char** argv)
     const int frames = argc > 1 ? std::atoi (argv[1]) : 13;
     const unsigned seed = argc > 2 ? std::atoi (argv[2]) : 1;
     const int busyp = argc > 3 ? std::atoi (argv[3]) : 20, latmin = argc > 4 ? std::atoi (argv[4]) : 6, latmax = argc > 5 ? std::atoi (argv[5]) : 30;
+    const int holdc = argc > 6 ? std::atoi (argv[6]) : 0;      // the port held this many clocks once a frame (0: never)
     std::mt19937 rng (seed);
-    std::vector<uint8_t> vram (16 << 20, 0);
+    std::vector<uint8_t> vram (32 << 20, 0);       // the VRAM, and above it (byte $33000000) the scope's captures
 
     // ---- the copper list: 24 bands of 11 lines from line 22, each: SCV, SCY, SCH, SCG, SCF, SCC, LMODE0 and a
     // palette entry (its colour) - 12 writes a band, like OctoPlay build 4
@@ -272,6 +274,7 @@ int main (int argc, char** argv)
     std::vector<std::pair<int,int>> act;                         // pixel strobes: (R, y), 1 clock later out
     long n_cap = 0, n_capcmp = 0, n_latch = 0, n_px = 0, n_lines = 0, n_trace = 0, n_bands = 0, n_ticks = 0;
     long n_scope_lines = 0, st_timed = 0, st_locked = 0, st_hole = 0, st_bighole = 0, st_bigfill = 0;
+    int latch_check = 0;
     int last_latch_frame = -9;
     bool cop_on = false;
     uint8_t rc[256]; std::memset (rc, 0, sizeof rc);             // the registers (CPU + copper) as the C side has them
@@ -284,20 +287,22 @@ int main (int argc, char** argv)
         if (a == 0x1C) palg_c = v;
         if (a == 0x1D) { if (rc[0x19] == 0) pal_c[palidx_c] = (uint32_t) palr_c << 16 | palg_c << 8 | v; palidx_c = (palidx_c + 1) & 255; }
     };
-    auto slot_samples = [&] (int ch, int slot, int zero, int8_t* out) {      // an RTL slot, read as the renderer reads it
-        const int base = (ch * 3 + slot) * 76;
-        const uint64_t d = rp->tb_top__DOT__octo__DOT__scope__DOT__dmem[ch * 3 + slot];
+    // an RTL slot as the renderer reads it: its 304 bytes from the DDR3 (byte $33000000 + slot x 304), its rules
+    auto slot_samples = [&] (int sidx, uint64_t d, int zero, int8_t* out) {
         const int fv = (int8_t) (d & 255), fn = (d >> 8) & 511, hv = (int8_t) ((d >> 17) & 255), hs = (d >> 25) & 255, hok = (d >> 33) & 1;
         for (int i = 0; i < SCN; ++i) {
-            const uint32_t w = rp->tb_top__DOT__octo__DOT__scope__DOT__smem[base + i / 4];
-            int s = (int8_t) ((w >> (8 * (i & 3))) & 255);
+            int s = (int8_t) vram[0x1000000 + (size_t) sidx * 304 + i];
             if (zero) s = 0; else if (i >= fn) s = fv; else if (hok && i >= hs && i <= 152) s = hv;
             out[i] = (int8_t) s;
         }
     };
-    struct Cmp { int ch, slot, zero, disp; };
-    std::vector<Cmp> cmpq;
-    int prev_done[32]; for (int c = 0; c < 32; ++c) prev_done[c] = rp->tb_top__DOT__octo__DOT__scope__DOT__done[c];
+    auto dmem = [&] (int sidx) { return (uint64_t) rp->tb_top__DOT__octo__DOT__scope__DOT__dmem[sidx]; };
+    // a comparison waits until every word queued before it is in the DDR3 (the queue has passed its mark and the
+    // port holds no scope write)
+    struct Cmp { int ch, sidx, zero, disp, mark; long when; int8_t want[SCN]; uint64_t d; int dready; };
+    std::deque<Cmp> cmpq;
+    std::vector<int> comps;                                      // the RTL's completions this microsecond: (channel, slot)
+    std::vector<int> comps_slot;
     int prev_y = y;
 
     while (frame < frames)
@@ -321,7 +326,8 @@ int main (int argc, char** argv)
             ++rwi;
         }
         // ---- the DDR3
-        const bool busy = (int) (rng() % 100) < busyp;
+        const bool held = holdc > 0 && y == 100 + frame % 7 * 20 && R < 300 + holdc / 4 && frame >= 0;   // the port held (other users)
+        const bool busy = held || (int) (rng() % 100) < busyp;
         t->ddr_busy = busy; t->ddr_dout_ready = 0;
         if (! reads.empty() && reads.front().due <= now) {
             const uint32_t w = reads.front().word; reads.pop_front();
@@ -330,21 +336,9 @@ int main (int argc, char** argv)
             t->ddr_dout = d; t->ddr_dout_ready = 1;
         }
         const bool rd = t->ddr_rd, we = t->ddr_we; const uint32_t ad = t->ddr_addr; const uint64_t din = t->ddr_din; const int be = t->ddr_be;
-        // the slot being shown and the newest complete one are never written
-        if (rp->tb_top__DOT__octo__DOT__scope__DOT__sm_we) {
-            const int wa = rp->tb_top__DOT__octo__DOT__scope__DOT__sm_wa, sl = wa / 76, ch = sl / 3, s = sl % 3;
-            if (std::getenv ("DBG") && ch == std::atoi (std::getenv ("DBG")) && (us < 300 || (us > 20000 && us < 20100))) std::printf ("us %ld es %d write slot %d word %d lane %d = %d\n", us, es, s, wa % 76, rp->tb_top__DOT__octo__DOT__scope__DOT__sm_lane, (int8_t) rp->tb_top__DOT__octo__DOT__scope__DOT__sm_wd);
-            if (s == rp->tb_top__DOT__octo__DOT__scope__DOT__disp[ch] && ! ((rp->tb_top__DOT__octo__DOT__scope__DOT__disp_z >> ch) & 1)
-                && ! (wa % 76 == 75 && rp->tb_top__DOT__octo__DOT__scope__DOT__sm_lane == 3 && rp->tb_top__DOT__octo__DOT__scope__DOT__done[ch] == s))
-                FAIL ("channel %d: a sample written into the slot being shown (%d)", ch, s);
-            // (a capture by time completes with its last sample: that write lands the clock after the slot became the
-            // complete one - word 75, lane 3; anything else is a write into a finished capture)
-            if (s == rp->tb_top__DOT__octo__DOT__scope__DOT__done[ch] && ! ((rp->tb_top__DOT__octo__DOT__scope__DOT__done_z >> ch) & 1)
-                && ! (wa % 76 == 75 && rp->tb_top__DOT__octo__DOT__scope__DOT__sm_lane == 3))
-                FAIL ("channel %d: a sample written into the newest complete capture (%d)", ch, s);
-        }
         t->clk = 1; t->eval();
         if (rd && ! busy) { uint64_t due = now + latmin + rng() % (latmax - latmin + 1); if (due <= last_due) due = last_due + 1; last_due = due; reads.push_back ({due, ad}); }
+        if (we && ! busy && std::getenv ("DBG") && ad >= 0x06600000u) { const int wa = ad - 0x06600000u, sl = wa / 38; if (sl / 3 == std::atoi (std::getenv ("DBG")) && us > 700 && us < 2600) std::printf ("us %ld write slot %d word %d be %02x data %016llx\n", us, sl % 3, wa % 38, be, (unsigned long long) din); }
         if (we && ! busy) { const size_t a = (size_t) (ad - VBASE) * 8; for (int k = 0; k < 8; ++k) if (be & (1 << k)) vram[(a + k) & (vram.size() - 1)] = (din >> (8 * k)) & 255; }
         if (phase == 0) { es = 0; ++us; } else ++es;
         // the microsecond's values, once they stand (the edge was at the clock with sid_ce; no write before clock 28)
@@ -357,17 +351,36 @@ int main (int argc, char** argv)
             for (int s = 0; s < 8; ++s) ti.aud[s] = (int32_t) (t->dbg_aud[s] << 14) >> 14;
             pend.push_back (ti);
         }
-        // (last clock's comparisons: the RTL's last writes of a microsecond - channel 31's - land a clock after its tick)
-        for (auto& q : cmpq) {
-            int8_t got[SCN]; slot_samples (q.ch, q.slot, q.zero, got);
-            const int8_t* want = q.disp ? sc_disp[q.ch] : sc_done[q.ch];
-            for (int i = 0; i < SCN; ++i) if (got[i] != want[i]) {
-                if (q.disp) FAIL ("frame %d channel %d: shown sample %d is %d, the emulator's %d", frame, q.ch, i, got[i], want[i]);
-                else FAIL ("us %ld channel %d: capture sample %d is %d, the emulator's %d", us, q.ch, i, got[i], want[i]);
-                break;
-            }
+        if (std::getenv ("DBG") && rp->tb_top__DOT__octo__DOT__scope__DOT__wm_we) {
+            const auto& w = rp->tb_top__DOT__octo__DOT__scope__DOT__wm_wd; const int a12 = (w[2] >> 8) & 0xFFF, sl = a12 / 38;
+            if (sl / 3 == std::atoi (std::getenv ("DBG")) && us > 700 && us < 1100) std::printf ("us %ld es %d ENQ at %d slot %d word %d be %02x data %08x%08x\n", us, es, rp->tb_top__DOT__octo__DOT__scope__DOT__wm_wa, sl % 3, a12 % 38, w[0] & 255, (w[2] << 24) | (w[1] >> 8), (w[1] << 24) | (w[0] >> 8));
         }
-        cmpq.clear();
+        if (std::getenv ("DBGL") && frame == FB && y >= 20 && y <= 27 && (phase & 31) == 0 && R < 410) std::printf ("y %d R %d st %d L %d rok %d w %d r %d mark %d busy %d\n", y, R, rp->tb_top__DOT__octo__DOT__st, rp->tb_top__DOT__octo__DOT__L, t->dbg_rok, t->dbg_wptr, t->dbg_rptr, rp->tb_top__DOT__octo__DOT__scope__DOT__wq_mark, rp->tb_top__DOT__octo__DOT__scope__DOT__lat_busy);
+        // the checks the RTL raises itself
+        if (t->dbg_dbl) FAIL ("us %ld: two words to queue for one channel in one microsecond", us);
+        if (t->dbg_bad) FAIL ("us %ld: a word queued for the slot being shown", us);
+        // the queued comparisons whose words are all in the DDR3
+        {
+            const bool port_scope = t->ddr_we && t->ddr_addr >= 0x06600000u;
+            for (auto& q : cmpq) if (! q.dready) { q.d = dmem (q.sidx); q.dready = 1; }      // (the rules: a clock after)
+            while (! cmpq.empty() && ! port_scope && ((t->dbg_rptr - cmpq.front().mark) & 0x1FF) < 256 && cmpq.front().when < (long) now) {
+                Cmp& q = cmpq.front();
+                int8_t got[SCN]; slot_samples (q.sidx, q.d, q.zero, got);
+                if (! q.disp) {
+                    const int fn = (q.d >> 8) & 511, hs = (q.d >> 25) & 255, hok = (q.d >> 33) & 1;
+                    if (hok) { ++st_hole; if (152 - hs + 1 > 2) ++st_bighole; }
+                    if (fn < SCN && SCN - fn > 2) ++st_bigfill;
+                }
+                for (int i = 0; i < SCN; ++i) if (got[i] != q.want[i]) {
+                    if (q.disp) FAIL ("frame %d channel %d: shown sample %d is %d, the emulator's %d", frame, q.ch, i, got[i], q.want[i]);
+                    else FAIL ("us %ld channel %d: capture sample %d is %d, the emulator's %d", us, q.ch, i, got[i], q.want[i]);
+                    break;
+                }
+                cmpq.pop_front();
+            }
+            if (cmpq.size() > 4000) FAIL ("comparisons waiting for the DDR3: %zu", cmpq.size());
+        }
+        if (t->dbg_comp) { comps.push_back (t->dbg_ch); comps_slot.push_back (t->dbg_ch * 3 + t->dbg_slot); }
         // the RTL has stored a whole microsecond: the emulator does the same one, then compare
         if (t->dbg_tick) {
             if (pend.empty()) FAIL ("the RTL stored a microsecond that hasn't happened");
@@ -375,33 +388,39 @@ int main (int argc, char** argv)
                 TickIn ti = pend.front(); pend.pop_front(); ++n_ticks;
                 std::memset (sc_new, 0, sizeof sc_new);
                 for (int s = 0; s < 8; ++s) octovic_scope_tick (s, &ti.v[s * 3], s & 1 ? 1 : 0, ti.aud[s]);
+                if (std::getenv ("DBG") && us > 850 && us < 1010) { const int c = std::atoi (std::getenv ("DBG")); const auto& m = rp->tb_top__DOT__octo__DOT__scope__DOT__cmem[c]; auto bits = [&] (int lo, int n) { uint64_t v = 0; for (int b = 0; b < n; ++b) v |= (uint64_t) ((m[(lo + b) / 32] >> ((lo + b) % 32)) & 1) << b; return v; };
+                    std::printf ("us %ld C: n %d cyc %d on %d age %u tick %u | RTL n %d on %d tick %d sv %d ss %d sw %d sbe %02x\n", us, sc_n[c], sc_cyc[c], sc_on[c], sc_age[c], sc_tick[c], (int) bits (42, 9), (int) bits (40, 1), (int) bits (17, 7), (int) bits (139, 1), (int) bits (137, 2), (int) bits (131, 6), (int) bits (59, 8)); }
+                int rtl_new[32] = {0}, rtl_slot[32];
+                for (size_t k = 0; k < comps.size(); ++k) { rtl_new[comps[k]]++; rtl_slot[comps[k]] = comps_slot[k]; }
+                comps.clear(); comps_slot.clear();
                 for (int c = 0; c < 32; ++c) {
-                    const int d = rp->tb_top__DOT__octo__DOT__scope__DOT__done[c];
-                    const bool rtl_new = d != prev_done[c];
-                    prev_done[c] = d;
                     if (sc_new[c]) ++n_cap;
-                    if (rtl_new != (bool) sc_new[c]) { FAIL ("us %ld channel %d: the emulator %s a capture, the RTL %s", us, c, sc_new[c] ? "completed" : "did not complete", rtl_new ? "did" : "did not"); continue; }
+                    if ((rtl_new[c] != 0) != (bool) sc_new[c] || rtl_new[c] > 1) { FAIL ("us %ld channel %d: the emulator %s a capture, the RTL %s", us, c, sc_new[c] ? "completed" : "did not complete", rtl_new[c] ? "did" : "did not"); continue; }
                     if (! sc_new[c]) continue;
-                    cmpq.push_back ({c, d, (int) ((rp->tb_top__DOT__octo__DOT__scope__DOT__done_z >> c) & 1), 0}); ++n_capcmp;
-                    {
-                        const uint64_t dd = rp->tb_top__DOT__octo__DOT__scope__DOT__dmem[c * 3 + d];
-                        const int fn = (dd >> 8) & 511, hs = (dd >> 25) & 255, hok = (dd >> 33) & 1;
-                        if (sc_on[c]) ++st_locked; else ++st_timed;          // (a phase-locked capture restarts at once)
-                        if (hok) { ++st_hole; if (152 - hs + 1 > 2) ++st_bighole; }
-                        if (fn < SCN && SCN - fn > 2) ++st_bigfill;
-                    }
+                    Cmp q; q.ch = c; q.sidx = rtl_slot[c]; q.zero = 0; q.disp = 0; q.mark = t->dbg_wptr; q.when = (long) now; q.dready = 0;
+                    std::memcpy (q.want, sc_done[c], SCN);
+                    cmpq.push_back (q); ++n_capcmp;
+                    if (sc_on[c]) ++st_locked; else ++st_timed;          // (a phase-locked capture restarts at once)
                 }
                 if (t->dbg_latch) {
                     sc_latch(); ++n_latch;
                     if (frame == last_latch_frame) FAIL ("two latches in frame %d", frame);
                     if (rp->tb_top__DOT__octo__DOT__L != 0) FAIL ("the latch came with the renderer on line %d, not line 0", rp->tb_top__DOT__octo__DOT__L);
                     last_latch_frame = frame;
-                    for (int c = 0; c < 32; ++c)
-                        cmpq.push_back ({c, rp->tb_top__DOT__octo__DOT__scope__DOT__disp[c], (int) ((rp->tb_top__DOT__octo__DOT__scope__DOT__disp_z >> c) & 1), 1});
+                    latch_check = 1;                                     // the shown slots: once the latch is applied (r_ok)
                 }
             }
         }
-        else if (t->dbg_latch) FAIL ("a latch not at the end of a microsecond");
+        if (t->dbg_latch && ! t->dbg_tick) FAIL ("a latch not at the end of a microsecond");
+        if (latch_check && t->dbg_rok && ! t->dbg_tick) {
+            latch_check = 0;
+            for (int c = 0; c < 32; ++c) {
+                Cmp q; q.ch = c; q.sidx = c * 3 + rp->tb_top__DOT__octo__DOT__scope__DOT__disp[c];
+                q.zero = (rp->tb_top__DOT__octo__DOT__scope__DOT__disp_z >> c) & 1; q.disp = 1; q.mark = t->dbg_rptr; q.when = (long) now; q.dready = 0;
+                std::memcpy (q.want, sc_disp[c], SCN);
+                cmpq.push_back (q);
+            }
+        }
         if (pend.size() > 2) FAIL ("the RTL is behind: %zu microseconds waiting", pend.size());
         // the picture: a pixel is out 1 clock after its strobe
         for (auto& p : act) { const uint32_t c = t->rgb; pic[(size_t) p.second * 504 + p.first] = c; }
@@ -414,7 +433,7 @@ int main (int argc, char** argv)
                 if (y == 0) ++frame;
                 if (y == 300 && frame >= 0) {
                     // ---- the frame is done: the emulator draws it (copper and all) and every pixel is compared
-                    if (rp->tb_top__DOT__octo__DOT__h_late != 0 && frame > FB) FAIL ("frame %d: %d late lines", frame - 1, rp->tb_top__DOT__octo__DOT__h_late);
+                    if (rp->tb_top__DOT__octo__DOT__h_late != 0 && frame >= FB) FAIL ("frame %d: %d late lines", frame - 1, rp->tb_top__DOT__octo__DOT__h_late);
                     std::memcpy (r, rc, sizeof r); std::memcpy (pal, pal_c, sizeof pal);
                     size_t ci = 0;
                     // (the C side's own register file runs through the copper's writes line by line)
@@ -481,6 +500,8 @@ int main (int argc, char** argv)
     std::printf ("captures: %ld phase-locked, %ld by time; %ld with the jump into cycle 2 kept as a rule (%ld over 2 samples: sync/test), %ld ended early by a wrap (fill over 2 samples)\n",
                  st_locked, st_timed, st_hole, st_bighole, st_bigfill);
     if (! st_timed || ! st_locked || ! st_bighole || ! st_bigfill) FAIL ("a kind of capture never happened");
+    std::printf ("DDR3 write queue: %u words lost (must be 0), %zu comparisons still waiting at the end\n", (unsigned) t->dbg_lost, cmpq.size());
+    if (t->dbg_lost) FAIL ("capture words lost");
     std::printf ("SID writes %zu/%zu, OctoVIC writes %zu/%zu\n", swi, sw.size(), rwi, rw.size());
     if (n_capcmp < 1000 || n_scope_lines < 300 || n_trace < 200) FAIL ("too little was checked");
     std::printf (fails ? "OCTOSCOPE: FAIL (%d)\n" : "OCTOSCOPE: PASS\n", fails);

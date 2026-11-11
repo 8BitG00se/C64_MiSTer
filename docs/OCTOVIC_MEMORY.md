@@ -14,7 +14,7 @@ lines may fall more than three behind.
 
 | memory | used by | notes |
 |---|---|---|
-| DDR3 (the DE10-Nano's 1 GB, shared with the ARM) | Linux and Main on the ARM; the MiSTer scaler (ascal) - every HDMI frame is written to and read from DDR3, even with HDMI unplugged; the core: OctoVIC's 16 MB VRAM at $32000000, and the drives' track buffers at $30000000 | the core reaches it through one 64-bit port at 31.5 MHz; ddram_arb2 gives it to the drives or OctoVIC in turn |
+| DDR3 (the DE10-Nano's 1 GB, shared with the ARM) | Linux and Main on the ARM; the MiSTer scaler (ascal) - every HDMI frame is written to and read from DDR3, even with HDMI unplugged; the core: OctoVIC's 16 MB VRAM at $32000000, OCTOSCOPE's captures at $33000000 (29,184 bytes, version 5), and the drives' track buffers at $30000000 | the core reaches it through one 64-bit port at 31.5 MHz; ddram_arb2 gives it to the drives or OctoVIC in turn |
 | SDRAM board (32 MB) | the C64's RAM, cartridges, and the 16 MB REU at $1000000 | an 8-bit controller locked to the C64's bus (one byte per C64 half-cycle). Full, and far too slow for OctoVIC - not an option for VRAM |
 | FPGA block RAM | line buffer (4 lines x 512 pixels), sprite table, palettes, the SID chip tables | 550 of 553 blocks used: no room for more buffering |
 
@@ -155,37 +155,24 @@ OctoBench (a 6502 program) steps through those 13 tests on the real MiSTer, ~1 s
 LATE, WORST, LEAD, LATMAX, STALL and REPEAT+BLANK for each - green within the limit, red over it.
 That table is the machine's real limits; the replay numbers above are only a model of its DDR3.
 
-## OCTOSCOPE (Fix 55): where its block RAM comes from - Neal decides
+## OCTOSCOPE (Fix 55): its memory
 
-OCTOSCOPE keeps its captures in block RAM: 3 slots x 32 channels x 304 one-byte samples, read 4 a clock - about
-29 M10Ks (the slot rules and each channel's capture state are in MLABs). Nothing goes to the DDR3: capturing 24
-voices at up to 0.6 samples a microsecond each would add up to ~120 DDR3 requests a line, the very thing that makes
-lines late (above).
+Neal's decision (11 Nov 2026): the scope must work fully, and the MiSTer side stays as it is (the framework in
+sys/, the Sound Expander) - so OCTOSCOPE keeps its captures in the DDR3, not in block RAM.
 
-The fitter's report for core-fixes 8d28568 (11 Nov 2026, build-reports branch, fit_entities.txt): RAM blocks
-548 / 553 (5 free), ALMs needed 39,671 / 41,910 (about 2,240 free), DSP 77 / 112. So OCTOSCOPE does **not** fit as
-things are. The biggest users of M10Ks:
+**The memory map.** DDR3 byte $33000000 - $33007200 (29,184 bytes, just above the 16 MB of VRAM at $32000000):
+96 slots of 304 bytes, slot (channel x 3 + n) at $33000000 + slot x 304; 38 64-bit words a slot. Nothing else uses
+it; programs cannot reach it (VADDR is 24 bits: the VRAM only).
 
-| part | M10Ks | ALMs | what it is |
-|---|---|---|---|
-| iec_drive (1541 74, 1581 73) | 147 | 3,466 | the drives, with their standard and loadable/parallel ROMs |
-| the 4 sid_tops | 104 | 8,550 | 8 SIDs (26 each: waveform and filter tables) |
-| fpga64_buslogic | 72 | 136 | the System ROMs: 4 KERNAL/BASIC sets x 16 (Octophonic, Standard, Weaver 2, Japanese) + 2 character sets x 4 |
-| chip_bank | 64 | 16 | Neal's chip personalities (the measured combined waveforms) |
-| ascal (HDMI scaler) | 43 | 2,156 | the MiSTer framework's scaler |
-| opl3 (Sound Expander) | 37 | 1,285 | the OPL2 cartridge |
-| octovic | 28 | 8,723 | |
-| video_mixer (scandoubler, HQ2x, gamma) | 27 | 1,038 | the analogue output's scandoubler |
+**The traffic.** Writes: each channel gathers its samples into one 8-byte word on chip and queues the word when the
+next sample is for another word or the capture completes - at most one word a channel a microsecond; a 440 Hz note
+is a word every ~120 us. The queue is 256 words (128 us at the worst possible rate) in block RAM; its words go to
+the port after the renderer's reads (and before them only when it is over half full), after the VRAM writes, before
+the blitter. Reads: a scope line reads its channel's 38 words into a line cache only when the channel or the frame
+changes - at most one bitmap line's worth on a band's first line.
 
-Choices that would make room (each takes a menu option away, so it is Neal's call):
+**On chip (block RAM, about 8 M10Ks):** each channel's capture state and its word being gathered (140 bits), the
+slots' rules (96 x 34 bits), the write queue (256 x 84 bits), the line cache (38 x 64 bits).
 
-- **the Sound Expander (OPL2)**: 37 M10Ks and ~1,285 ALMs - room for OCTOSCOPE's RAM and logic both. A fit trial
-  of exactly this was built (branch fix55-trial-noopl 0f48a5a, not for the card, 11 Nov): it **fits** - RAM blocks
-  543 / 553, ALMs 41,138 / 41,910 (98%), DSP 82 / 112. OCTOSCOPE took 32 M10Ks (its sample RAM) and ~1,450 ALMs
-  (octoscope.sv 569, the scope pass and pixel units in octovic ~880). Timing (the build's summary): clk_sys and the
-  other core clocks pass (worst setup slack +1.55 ns); the HDMI scaler's clock is 0.017 ns short - that framework
-  path moves with every fit (-0.135 ns at cb5a6b5, +0.200 ns at 8d28568, with no OCTOSCOPE), so a seed sweep or a
-  little more room is needed before a card build. At 98% of the logic, every later fix gets harder to fit.
-- **the Japanese System ROM** (KERNAL/BASIC + its character set): 20 M10Ks - with the 5 free, 25: enough only if
-  OCTOSCOPE packs 5 samples a word (23 M10Ks; a little more logic in the renderer), and no help with the logic.
-- the 1541's DolphinDOS/parallel ROM, the HQ2x filter: possible, smaller, and they touch loaders and the picture.
+The first version kept all three slots in block RAM (32 M10Ks); with 5 free that only fitted with the Sound
+Expander taken out (a measurement build, branch fix55-trial-noopl: 543/553 M10Ks, 98% of the logic) - not an option.
