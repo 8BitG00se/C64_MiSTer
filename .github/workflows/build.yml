@@ -50,10 +50,9 @@ jobs:
 
       - name: The recolour unit against its model, every pixel of tagged VIC-II frames (Fix 60)
         if: matrix.variant == 'rgb256'
-        continue-on-error: true
         run: |
           sudo apt-get install -y -qq verilator >/dev/null
-          python3 -c "import numpy" 2>/dev/null || pip install -q numpy
+          pip install -q numpy pillow
           sim/rgb256/run.sh
 
       - name: Stamp the core's build date (OctoVIC $D6B4-$D6B6)
