@@ -41,7 +41,7 @@ echo "  _Computer:"; ls -A "$C/_Computer" | sed 's/^/    /'
 echo "  octophonic:"; ( cd "$C/octophonic" && find . -mindepth 1 | sort | sed 's|^\./|    |' )
 echo "  games/C64 files (the example set, step 015): $(find "$C/games/C64" -type f | wc -l), $(du -sh "$C/games/C64" | cut -f1)"
 if [ "${OCTO_EXAMPLES:-}" = none ]; then
-    [ "$(find "$C/games/C64" -type f ! -path "*/Tools/OCTOCODE.PRG" | wc -l)" = 0 ] && okk "games/C64 is empty but Tools/OCTOCODE.PRG (OCTO_EXAMPLES=none)" || bad "files in games/C64"
+    [ "$(find "$C/games/C64" -type f ! -path "*/Tools/OCTOCODE.PRG" ! -path "*/Tools/SPEC.PRG" | wc -l)" = 0 ] && okk "games/C64 is empty but Tools/OCTOCODE.PRG and Tools/SPEC.PRG (OCTO_EXAMPLES=none)" || bad "files in games/C64"
     [ -s "$C/games/C64/Tools/OCTOCODE.PRG" ] && okk "Tools/OCTOCODE.PRG (step 055)" || bad "no Tools/OCTOCODE.PRG"
     [ -s "$C/octophonic/acme" ] && okk "octophonic/acme (F2 COMPILE on the MiSTer)" || bad "no octophonic/acme"
 else
@@ -123,11 +123,13 @@ while IFS= read -r f; do
     fi
 done < "$W/added.txt"
 [ "$HITS" = 0 ] && okk "no SSH key, share, IP address or PC path in any of them" || bad "personal strings found (above)"
-# MiSTer.ini must be MiSTer's own example plus the bootcore lines and nothing else (so no one's video,
-# share or other settings can be in it)
-if diff <(grep -v -E 'bootcore' "$C/MiSTer_example.ini") <(grep -v -E 'bootcore' "$INI") > "$W/ini.diff"; then
-    okk "MiSTer.ini is MiSTer's own example + the bootcore lines, nothing else (video: MiSTer's defaults)"
-else bad "MiSTer.ini differs from MiSTer_example.ini beyond bootcore:"; cat "$W/ini.diff"; fi
+# MiSTer.ini must be MiSTer's own example plus the bootcore lines and vsync_adjust=2 (step 065, Fix 43)
+# and nothing else (so no one's video, share or other settings can be in it)
+if diff <(grep -v -E 'bootcore|^[[:space:]]*vsync_adjust' "$C/MiSTer_example.ini") <(grep -v -E 'bootcore|^[[:space:]]*vsync_adjust' "$INI") > "$W/ini.diff"; then
+    okk "MiSTer.ini is MiSTer's own example + the bootcore lines + vsync_adjust, nothing else"
+else bad "MiSTer.ini differs from MiSTer_example.ini beyond bootcore and vsync_adjust:"; cat "$W/ini.diff"; fi
+V=$(grep -E '^[[:space:]]*vsync_adjust' "$INI" | tr -d ' \r' | sort -u)
+[ "$V" = "vsync_adjust=2" ] && okk "vsync_adjust=2 (Fix 43: HDMI follows the core's 50 Hz)" || bad "vsync_adjust is not 2 everywhere: $V"
 [ -e "$C/linux/octophonic-key.pub" ] && bad "the SSH key file is on the card" || okk "no linux/octophonic-key.pub"
 grep -q 'OCTOPHONIC SSH KEY' "$C/linux/user-startup.sh" 2>/dev/null && bad "the SSH block is in user-startup.sh" || okk "no SSH block in linux/user-startup.sh"
 find "$W/card" "$W/fat" -iname '*kernal*' -o -iname '*basic*.bin' -o -iname '*chargen*' -o -iname '*.rom' 2>/dev/null | grep -v -i 'mt32\|soundfont' | sed 's/^/  rom-like name: /'
