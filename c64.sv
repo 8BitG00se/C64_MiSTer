@@ -1566,22 +1566,13 @@ video_mixer_split #(.GAMMA(1)) video_mixer
 	.VGA_DE(vga_de)
 );
 
-wire        opl_en = status[12];
+wire        opl_en = 1'b0;   // (fit trial: no Sound Expander)
 wire [15:0] opl_out;
 wire  [7:0] opl_dout;
-opl3 #(.OPLCLK(47291931)) opl_inst
-(
-	.clk(clk_sys),
-	.clk_opl(clk48),
-	.rst_n(reset_n & opl_en),
-
-	.addr(c64_addr[4]),
-	.dout(opl_dout),
-	.we(ram_we & IOF & opl_en & c64_addr[6] & ~c64_addr[5]),
-	.din(c64_data_out),
-
-	.sample_l(opl_out)
-);
+// FIT TRIAL (fix55-trial-noopl, not for the card): the Sound Expander (OPL2) taken out to see whether OCTOSCOPE
+// fits in the block RAM and logic it frees - a measurement for Neal's choice, nothing more
+assign opl_out  = 16'd0;
+assign opl_dout = 8'hFF;
 
 reg ioe_we, iof_we;
 always @(posedge clk_sys) begin
