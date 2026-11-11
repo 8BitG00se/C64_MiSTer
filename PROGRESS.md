@@ -12,6 +12,11 @@ Branch rgb256 (from card8). Interrupted? Read this, then `git log`.
 - Card: step 032, recheck-test (RECHECK_TEST_OK), build-image.sh payload + expect, check-image.sh, Check card.bat,
   install_core.sh / install .bat carry the RGB core.
 
-## Left
-- the fit/timing numbers from the Build core run (build-reports-rgb256: rgb256/*.summary)
-- the Main build (octoos-main-build-rgb256)
+## Results
+- C64RGB 256 core (run 43003624471, commit 12b0896, same RTL as HEAD): fit OK, 38,769/41,910 ALMs (93 %),
+  523/553 M10K (95 %); timing met: setup +0.154 ns (HDMI clock), hold +0.249 ns, 0 TNS.
+- Main (octoos-main-build-rgb256, e209273): builds clean.
+
+## Left (for the Core 10 merge)
+- build.yml conflicts with fix55-on-card8 in the reports step only: keep the rgb256 side, the $REV paths,
+  with fix55's  sed 's/  */ /g'  in place of cut.
