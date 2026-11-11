@@ -85,6 +85,11 @@ port(
 	split       : in  std_logic := '0';
 	-- FINE SCROLL (Fix 42): the 4x pixel clock reaches the output (OctoVIC's quarter pixels on)
 	quarter     : in  std_logic := '0';
+	-- C64RGB 256 (Fix 60): the VIC's pixel as it comes out - its colour index, what made it
+	-- (rtl/video_vicII_656x.vhd pixTag) and the pixel strobe - for the recolour unit (rtl/rgb256.sv)
+	rgb_index   : out unsigned(3 downto 0);
+	rgb_tag     : out unsigned(28 downto 0);
+	rgb_pix_en  : out std_logic;
 
 	-- cartridge port
 	game        : in  std_logic;
@@ -781,11 +786,15 @@ port map (
 	hsync => hSync,
 	vsync => vSync,
 	colorIndex => vicColorIndex,
+	pixTag => rgb_tag,
 	rasterXo => vicRasterX,
 	rasterYo => vicRasterY,
 
 	irq_n => irq_vic
 );
+
+rgb_index  <= vicColorIndex;
+rgb_pix_en <= enablePixel;
 
 c64colors: entity work.fpga64_rgbcolor
 port map (
