@@ -68,3 +68,15 @@ octovic 9,701 ALMs needed (baseline 8,723; octoscope.sv 451), each sid_top ~2,25
 - Build of fix55-on-card8 (run 43008327648, SEED 3) and seed trials fix55-on-card8-s5 / -s8 (runs 43011670743,
   43011675130; only the SEED differs) - read their artifacts (C64.sta.summary), the reports branch is shared.
 - Proof MP4s (emulator, current KERNAL, real-core mode): scratchpad/ob4/OctoPlay build 4 - *.mp4.
+
+### 11 Nov afternoon: fit and timing on card8 (Core 10)
+- fix55-on-card8 (card8 + OCTOSCOPE), build.yml put back as card8 has it (reports to build-reports).
+  Seed 3 (run 43008327648): fits, 41,457 ALMs, 553/553 M10K, 82 DSP; HDMI setup -0.069 ns (sys/).
+  Seed 5 (run 43011670743): does NOT fit (4,191 of 4,191 LABs). Seed 8 (run 43011675130): fits, 41,476 ALMs,
+  every path met (worst setup +0.148 ns HDMI, worst hold +0.210 ns). C64.qsf now SEED 8.
+- core10-trial = fix55-on-card8 + origin/rgb256 (merges clean once build.yml is card8's; the trial's build.yml
+  sends its reports to build-reports-core10trial*, never build-reports). Seed 3 (run 43011864200): RGB256 core
+  fits (41,012 ALMs, 533 M10K, all timing met); the Octophonic core does NOT fit (4,191 LABs). Seed 8: run
+  43021988903; seeds 1 / 13: core10-trial-s1 / -s13 (runs 43025733059, 43025741707).
+- The device is full (99% ALMs, 100% M10K): the fit depends on the seed. Any later change to Core 10 needs a
+  fresh build (and maybe another seed) before the burn.
