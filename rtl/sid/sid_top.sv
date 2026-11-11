@@ -49,7 +49,14 @@ module sid_top
 	// OCTOPHONIC (build 6): '1' while the start screen is up (OctoVIC CTRL = $0B, the start screen's;
 	// fpga64_sid_iec.vhd) - ENV3 ($1C) then reads the loudest of the SID's three envelopes, so the
 	// start screen's eq shows any voice; '0' (every program): the real voice 3 envelope
-	input         eq_any
+	input         eq_any,
+
+	// OCTOPHONIC OCTOSCOPE (Fix 55, rtl/octovic/octoscope.sv): voice sc_sel (0-5: the left chip's voices 1-3, then
+	// the right's) out, a clock later - {model, FREQ>=839, osc[7:0]!=0, osc[23:8], envelope DAC, DAC less its DC};
+	// and both chips' whole output (audio >> 10, as this microsecond first latched it) for the scope's channels 24-31
+	input   [2:0] sc_sel,
+	output reg [39:0] sc_rec,
+	output reg [15:0] sc_aud
 );
 
 localparam N = DUAL ? 2 : 1;
@@ -89,6 +96,9 @@ wire  [7:0] Misc_Osc3[N];
 wire  [7:0] Misc_Env3[N];
 wire  [7:0] Misc_Env1[N];
 wire  [7:0] Misc_Env2[N];
+
+// OCTOSCOPE: each voice's values for the scope ({lock, osc[7:0] != 0, osc[23:8], env[7:0], dac[12:0]}), voice i*3+k
+wire [38:0] scv[N*3];
 
 wire [21:0] voice_1[N];
 wire [21:0] voice_2[N];
@@ -132,7 +142,12 @@ generate
 			.p_t_out(p_t_out[i*3+0]),
 			.ps__out(ps__out[i*3+0]),
 			.pst_out(pst_out[i*3+0]),
-			.acc_t(acc_t[i*3+0])
+			.acc_t(acc_t[i*3+0]),
+			.sc_dac(scv[i*3+0][12:0]),
+			.sc_env(scv[i*3+0][20:13]),
+			.sc_acc(scv[i*3+0][36:21]),
+			.sc_lonz(scv[i*3+0][37]),
+			.sc_lock(scv[i*3+0][38])
 		);
 
 		sid_voice v2
@@ -154,7 +169,12 @@ generate
 			.p_t_out(p_t_out[i*3+1]),
 			.ps__out(ps__out[i*3+1]),
 			.pst_out(pst_out[i*3+1]),
-			.acc_t(acc_t[i*3+1])
+			.acc_t(acc_t[i*3+1]),
+			.sc_dac(scv[i*3+1][12:0]),
+			.sc_env(scv[i*3+1][20:13]),
+			.sc_acc(scv[i*3+1][36:21]),
+			.sc_lonz(scv[i*3+1][37]),
+			.sc_lock(scv[i*3+1][38])
 		);
 
 		sid_voice v3
@@ -177,7 +197,12 @@ generate
 			.p_t_out(p_t_out[i*3+2]),
 			.ps__out(ps__out[i*3+2]),
 			.pst_out(pst_out[i*3+2]),
-			.acc_t(acc_t[i*3+2])
+			.acc_t(acc_t[i*3+2]),
+			.sc_dac(scv[i*3+2][12:0]),
+			.sc_env(scv[i*3+2][20:13]),
+			.sc_acc(scv[i*3+2][36:21]),
+			.sc_lonz(scv[i*3+2][37]),
+			.sc_lock(scv[i*3+2][38])
 		);
 		
 		always @(posedge clk) Fc_offset[i] <= i ? fc_offset_r : fc_offset_l;
@@ -353,6 +378,18 @@ always @(posedge clk) begin
 end
 
 assign data_out = cs[0] ? bus_data[0] : bus_data[N-1];
+
+// OCTOSCOPE: the voice asked for (the left chip's for 0-2, the right's for 3-5), and the whole outputs as they
+// were first latched this microsecond (state 15: the right chip's then follows a volume write until the next
+// microsecond - the emulator's scope takes the value before that write)
+reg [1:0] s15;
+always @(posedge clk) begin
+	reg [2:0] q;
+	q = (sc_sel < 3'(N*3)) ? sc_sel : 3'd0;
+	sc_rec <= {mode[(q >= 3'd3) ? 1 : 0], scv[q]};
+	s15 <= {s15[0], &state};
+	if (s15 == 2'b01) sc_aud <= {audio[N-1][17:10], audio[0][17:10]};
+end
 
 assign audio_l = audio[0];
 assign audio_r = audio[N-1];
