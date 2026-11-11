@@ -180,7 +180,12 @@ things are. The biggest users of M10Ks:
 Choices that would make room (each takes a menu option away, so it is Neal's call):
 
 - **the Sound Expander (OPL2)**: 37 M10Ks and ~1,285 ALMs - room for OCTOSCOPE's RAM and logic both. A fit trial
-  of exactly this was built (branch fix55-trial-noopl, not for the card) to measure it.
+  of exactly this was built (branch fix55-trial-noopl 0f48a5a, not for the card, 11 Nov): it **fits** - RAM blocks
+  543 / 553, ALMs 41,138 / 41,910 (98%), DSP 82 / 112. OCTOSCOPE took 32 M10Ks (its sample RAM) and ~1,450 ALMs
+  (octoscope.sv 569, the scope pass and pixel units in octovic ~880). Timing (the build's summary): clk_sys and the
+  other core clocks pass (worst setup slack +1.55 ns); the HDMI scaler's clock is 0.017 ns short - that framework
+  path moves with every fit (-0.135 ns at cb5a6b5, +0.200 ns at 8d28568, with no OCTOSCOPE), so a seed sweep or a
+  little more room is needed before a card build. At 98% of the logic, every later fix gets harder to fit.
 - **the Japanese System ROM** (KERNAL/BASIC + its character set): 20 M10Ks - with the 5 free, 25: enough only if
   OCTOSCOPE packs 5 samples a word (23 M10Ks; a little more logic in the renderer), and no help with the logic.
 - the 1541's DolphinDOS/parallel ROM, the HQ2x filter: possible, smaller, and they touch loaders and the picture.

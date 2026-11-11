@@ -15,14 +15,16 @@ Kept up to date while the work goes on, so an interrupted session can carry on f
 - core-fixes: only the build-report improvements (8d28568, e9bad65) - it still builds and fits.
 - fix55-octoscope: core-fixes + OCTOSCOPE (RTL, sim, docs). Not merged into core-fixes because it cannot fit
   until block RAM is freed (Neal's choice - docs/OCTOVIC_MEMORY.md, OCTOSCOPE).
-- fix55-trial-noopl: fix55-octoscope with the Sound Expander removed - a FIT TRIAL only (build run 42978396818).
+- fix55-trial-noopl: fix55-octoscope with the Sound Expander removed - a FIT TRIAL only (build run 42978396818):
+  fits, 543/553 M10K, 41,138 ALMs (98%), core clocks pass, HDMI clock -0.017 ns (that path was -0.135 ns before
+  OCTOSCOPE too).
 - Emulator: octophonic-backgrounds emu-core-fixes b7cd33f (source; x64sc not rebuilt).
 
 ## Open
 - BLOCK RAM: about 29 M10Ks needed, 5 free (548/553 at 8d28568). The design cannot be fitted until block RAM
   is freed elsewhere - Neal decides what (see docs/OCTOVIC_MEMORY.md, OCTOSCOPE). The baseline build with the
   RAM summary (run 42971666867) tells where the blocks are.
-- ALMs: 95% used; OCTOSCOPE adds an estimated 700-1,000 ALMs (the 24:1 record mux, the engine, 4 pixel units).
+- ALMs: OCTOSCOPE measured at ~1,450 ALMs + 32 M10K + 5 DSP (fit trial).
 - No Quartus here: fit and timing only from the GitHub build (build.yml, workflow_dispatch).
 - Emulator port: octophonic-backgrounds branch emu-core-fixes (the emulator EMULATOR_VS_MISTER.md names for
   core-fixes); it has no FINE SCROLL emulation (only the scratchpad e115 tree does).
