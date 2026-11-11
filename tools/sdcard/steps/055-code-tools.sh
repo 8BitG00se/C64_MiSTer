@@ -2,7 +2,7 @@
 # 055 - the coding tools: octophonic/acme (the assembler Main runs for OCTOCODE's F2 COMPILE) and
 # games/C64/Tools/OCTOCODE.PRG (the editor: F3 load, edit, F2 compile and run, F5 save to the disk).
 # Payload wanted: files/acme (ARM, static - built with Main on octoos-main-build), files/OCTOCODE.PRG
-# Nothing else goes in Tools or the other games/C64 folders: they are filled by the user.
+# Only SPEC.PRG (step 056) joins it in Tools; the rest of Tools and the other games/C64 folders are the user's.
 # OCTO-RECHECK (a newer acme / OCTOCODE.PRG in the payload replaces the one on the card)
 set -u
 . "$(dirname "$0")/../octo-step-lib.sh"

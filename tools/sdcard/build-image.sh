@@ -167,6 +167,8 @@ else echo "no screen firmware kit (step 088 has nothing to put on the screen lat
 # OCTOCODE, the code editor, from this commit's source (step 055 puts it in Tools)
 acme -f cbm -o "$PAY/OCTOCODE.PRG" "$REPO/tools/octoos/octocode/octocode.asm"
 echo "OCTOCODE.PRG: $(stat -c %s "$PAY/OCTOCODE.PRG") bytes"
+# SPEC, the spec page (Fix 59), from this commit's source (step 056 puts it in Tools)
+sh "$REPO/tools/spec/build.sh" "$PAY/SPEC.PRG"
 # no menu core in the payload: since build 4 the stock (white noise) menu.rbf stays; step 095 puts
 # it back on a card that had the navy one
 rm -f "$PAY/menu.rbf"
@@ -222,7 +224,8 @@ fi
     echo "$(md5sum < "$PAY/MiSTer" | cut -c1-32)  MiSTer"
     echo "$(md5sum < "$PAY/SHELL.PRG" | cut -c1-32)  octophonic/SHELL.PRG"
     echo "$(md5sum < "$PAY/acme" | cut -c1-32)  octophonic/acme"
-    echo "$(md5sum < "$PAY/OCTOCODE.PRG" | cut -c1-32)  games/C64/Apps/OCTOCODE.PRG"
+    echo "$(md5sum < "$PAY/OCTOCODE.PRG" | cut -c1-32)  games/C64/Tools/OCTOCODE.PRG"
+    echo "$(md5sum < "$PAY/SPEC.PRG" | cut -c1-32)  games/C64/Tools/SPEC.PRG"
     echo "$(md5sum < "$PAY/oled.sh" | cut -c1-32)  octophonic/oled.sh"
     for f in tty2oled.sh S60tty2oled; do echo "$(md5sum < "$PAY/tty2oled/$f" | cut -c1-32)  tty2oled/$f"; done
     for f in "$HERE/run-steps.sh" "$HERE/octo-step-lib.sh"; do echo "$(md5sum < "$f" | cut -c1-32)  octophonic/recipe/$(basename "$f")"; done

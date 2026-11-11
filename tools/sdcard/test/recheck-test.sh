@@ -17,7 +17,7 @@ mkpay() {
     printf '<mistergamedescription>\n<rbf>_Computer/.C64_Octophonic</rbf>\n<setname same_dir="1">Octophonic64</setname>\n</mistergamedescription>\n' > "$P/_Computer/Octophonic 64.mgl"
     { echo "Octophonic OS COMPILE main v$V"; head -c 5000 /dev/urandom; } > "$P/MiSTer"
     { printf '\000\276'; echo "shell v$V"; } > "$P/SHELL.PRG"
-    echo "acme" > "$P/acme"; echo "octocode" > "$P/OCTOCODE.PRG"
+    echo "acme" > "$P/acme"; echo "octocode" > "$P/OCTOCODE.PRG"; echo "spec" > "$P/SPEC.PRG"
     cp "$R/tools/oled/oled.sh" "$P/oled.sh"; cp "$R/tools/oled/tty2oled/"* "$P/tty2oled/"
 }
 mkpay old 7; mkpay new 8
