@@ -154,3 +154,33 @@ and requests are what runs out.
 OctoBench (a 6502 program) steps through those 13 tests on the real MiSTer, ~1 s each, and prints
 LATE, WORST, LEAD, LATMAX, STALL and REPEAT+BLANK for each - green within the limit, red over it.
 That table is the machine's real limits; the replay numbers above are only a model of its DDR3.
+
+## OCTOSCOPE (Fix 55): where its block RAM comes from - Neal decides
+
+OCTOSCOPE keeps its captures in block RAM: 3 slots x 32 channels x 304 one-byte samples, read 4 a clock - about
+29 M10Ks (the slot rules and each channel's capture state are in MLABs). Nothing goes to the DDR3: capturing 24
+voices at up to 0.6 samples a microsecond each would add up to ~120 DDR3 requests a line, the very thing that makes
+lines late (above).
+
+The fitter's report for core-fixes 8d28568 (11 Nov 2026, build-reports branch, fit_entities.txt): RAM blocks
+548 / 553 (5 free), ALMs needed 39,671 / 41,910 (about 2,240 free), DSP 77 / 112. So OCTOSCOPE does **not** fit as
+things are. The biggest users of M10Ks:
+
+| part | M10Ks | ALMs | what it is |
+|---|---|---|---|
+| iec_drive (1541 74, 1581 73) | 147 | 3,466 | the drives, with their standard and loadable/parallel ROMs |
+| the 4 sid_tops | 104 | 8,550 | 8 SIDs (26 each: waveform and filter tables) |
+| fpga64_buslogic | 72 | 136 | the System ROMs: 4 KERNAL/BASIC sets x 16 (Octophonic, Standard, Weaver 2, Japanese) + 2 character sets x 4 |
+| chip_bank | 64 | 16 | Neal's chip personalities (the measured combined waveforms) |
+| ascal (HDMI scaler) | 43 | 2,156 | the MiSTer framework's scaler |
+| opl3 (Sound Expander) | 37 | 1,285 | the OPL2 cartridge |
+| octovic | 28 | 8,723 | |
+| video_mixer (scandoubler, HQ2x, gamma) | 27 | 1,038 | the analogue output's scandoubler |
+
+Choices that would make room (each takes a menu option away, so it is Neal's call):
+
+- **the Sound Expander (OPL2)**: 37 M10Ks and ~1,285 ALMs - room for OCTOSCOPE's RAM and logic both. A fit trial
+  of exactly this was built (branch fix55-trial-noopl, not for the card) to measure it.
+- **the Japanese System ROM** (KERNAL/BASIC + its character set): 20 M10Ks - with the 5 free, 25: enough only if
+  OCTOSCOPE packs 5 samples a word (23 M10Ks; a little more logic in the renderer), and no help with the logic.
+- the 1541's DolphinDOS/parallel ROM, the HQ2x filter: possible, smaller, and they touch loaders and the picture.

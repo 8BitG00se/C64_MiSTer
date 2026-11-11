@@ -11,8 +11,15 @@ Kept up to date while the work goes on, so an interrupted session can carry on f
   72 band first lines, 434 trace joins, no late lines. regmap (VERSION 5), finescroll PASS with the new octovic.
 - docs/OCTOVIC.md: OCTOSCOPE section, $C4-$CB rows, LMODE b4, VERSION 5.
 
+## Branches (11 Nov)
+- core-fixes: only the build-report improvements (8d28568, e9bad65) - it still builds and fits.
+- fix55-octoscope: core-fixes + OCTOSCOPE (RTL, sim, docs). Not merged into core-fixes because it cannot fit
+  until block RAM is freed (Neal's choice - docs/OCTOVIC_MEMORY.md, OCTOSCOPE).
+- fix55-trial-noopl: fix55-octoscope with the Sound Expander removed - a FIT TRIAL only (build run 42978396818).
+- Emulator: octophonic-backgrounds emu-core-fixes b7cd33f (source; x64sc not rebuilt).
+
 ## Open
-- BLOCK RAM: about 29 M10Ks needed, 5 free (548/553 at cb5a6b5). The design cannot be fitted until block RAM
+- BLOCK RAM: about 29 M10Ks needed, 5 free (548/553 at 8d28568). The design cannot be fitted until block RAM
   is freed elsewhere - Neal decides what (see docs/OCTOVIC_MEMORY.md, OCTOSCOPE). The baseline build with the
   RAM summary (run 42971666867) tells where the blocks are.
 - ALMs: 95% used; OCTOSCOPE adds an estimated 700-1,000 ALMs (the 24:1 record mux, the engine, 4 pixel units).
