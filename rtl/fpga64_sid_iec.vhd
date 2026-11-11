@@ -72,6 +72,7 @@ port(
 	-- VGA/SCART interface
 	vic_variant : in  std_logic_vector(1 downto 0);
 	ntscMode    : in  std_logic;
+	sysinfo     : in  std_logic_vector(7 downto 0) := (others => '0');   -- OCTOPHONIC Fix 59: SDRAM and REU size for OctoVIC $B3
 	exact50     : in  std_logic;   -- OCTOPHONIC Fix 48: Exact 50 Hz (clk32 = 31,449,600 Hz) - keeps the TOD at a true 50 Hz
 	hsync       : out std_logic;
 	vsync       : out std_logic;
@@ -505,7 +506,8 @@ port (
 	ddr_busy       : in  std_logic;
 	ddr_dout       : in  std_logic_vector(63 downto 0);
 	ddr_dout_ready : in  std_logic;
-	irq            : out std_logic
+	irq            : out std_logic;
+	sysinfo        : in  std_logic_vector(7 downto 0)
 );
 end component;
 
@@ -919,7 +921,8 @@ port map (
 	ddr_busy       => ogx_ddr_busy,
 	ddr_dout       => ogx_ddr_dout,
 	ddr_dout_ready => ogx_ddr_dout_ready,
-	irq            => octo_irq
+	irq            => octo_irq,
+	sysinfo        => sysinfo
 );
 
 r <= unsigned(octo_rgb(23 downto 16));

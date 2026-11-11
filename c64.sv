@@ -235,6 +235,7 @@ reg ntsc_sys1 = 0, ntsc = 0;
 reg exact_sys1 = 0, exact = 0, exact_prev = 0;   // Fix 48
 reg reset_n;
 reg reset_wait = 0;
+wire [15:0] sdram_sz;                        // Fix 59: from Main (hps_io)
 wire hk_kernal, hk_brk, hk_wipe, hk_spare;   // Fix 58: SHIFT+F1-F4 hot keys (rtl/hotkeys.sv)
 reg ntsc_prev = 0;
 
@@ -349,7 +350,7 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(2), .BLKSZ(1)) hps_io
 	.paddle_3(pd4),
 
 	.status(status),
-	.status_menumask({~status[54], ezfl_mod || ezfl_save_en, cart_ezfl, ~status[69], ~status[66], status[58], (status[47:46] != 2'd1), status[16], status[13], tap_loaded, 1'b0, |vcrop, status[56]}), .buttons(buttons),
+	.status_menumask({~status[54], ezfl_mod || ezfl_save_en, cart_ezfl, ~status[69], ~status[66], status[58], (status[47:46] != 2'd1), status[16], status[13], tap_loaded, 1'b0, |vcrop, status[56]}), .buttons(buttons), .sdram_sz(sdram_sz),
 	.forced_scandoubler(forced_scandoubler),
 	.gamma_bus(gamma_bus),
 
@@ -993,6 +994,7 @@ fpga64_sid_iec fpga64
 	.vic_variant(status[35:34]),
 	.ntscmode(ntsc),
 	.exact50(exact),
+	.sysinfo({sdram_sz[15], 1'b0, reu_cfg, 2'b00, sdram_sz[1:0]}),   // Fix 59: the spec page
 	.hsync(hsync),
 	.vsync(vsync),
 	.palette(status[84:82]),

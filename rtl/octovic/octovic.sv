@@ -52,14 +52,15 @@ module octovic
 	input      [63:0] ddr_dout,
 	input             ddr_dout_ready,
 
-	output            irq          // version 2: the interrupt, high while any enabled flag is set
+	output            irq,         // version 2: the interrupt, high while any enabled flag is set
+	input       [7:0] sysinfo      // Fix 59: read at $D6B3 - b7 SDRAM size known, b1-0 SDRAM (0 none, 1 32MB, 2 64MB, 3 128MB), b5-4 REU (0 off, 1 512K, 2 2MB, 3 16MB)
 );
 
 // THE CORE'S NAME, readable by the 6502 so the start screen, the settings page and the demos can
 // show and check which core is running: $D6B8-$D6BF the build's tag (8 ASCII letters, padded with
 // spaces), $D6B4-$D6B6 its build date (BCD: day, month, year - 20xx). The build stamps CORE_DATE
 // (.github/workflows/build.yml); CORE_TAG is set by hand for each core build.
-localparam [63:0] CORE_TAG  = "CORE8   ";
+localparam [63:0] CORE_TAG  = "CORE9   ";
 localparam [23:0] CORE_DATE = 24'h261101;      // BCD yymmdd
 localparam [28:0] VBASE = 29'h06400000;        // byte $32000000
 localparam RW = 396;                           // pixels drawn a line: raster X 0-395 (x -32..363)
@@ -346,7 +347,7 @@ always @(*) begin
 		8'hAE: dout = h_latmax;     8'hAF: dout = h_latavg;
 		8'hB0: dout = h_stall;      8'hB1: dout = {6'd0, h_lead};
 		8'hB2: dout = vlost;
-		8'hB4: dout = CORE_DATE[7:0]; 8'hB5: dout = CORE_DATE[15:8]; 8'hB6: dout = CORE_DATE[23:16];
+		8'hB3: dout = sysinfo;      8'hB4: dout = CORE_DATE[7:0]; 8'hB5: dout = CORE_DATE[15:8]; 8'hB6: dout = CORE_DATE[23:16];
 		8'hB8, 8'hB9, 8'hBA, 8'hBB, 8'hBC, 8'hBD, 8'hBE, 8'hBF: dout = CORE_TAG[8*(7 - addr[2:0]) +: 8];
 		8'h50: dout = mula[7:0];    8'h51: dout = mula[15:8];    8'h52: dout = mulb[7:0];    8'h53: dout = mulb[15:8];
 		8'h54: dout = mulr[7:0];    8'h55: dout = mulr[15:8];    8'h56: dout = mulr[23:16];  8'h57: dout = mulr[31:24];
