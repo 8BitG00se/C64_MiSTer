@@ -232,6 +232,10 @@ int main (int argc, char** argv)
             voice (30, sid, 0, (int) (2000 * k), 0x800, 0x43, 0x00, 0xF0);      // pulse, hard sync from voice 3
             voice (30, sid, 1, (int) (4000 * k), 0, 0x15, 0x00, 0xF0);          // triangle, ring modulated by voice 1
             voice (30, sid, 2, (int) (5100 * k), 0x600, 0x41, 0x00, 0xF0);      // pulse
+            if (sid == 6) {                                                     // the test bit held 50 ms at FREQ >= 839:
+                sidw (90000, sid, 18, 0x49); sidw (140000, sid, 18, 0x41);      // the capture runs out at 40,000 us exactly
+                for (long t = 160000; t < 200000; t += 9000) { sidw (t, sid, 14, 0x60); sidw (t, sid, 15, 0x03); sidw (t + 4000, sid, 14, 0x20); sidw (t + 4000, sid, 15, 0x14); }
+            }                                                                   // (and FREQ 864 mid-capture: a cycle of 19,400 us)
             break;
         case 3:
             voice (30, sid, 0, 5000, 0, 0x21, 0x00, 0xF0);                      // saw: the note changes mid-capture
