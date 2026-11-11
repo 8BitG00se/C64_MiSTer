@@ -56,3 +56,15 @@ octovic 9,701 ALMs needed (baseline 8,723; octoscope.sv 451), each sid_top ~2,25
   engine compares with last microsecond's osc[23:8] (kept in its block RAM) - exact (a check voice makes 18 of the
   rare wraps from below 256 to 0 happen; all equal).
 - sim/octoscope PASS (both runs).
+
+### Build of step 2 (run 42995830630, 6686575, on core-fixes): FITS
+- 41,410 / 41,910 ALMs (99%), 553 / 553 M10K (100%), 82 / 112 DSP, 50,343 registers.
+- Timing: every core clock and hold passes; only the HDMI clock (sys/, pll_hdmi) setup -0.047 ns (same path as
+  before OCTOSCOPE: -0.135 ns on core-fixes alone). Compile took ~110 min (device full).
+
+## 11 Nov: Core 10 = card8 (Core 9) + OCTOSCOPE + C64RGB 256 (separate job, branch rgb256), one burn tonight
+- fix55-on-card8 = origin/card8 + fix55-octoscope (merge 0952509, both octovic ports kept: sysinfo $B3, scope).
+  sim/octoscope PASS on it (1,916 captures, 1,462,032 pixels, 0 words lost), regmap (VERSION 5), finescroll, sprtable PASS.
+- Build of fix55-on-card8 (run 43008327648, SEED 3) and seed trials fix55-on-card8-s5 / -s8 (runs 43011670743,
+  43011675130; only the SEED differs) - read their artifacts (C64.sta.summary), the reports branch is shared.
+- Proof MP4s (emulator, current KERNAL, real-core mode): scratchpad/ob4/OctoPlay build 4 - *.mp4.
