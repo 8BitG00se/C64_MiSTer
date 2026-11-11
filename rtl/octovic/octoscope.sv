@@ -27,6 +27,7 @@
 //  The frame's latch is applied to each channel as the engine next passes it (within a microsecond); the shown
 //  slots may be read once that has happened and every word queued before the latch is in the DDR3 (r_ok).
 // =====================================================================================
+(* multstyle = "dsp" *)          // its multiplies in the DSP blocks (there are some to spare; logic is short)
 module octoscope
 (
 	input             clk,
@@ -56,6 +57,7 @@ module octoscope
 	// the renderer: a channel's shown slot, its rules (2 clocks after r_ch)
 	input       [4:0] r_ch,
 	output reg  [6:0] r_slot,         // channel x 3 + slot
+	output reg [11:0] r_word,         // its first word (slot x 38), a clock after r_slot
 	output reg [33:0] r_desc,         // {hole on, hole start, hole value, fill from, fill value}
 	output reg        r_zero          // nothing captured since reset: all 0
 );
@@ -77,12 +79,13 @@ always @(posedge clk) begin
 end
 
 // each channel: its capture {n, cycle, on, age, tick, hole on, hole start, hole value} (51), its slots
-// {captured ^0, complete ^1, shown ^1, nothing complete yet (inverted), latch seen} (8), and the word being
-// gathered {on, slot, word, data, byte enables} (81) - all 0 after reset is the right start
-reg [139:0] cmem[0:31];
+// {captured ^0, complete ^1, shown ^1, nothing complete yet (inverted), latch seen} (8), the word being
+// gathered {on, slot, word, data, byte enables} (81), and last microsecond's oscillator {osc[23:8], osc[7:0]!=0}
+// (17: a wrap is the new below the old) - all 0 after reset is the right start
+reg [156:0] cmem[0:31];
 reg         cm_we;
 reg   [4:0] cm_wa, cm_ra;
-reg [139:0] cm_wd, cm_q;
+reg [156:0] cm_wd, cm_q;
 always @(posedge clk) begin
 	if (cm_we) cmem[cm_wa] <= cm_wd;
 	cm_q <= cmem[cm_ra];
@@ -124,6 +127,7 @@ always @(posedge clk) begin
 	dm_ra  <= {r_ch, 1'b0} + {2'd0, r_ch} + {5'd0, disp[r_ch]};
 	r_slot <= {r_ch, 1'b0} + {2'd0, r_ch} + {5'd0, disp[r_ch]};
 	r_zero <= disp_z[r_ch];
+	r_word <= r_slot * 12'd38;
 end
 
 // ---------------------------------------------------------------------------------
@@ -173,7 +177,8 @@ end
 reg signed [7:0] sB;
 reg         wrapB, lockB;
 reg   [7:0] xB;
-reg [139:0] stB;
+reg [156:0] stB;
+reg  [16:0] oscB;
 always @(posedge clk) begin
 	reg signed [12:0] w;
 	reg signed [21:0] p;
@@ -184,11 +189,18 @@ always @(posedge clk) begin
 	p  = w * $signed({1'b0, recA[20:13]});
 	q  = isvA ? 10'(p >>> 12) : $signed({{2{audA[7]}}, audA});
 	sB <= (q > 10'sd127) ? 8'sd127 : (q < -10'sd127) ? -8'sd127 : q[7:0];
-	wrapB <= isvA & recA[37];
+	begin
+		reg [16:0] po;
+		po = fresh ? 17'd0 : cm_q[156:140];
+		// the oscillator wrapped: new < old. Its low byte is not handed over, only whether it is 0 - enough: with
+		// osc[23:8] the same, the new is below the old only when it was set to 0 (an overflow lowers osc[23:8])
+		wrapB <= isvA & ((recA[36:21] < po[16:1]) || (recA[36:21] == po[16:1] && !recA[37] && po[0]));
+	end
+	oscB  <= recA[37:21];
 	lockB <= isvA & recA[38];
 	xm  = {8'd0, recA[36:21]} * 24'd152;
 	xB  <= xm[23:16];
-	stB <= fresh ? 140'd0 : cm_q;
+	stB <= fresh ? 157'd0 : cm_q;
 	if (reset) fresh <= 1;
 	else if (vA && chA == 5'd31) fresh <= 0;
 end
@@ -271,7 +283,7 @@ always @(posedge clk) begin
 		if (enq) begin
 			bad_w <= e[79:78] == ds;
 			sidx = {chB, 1'b0} + {2'd0, chB} + {5'd0, e[79:78]};
-			wm_wd <= {{sidx, 5'd0} + {3'd0, sidx, 2'd0} + {4'd0, sidx, 1'b0} + {6'd0, e[77:72]}, e[71:0]};   // x 38 + word
+			wm_wd <= {sidx * 12'd38 + {6'd0, e[77:72]}, e[71:0]};
 			if ((wptr - rptr) == 9'd256) begin if (lost != 16'hFFFF) lost <= lost + 16'd1; end
 			else begin wm_we <= 1; wm_wa <= wptr[7:0]; wptr <= wptr + 9'd1; end
 		end
@@ -279,7 +291,7 @@ always @(posedge clk) begin
 		comp_w <= comp; cp_w <= cp; ch_w <= chB;
 		if (comp) begin dn = cp; cp = ncap; dz = 0; end
 		cm_we <= 1; cm_wa <= chB;
-		cm_wd <= {sv, ss, sw, sd, sbe, cp, dn ^ 2'd1, ds ^ 2'd1, !dz, lg, n, cyc, on, age, tick, hok, hs, hv};
+		cm_wd <= {oscB[15:0], oscB[16], sv, ss, sw, sd, sbe, cp, dn ^ 2'd1, ds ^ 2'd1, !dz, lg, n, cyc, on, age, tick, hok, hs, hv};
 		if (chB == 5'd31) begin
 			tick_done <= 1;
 			if (lat_busy) lat_busy <= 0;                 // every channel has applied the latch
@@ -298,4 +310,36 @@ always @(posedge clk) begin
 	else if (latch_req) lpend <= 1;
 end
 
+endmodule
+
+// ---------------------------------------------------------------------------------
+//  one sample of a line of the trace (octovic draws a pixel a clock with it): the sample (the slot's rules
+//  applied), and the flags {d >= 0, d <= 0, d >= -1, d <= 1} of d = (line - SCY) - y, y = -(s x SCG) / 128
+//  rounded towards 0 - a clock later
+// ---------------------------------------------------------------------------------
+(* multstyle = "dsp" *)
+module octoscope_px
+(
+	input             clk,
+	input       [8:0] i,              // the sample
+	input       [7:0] b,              // its byte as written
+	input      [33:0] desc,           // the slot's rules
+	input             zero,           // nothing captured: 0
+	input       [7:0] g,              // SCG
+	input       [9:0] dy,             // line - SCY
+	output reg  [3:0] f
+);
+always @(posedge clk) begin
+	reg signed  [7:0] sm;
+	reg signed [16:0] pr;
+	reg signed  [9:0] q, d;
+	sm = zero ? 8'sd0
+	   : (i >= desc[16:8]) ? desc[7:0]                                       // from fn on: fv
+	   : (desc[33] && i >= {1'b0, desc[32:25]} && i <= 9'd152) ? desc[24:17] // the hole: hv
+	   : b;
+	pr = sm * $signed({1'b0, g});
+	q  = 10'((pr + (pr[16] ? 17'sd127 : 17'sd0)) >>> 7);                     // (s x g) / 128 towards 0 = -y
+	d  = $signed(dy) + q;
+	f <= {d >= 0, d <= 0, d >= -10'sd1, d <= 10'sd1};
+end
 endmodule

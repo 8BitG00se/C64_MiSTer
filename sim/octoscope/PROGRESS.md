@@ -45,3 +45,14 @@ each sid_top +~135 (+540): about 2,000 ALMs; baseline headroom 2,239.
 - sim/octoscope PASS: seed 1 (20% busy), seed 2 (50% busy, 20-80 clocks), seed 3 (30%, port held a line a
   frame): 1,762 captures, 14 latches x 32, 1,462,032 pixels, 434 trace joins, 0 words lost, no late lines.
 - Next: GitHub build of fix55-octoscope (reports to build-reports-fix55), then step 2 (lean) from its numbers.
+
+### Build of step 1 (run 42988809330, f634b2a): does NOT fit - 4,212 LABs needed, 4,191 in the device (~210 ALMs over).
+octovic 9,701 ALMs needed (baseline 8,723; octoscope.sv 451), each sid_top ~2,250 (baseline ~2,136). M10Ks fine.
+
+### Step 2 (lean), same behaviour:
+- multiplies in DSP blocks (octoscope, octoscope_px: x = acc x 152, (DAC-2048) x ENV, slot x 38, s x SCG);
+- one pixel a clock (one octoscope_px), registers read live (no copies);
+- sid_voice no longer works out the wrap (24 x a 24-bit "!= 0" and a carry): it hands over osc[7:0] != 0 and the
+  engine compares with last microsecond's osc[23:8] (kept in its block RAM) - exact (a check voice makes 18 of the
+  rare wraps from below 256 to 0 happen; all equal).
+- sim/octoscope PASS (both runs).

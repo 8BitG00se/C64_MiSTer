@@ -52,7 +52,7 @@ module sid_top
 	input         eq_any,
 
 	// OCTOPHONIC OCTOSCOPE (Fix 55, rtl/octovic/octoscope.sv): voice sc_sel (0-5: the left chip's voices 1-3, then
-	// the right's) out, a clock later - {model, FREQ>=839, wrapped, osc[23:8], envelope DAC, DAC less its DC};
+	// the right's) out, a clock later - {model, FREQ>=839, osc[7:0]!=0, osc[23:8], envelope DAC, DAC less its DC};
 	// and both chips' whole output (audio >> 10, as this microsecond first latched it) for the scope's channels 24-31
 	input   [2:0] sc_sel,
 	output reg [39:0] sc_rec,
@@ -97,7 +97,7 @@ wire  [7:0] Misc_Env3[N];
 wire  [7:0] Misc_Env1[N];
 wire  [7:0] Misc_Env2[N];
 
-// OCTOSCOPE: each voice's values for the scope ({lock, wrap, acc[15:0], env[7:0], dac[12:0]}), voice i*3+k
+// OCTOSCOPE: each voice's values for the scope ({lock, osc[7:0] != 0, osc[23:8], env[7:0], dac[12:0]}), voice i*3+k
 wire [38:0] scv[N*3];
 
 wire [21:0] voice_1[N];
@@ -146,7 +146,7 @@ generate
 			.sc_dac(scv[i*3+0][12:0]),
 			.sc_env(scv[i*3+0][20:13]),
 			.sc_acc(scv[i*3+0][36:21]),
-			.sc_wrap(scv[i*3+0][37]),
+			.sc_lonz(scv[i*3+0][37]),
 			.sc_lock(scv[i*3+0][38])
 		);
 
@@ -173,7 +173,7 @@ generate
 			.sc_dac(scv[i*3+1][12:0]),
 			.sc_env(scv[i*3+1][20:13]),
 			.sc_acc(scv[i*3+1][36:21]),
-			.sc_wrap(scv[i*3+1][37]),
+			.sc_lonz(scv[i*3+1][37]),
 			.sc_lock(scv[i*3+1][38])
 		);
 
@@ -201,7 +201,7 @@ generate
 			.sc_dac(scv[i*3+2][12:0]),
 			.sc_env(scv[i*3+2][20:13]),
 			.sc_acc(scv[i*3+2][36:21]),
-			.sc_wrap(scv[i*3+2][37]),
+			.sc_lonz(scv[i*3+2][37]),
 			.sc_lock(scv[i*3+2][38])
 		);
 		

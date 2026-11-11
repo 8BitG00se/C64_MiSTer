@@ -43,6 +43,7 @@
 static int8_t sc_cap[32][SCN], sc_done[32][SCN], sc_disp[32][SCN];
 static int sc_n[32], sc_cyc[32], sc_on[32]; static uint32_t sc_prev[32], sc_age[32], sc_tick[32];
 static int sc_new[32];
+static long n_lowwrap;
 static void sc_store(int v, int s, uint32_t acc, int locked)
 {
     if (s > 127) s = 127; else if (s < -127) s = -127;
@@ -79,6 +80,10 @@ static void octovic_scope_tick(int sid, const VoiceIn* v3, int mode, int32_t aud
     for (int i = 0; i < 3; i++) {
         const VoiceIn *vo = &v3[i];
         int32_t w = vo->dac_out + (mode ? 0x800 : 0x380) - 2048;
+        {   // (the check's own count: a wrap the core sees only through osc[7:0] != 0 - set to 0 from below 256)
+            const uint32_t a = vo->osc & 0xFFFFFF, pv = sc_prev[sid * 3 + i];
+            if (vo->freq >= 839 && a < pv && (a >> 8) == (pv >> 8)) ++n_lowwrap;
+        }
         sc_store(sid * 3 + i, (w * (int32_t)vo->env_dac) >> 12, vo->osc & 0xFFFFFF, vo->freq >= 839);
     }
     sc_store(24 + sid, audio >> 10, 0, 0);      /* the SID's whole output (18 bits) */
@@ -232,6 +237,12 @@ int main (int argc, char** argv)
             break;
         case 2:
             voice (30, sid, 0, (int) (2000 * k), 0x800, 0x43, 0x00, 0xF0);      // pulse, hard sync from voice 3
+            if (sid == 2) {                                                     // FREQ 65281: 257 steps from 0 the oscillator
+                sidw (70000, sid, 14, 65281 & 255); sidw (70000, sid, 15, 65281 >> 8);   // has gone round to 1; the test
+                for (long t = 70010, j = 0; t < 110000; t += 280, ++j) {        // bit set about then - set to 0 from below 256
+                    sidw (t, sid, 18, 0x21); sidw (t + 255 + j % 8, sid, 18, 0x29);
+                }
+            }
             voice (30, sid, 1, (int) (4000 * k), 0, 0x15, 0x00, 0xF0);          // triangle, ring modulated by voice 1
             voice (30, sid, 2, (int) (5100 * k), 0x600, 0x41, 0x00, 0xF0);      // pulse
             if (sid == 6) {                                                     // the test bit held 50 ms at FREQ >= 839:
@@ -500,6 +511,8 @@ int main (int argc, char** argv)
     std::printf ("captures: %ld phase-locked, %ld by time; %ld with the jump into cycle 2 kept as a rule (%ld over 2 samples: sync/test), %ld ended early by a wrap (fill over 2 samples)\n",
                  st_locked, st_timed, st_hole, st_bighole, st_bigfill);
     if (! st_timed || ! st_locked || ! st_bighole || ! st_bigfill) FAIL ("a kind of capture never happened");
+    std::printf ("wraps from below 256 to 0 (seen only through osc[7:0] != 0): %ld\n", n_lowwrap);
+    if (! n_lowwrap) FAIL ("no wrap from below 256 happened");
     std::printf ("DDR3 write queue: %u words lost (must be 0), %zu comparisons still waiting at the end\n", (unsigned) t->dbg_lost, cmpq.size());
     if (t->dbg_lost) FAIL ("capture words lost");
     std::printf ("SID writes %zu/%zu, OctoVIC writes %zu/%zu\n", swi, sw.size(), rwi, rw.size());
