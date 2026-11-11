@@ -96,7 +96,7 @@ jobs:
           git checkout -q -b build-reports
           git add -A
           git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Reports: $(cat result.txt)"
-          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" build-reports
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" HEAD:build-reports-core10-s21
 
       - name: Fail if Quartus failed
         if: steps.compile.outcome != 'success'
