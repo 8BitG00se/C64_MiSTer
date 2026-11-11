@@ -28,3 +28,10 @@ Kept up to date while the work goes on, so an interrupted session can carry on f
 - No Quartus here: fit and timing only from the GitHub build (build.yml, workflow_dispatch).
 - Emulator port: octophonic-backgrounds branch emu-core-fixes (the emulator EMULATOR_VS_MISTER.md names for
   core-fixes); it has no FINE SCROLL emulation (only the scratchpad e115 tree does).
+
+## 11 Nov, Neal's decision: fit WITHOUT removing the Sound Expander and without touching sys/
+Plan (coordinator): 1) captures to DDR3 (byte $33000000, above VRAM), small on-chip cache + write FIFO;
+2) lean logic; 3) if still over, list unused C64-side pieces for Neal; 4) note a shared SID engine for later.
+Builds of this branch push their reports to build-reports-fix55 (not build-reports: card8's build uses that).
+Measured cost of the BRAM version (trial vs baseline "ALMs needed"): octovic +1,450 (octoscope.sv 569),
+each sid_top +~135 (+540): about 2,000 ALMs; baseline headroom 2,239.
