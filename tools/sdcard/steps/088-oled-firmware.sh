@@ -1,8 +1,9 @@
 #!/bin/sh
-# 088 - the front screen's firmware: Octophonic tty2oled OCTO4 (8BitG00se/octophonic-tty2oled), which can hold and
+# 088 - the front screen's firmware: Octophonic tty2oled OCTO5 (8BitG00se/octophonic-tty2oled; OCTO5 = the KERNAL-box
+# logo, Fix 51), which can hold and
 # play a program's own animation (CMDOANI) as well as the Octophonic logo.
 #
-# Only a screen that ALREADY runs an Octophonic firmware (OCTO1-OCTO3) is updated: a stock tty2oled screen is left
+# Only a screen that ALREADY runs an Octophonic firmware (OCTO1-OCTO4) is updated: a stock tty2oled screen is left
 # alone (it still shows each program's still picture), and so is one that is up to date. The screen restarts by
 # itself after the update (a few seconds dark) - the MiSTer does not.
 # The screen's program is read back first and kept in octophonic/backups/<run>/ (about 2 minutes); then the new one
@@ -10,11 +11,12 @@
 # transfers. If writing fails, the backup is written back.
 # esptool 3.3.3 (GPL-2) and pyserial 3.5 (BSD) come in the payload and run from there: nothing is installed.
 # Not on an image build (the screen has to be there), and not marked done until it has run on the MiSTer.
+# Step 089 makes the MiSTer run it by itself at power-on (Fix 37) - nobody has to click anything.
 # Payload wanted: files/tty2oled-firmware/{esptool.py, serial/, esp32de_octo.bin, lolin32_octo.bin, esp32s3_octo.bin}
 # OCTO-RECHECK (when WANT goes up, a screen done with an older OCTO firmware is updated again)
 set -u
 . "$(dirname "$0")/../octo-step-lib.sh"
-WANT=4
+WANT=5
 if octo_is_done && grep "^$(octo_name) " "$OCTO_DONE" | grep -q "OCTO$WANT\|left alone"; then
     octo_say "already done (OCTO$WANT, or a screen this step leaves alone)"; exit 0
 fi
