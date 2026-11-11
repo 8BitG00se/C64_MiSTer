@@ -13,6 +13,11 @@ NEW IN THIS BUILD
    updated by itself the first time the card starts - no batch file to click. The screen goes dark
    for about 4 minutes while it updates (the MiSTer keeps running); octophonic/update.log says so.
  - MiSTer.ini: vsync_adjust=2, so HDMI follows the core's 50 Hz (smooth on the CRT and HDMI).
+ - HOT KEYS (Core 9): from anything running, HOLD for about a second -
+     SHIFT+F1  back to the KERNAL start screen     SHIFT+F2  RUN/STOP+RESTORE
+     SHIFT+F4  wipe memory and restart              (SHIFT+F3 is spare; the MiSTer menu is F12)
+   A quick tap still does what it always did.
+ - Tools/SPEC.PRG: what this machine has - core, OctoVIC, SIDs, SDRAM size, REU, PAL/NTSC.
 The other folders are empty, ready for your own files: demos, tools and games come from the
 website (GitHub).
 
