@@ -10,8 +10,8 @@ goes back to BASIC. F7 asks, then silences all 8 SIDs and returns to BASIC.
 ## 1. Install and start
 
 1. Copy `OCTO WEAVER LITE.PRG` (or the `.d64`) to the MiSTer: FileZilla, SFTP, host = the MiSTer's address, user `root`,
-   password `1`, into `/media/fat/games/C64/Apps/`.
-2. On the Octophonic 64: F1 BROWSE, SD CARD, Apps, the file. (The disk: attach the `.d64`, `LOAD"*",8,1`, `RUN`.)
+   password `1`, into `/media/fat/games/C64/Tools/`.
+2. On the Octophonic 64: F1 BROWSE, SD CARD, Tools, the file. (The disk: attach the `.d64`, `LOAD"*",8,1`, `RUN`.)
 3. The disk has the three demo songs and their PLAY players: `DARK DRIVE.OWS`, `OCEAN LIGHT.OWS`, `SKIP ROPE.OWS` to open in the
    editor (type the song's name with N, then L), and `DARK DRIVE PLAY`, `OCEAN LIGHT PLAY`, `SKIP ROPE PLAY` to run on their own
    (`LOAD"DARK DRIVE PLAY",8,1` and `RUN`, or load it from the disk in the browser). File names use the song's first 11 letters.

@@ -147,7 +147,7 @@ manual + a **60-second MP4** (the eq and the screen while DARK DRIVE builds up, 
   recipe, OctoPaint or anything on Neal's PC or MiSTer.
 - Deliverables in the session scratchpad `octoweaver/`: `OCTO WEAVER LITE build 1.zip` (PRG, the
   d64 with the three demo songs and their PLAY players, `How to use.txt` with the FileZilla steps:
-  SFTP to the MiSTer, user root, password 1, into `/media/fat/games/C64/Apps/`), the MP4, and a
+  SFTP to the MiSTer, user root, password 1, into `/media/fat/games/C64/Tools/`), the MP4, and a
   small contact sheet.
 - If something here is impossible or much too slow (e.g. the player's raster cost for 8 SIDs), stop
   and say so in the report rather than quietly redesigning.

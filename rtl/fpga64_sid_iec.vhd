@@ -72,6 +72,7 @@ port(
 	-- VGA/SCART interface
 	vic_variant : in  std_logic_vector(1 downto 0);
 	ntscMode    : in  std_logic;
+	exact50     : in  std_logic;   -- OCTOPHONIC Fix 48: Exact 50 Hz (clk32 = 31,449,600 Hz) - keeps the TOD at a true 50 Hz
 	hsync       : out std_logic;
 	vsync       : out std_logic;
 	palette     : in  unsigned(2 downto 0);
@@ -81,6 +82,8 @@ port(
 	-- SPLIT SCREENS: the VIC's picture alone (for the VGA output), in step with r/g/b
 	vic_rgb_out : out std_logic_vector(23 downto 0);
 	split       : in  std_logic := '0';
+	-- FINE SCROLL (Fix 42): the 4x pixel clock reaches the output (OctoVIC's quarter pixels on)
+	quarter     : in  std_logic := '0';
 
 	-- cartridge port
 	game        : in  std_logic;
@@ -492,6 +495,7 @@ port (
 	rgb            : out std_logic_vector(23 downto 0);
 	rgb_vic        : out std_logic_vector(23 downto 0);
 	split          : in  std_logic;
+	quarter        : in  std_logic;
 	ddr_addr       : out std_logic_vector(28 downto 0);
 	ddr_burstcnt   : out std_logic_vector(7 downto 0);
 	ddr_rd         : out std_logic;
@@ -905,6 +909,7 @@ port map (
 	rgb            => octo_rgb,
 	rgb_vic        => vic_rgb_out,
 	split          => split,
+	quarter        => quarter,
 	ddr_addr       => ogx_ddr_addr,
 	ddr_burstcnt   => ogx_ddr_burstcnt,
 	ddr_rd         => ogx_ddr_rd,
@@ -1365,28 +1370,15 @@ iec_atn_o  <= not cia2_pao(3);
 pb_o  <= cia2_pbo;
 pa2_o <= cia2_pao(2);
 
-process(clk32)
-variable sum: integer range 0 to 33000000;
-begin
-	if rising_edge(clk32) then
-		if reset = '1' then
-			todclk <= '0';
-			sum := 0;
-		elsif ntscMode = '1' then
-			sum := sum + 120;
-			if sum >= 32727266 then
-				sum := sum - 32727266;
-				todclk <= not todclk;
-			end if;
-		else
-			sum := sum + 100;
-			if sum >= 31527954 then
-				sum := sum - 31527954;
-				todclk <= not todclk;
-			end if;
-		end if;
-	end if;
-end process;
+-- OCTOPHONIC Fix 48: the TOD 50/60 Hz generator, moved to cia_tod_clk.vhd (same as before, plus Exact 50 Hz)
+tod_gen: entity work.cia_tod_clk
+port map (
+	clk32    => clk32,
+	reset    => reset,
+	ntscMode => ntscMode,
+	exact50  => exact50,
+	todclk   => todclk
+);
 
 -- -----------------------------------------------------------------------
 -- 6510 CPU / DMA

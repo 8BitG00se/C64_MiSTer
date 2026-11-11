@@ -190,7 +190,7 @@ Python; the Windows version will start from it and the format doc.
   with colour bars and gradients, and a 256-colour palette chart) - no outside art.
 - `OCTOPAINT build N.zip`: the PRG, the d64, `How to use.txt` (from docs/OCTOPAINT.md, plain text),
   including how to put it on the MiSTer with FileZilla (SFTP to the MiSTer's IP, user `root`,
-  password `1` unless changed; copy into `/media/fat/games/C64/Apps/`).
+  password `1` unless changed; copy into `/media/fat/games/C64/Tools/`).
 
 ## 11. Testing (feedback loops - required)
 

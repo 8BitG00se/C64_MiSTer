@@ -105,11 +105,13 @@ localparam CONF_STR = {
 
 	"P1,Audio & Video;", 
  	"P1O[2],Video Standard,PAL,NTSC;",
+	"P1O[104],PAL Rate,Exact 50 Hz,Original 50.12 Hz;",
 	"P1O[35:34],VIC-II,656x,856x,Early 856x;",
 	"P1O[84:82],Palette,Colodore,Ultimate,Pepto-PAL,Vice,Vice6569R1,Vice6569R5,Vice8565R2,Lemon64;",
 	"P1O[5:4],Aspect Ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"P1O[10:8],Scandoubler Fx,None,HQ2x-320,HQ2x-160,CRT 25%,CRT 50%,CRT 75%;",
 	"P1O[102],Split Screens,Off,VGA C64 + HDMI Octo;",
+	"P1O[103],Quarter Pixels,On,Off;",
 	"d1P1O[32],Vertical Crop,No,Yes;",
 	"P1O[31:30],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 	"P1-;",
@@ -205,9 +207,9 @@ pll pll
 wire [63:0] reconfig_to_pll;
 wire [63:0] reconfig_from_pll;
 wire        cfg_waitrequest;
-reg         cfg_write;
-reg   [5:0] cfg_address;
-reg  [31:0] cfg_data;
+wire        cfg_write;
+wire  [5:0] cfg_address;
+wire [31:0] cfg_data;
 
 pll_cfg pll_cfg
 (
@@ -223,70 +225,14 @@ pll_cfg pll_cfg
 	.reconfig_from_pll(reconfig_from_pll)
 );
 
-reg ntsc_r = 0;
-always @(posedge CLK_50M) begin
-	reg ntscd = 0, ntscd2 = 0;
-	reg [2:0] state = 0;
-	reg [23:0] delay = 0;
-	reg osd_s1 = 0, osd_s2 = 0;
-
-	osd_s1 <= OSD_STATUS;
-	osd_s2 <= osd_s1;
-
-	// bringing ntsc_req into the CLK_50M domain
-	ntscd  <= ntsc_req;
-	ntscd2 <= ntscd;
-
-	cfg_write <= 0;
-	close_osd <= 0;
-
-	if(ntscd2 != ntsc_r) begin
-	if(osd_s2 && delay < 24'd2500000) begin // 50ms pulse to close OSD
-	// Close OSD so that PAL/NTSC switch induced reset does not
-	// blank screen, if PAUSE when in OSD is enabled
-			close_osd <= 1;
-			delay <= delay + 1'd1;
-			end else if (delay < 24'd7500000) begin // 150ms total delay
-			delay <= delay + 1'd1;
-			end else begin
-			state <= 1;
-			ntsc_r <= ntscd2;
-			delay <= 0;
-			end
-	end else begin
-	delay <= 0;
-	end
-
-	if(!cfg_waitrequest) begin
-		if(state) state<=state+1'd1;
-		case(state)
-			1: begin
-					cfg_address <= 0;
-					cfg_data <= 0;
-					cfg_write <= 1;
-				end
-				/*
-			3: begin
-					cfg_address <= 4;
-					cfg_data <= ntsc_r ? 'h20504 : 'h404;
-					cfg_write <= 1;
-				end
-				*/
-			5: begin
-					cfg_address <= 7;
-					cfg_data <= ntsc_r ? 3357876127 : 1503512573;
-					cfg_write <= 1;
-				end
-			7: begin
-					cfg_address <= 2;
-					cfg_data <= 0;
-					cfg_write <= 1;
-				end
-		endcase
-	end
-end
+// OCTOPHONIC Fix 48 (Exact 50 Hz): the PLL mode - PAL, Exact 50 Hz or NTSC - is set in rtl/pal50.sv
+// (the old PAL/NTSC block, plus the Exact 50 Hz fractional M). Exact 50 Hz is the default (status[104]=0).
+wire ntsc_r, exact_r;
+wire close_osd_pll;
+// (pll_mode is instantiated below, after the status bits, next to ntsc_req)
 
 reg ntsc_sys1 = 0, ntsc = 0;
+reg exact_sys1 = 0, exact = 0, exact_prev = 0;   // Fix 48
 reg reset_n;
 reg reset_wait = 0;
 reg ntsc_prev = 0;
@@ -301,11 +247,14 @@ always @(posedge clk_sys) begin
 	ntsc <= ntsc_sys1;
 	// Detect pal/ntsc switch
 	ntsc_prev <= ntsc;
+	exact_sys1 <= exact_r;
+	exact <= exact_sys1;
+	exact_prev <= exact;
 
 	reset_n <= !reset_counter;
 	old_download <= ioctl_download;
 
-	if (RESET | status[0] | status[17] | buttons[1] | !pll_locked | (ntsc_prev != ntsc)) begin
+	if (RESET | status[0] | status[17] | buttons[1] | !pll_locked | (ntsc_prev != ntsc) | (exact_prev != exact)) begin
 		if(RESET) do_erase <= 1;
 		reset_counter <= 100000;
 	end
@@ -981,9 +930,28 @@ wire [17:0] audio_l,audio_r;
 wire  [7:0] r,g,b;
 wire [23:0] vic_rgb;                       // SPLIT SCREENS: the VIC's picture alone, in step with r/g/b
 wire        split = status[102];
+wire        quarter;                       // FINE SCROLL (Fix 42): OctoVIC's quarter pixels reach the output (set below)
 assign VGA2_EN = split;                    // SPLIT SCREENS: the VGA output shows the VIC alone
 
 wire        ntsc_req = status[2];
+
+// OCTOPHONIC Fix 48: the PLL mode (see rtl/pal50.sv)
+wire exact_req = ~status[104];
+pll_mode pll_mode
+(
+	.clk(CLK_50M),
+	.ntsc_req(ntsc_req),
+	.exact_req(exact_req),
+	.osd_status(OSD_STATUS),
+	.cfg_waitrequest(cfg_waitrequest),
+	.cfg_write(cfg_write),
+	.cfg_address(cfg_address),
+	.cfg_data(cfg_data),
+	.close_osd(close_osd_pll),
+	.ntsc_r(ntsc_r),
+	.exact_r(exact_r)
+);
+always @(posedge CLK_50M) close_osd <= close_osd_pll;
 
 fpga64_sid_iec fpga64
 (
@@ -1008,6 +976,7 @@ fpga64_sid_iec fpga64
 
 	.vic_variant(status[35:34]),
 	.ntscmode(ntsc),
+	.exact50(exact),
 	.hsync(hsync),
 	.vsync(vsync),
 	.palette(status[84:82]),
@@ -1016,6 +985,7 @@ fpga64_sid_iec fpga64
 	.b(b),
 	.vic_rgb_out(vic_rgb),
 	.split(split),
+	.quarter(quarter),
 
 	.game(game),
 	.exrom(exrom),
@@ -1252,20 +1222,17 @@ iec_drive #(.DRIVES(1)) iec_drive
 	.DDRAM_BE(drv_ddram_be)
 	);
 
-reg drive_ce;
-always @(posedge clk_sys) begin
-	int sum = 0;
-	int msum;
-	
-	msum <= ntsc ? 32727264 : 31527954;
-
-	drive_ce <= 0;
-	sum = sum + 16000000;
-	if(sum >= msum) begin
-		sum = sum - msum;
-		drive_ce <= 1;
-	end
-end
+// OCTOPHONIC Fix 48: the 1541's 16 MHz enable (unchanged - a fixed fraction of clk_sys, so the drive slows
+// with the C64 in Exact 50 Hz and the C64:drive ratio stays exactly as before) and the RTC's real-time one.
+wire drive_ce, rtc_ce;
+drive_rtc_ce drive_rtc_ce
+(
+	.clk(clk_sys),
+	.ntsc(ntsc),
+	.exact(exact),
+	.drive_ce(drive_ce),
+	.rtc_ce(rtc_ce)
+);
 
 wire disk_parport = ~status[44];
 
@@ -1331,6 +1298,10 @@ always @(posedge clk_sys) begin
 	end
 end
 
+// FINE SCROLL (Fix 42): OctoVIC's quarter pixels need the picture taken 4 times a C64 pixel (31.5 MHz,
+// every other clk64) - on unless the menu says Off, and only without the scandoubler/HQ2x (their line
+// buffers are 768 wide) and without a gamma curve (gamma_corr needs 4 clocks a pixel). STATUS b4 says.
+reg  quarter_v;
 reg ce_pix;
 always @(posedge CLK_VIDEO) begin
 	reg [2:0] div;
@@ -1338,10 +1309,12 @@ always @(posedge CLK_VIDEO) begin
 
 	div <= div + 1'b1;
 	if(&div) lores <= ~lores;
-	ce_pix <= (~lores | ~hq2x160) && !div;
+	quarter_v <= quarter;
+	ce_pix <= quarter_v ? div[0] : ((~lores | ~hq2x160) && !div);
 end
 
 wire scandoubler = status[10:8] || forced_scandoubler;
+assign quarter = ~status[103] & ~scandoubler & ~gamma_bus[19];
 
 assign CLK_VIDEO = clk64;
 assign VGA_SL    = (status[10:8] > 2) ? status[9:8] - 2'd2 : 2'd0;
@@ -1841,7 +1814,7 @@ wire rtcF83_sda;
 rtcF83 #(16000000, 0) rtcF83
 (
 	.clk(clk_sys),
-	.ce(drive_ce),
+	.ce(rtc_ce),                  // Fix 48: real time in Exact 50 Hz too
 	.reset(~reset_n | use_tape),
 	.RTC(RTC),
 	.scl_i(cass_write),

@@ -10,6 +10,7 @@ tools/sdcard/
   octo-step-lib.sh      helpers every step shares
   steps/
     010-folders.sh      the docs/SDCARD.md folder tree
+    012-migrate-apps-to-tools.sh   Fix 45: an old card's games/C64/Apps moved into Tools (nothing overwritten)
     015-examples.sh     the example set in every games/C64 folder (demos with their .reu files,
                         OCTOCODE, code examples, a game, a picture, tunes, chips) - payload
                         files/examples/, from the sdcard-examples branch (see docs/EXAMPLES.md)
@@ -18,8 +19,9 @@ tools/sdcard/
     040-main.sh         Octophonic Main
     042-main-front-screen.sh  Octophonic Main with the front screen (a program's own .oled animation)
     050-shell-prg.sh    octophonic/SHELL.PRG
-    055-code-tools.sh   octophonic/acme (OCTOCODE's F2 COMPILE on the MiSTer) and Apps/OCTOCODE.PRG
+    055-code-tools.sh   octophonic/acme (OCTOCODE's F2 COMPILE on the MiSTer) and Tools/OCTOCODE.PRG
     060-mister-ini.sh   makes sure a MiSTer.ini exists; sets no video
+    065-mister-ini-vsync.sh   vsync_adjust=2: HDMI follows the core's 50 Hz (Fix 43; release, not DEV)
     070-migrate-drop-octophonic-folder.sh   the old games/C64/Octophonic folders, if empty
     080-bootcore.sh     MiSTer.ini: bootcore=Octophonic 64.mgl, every bootcore_timeout off
     084-oled-daemon.sh  the front screen at power-on: tty2oled's daemon if the card has none, its updater off

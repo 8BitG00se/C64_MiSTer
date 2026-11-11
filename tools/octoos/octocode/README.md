@@ -17,7 +17,7 @@ Original project by Mong00se - Octophonic 64 and OctoVIC by Mong00se (github.com
 - `a2p.py` - ASCII to PETSCII, as Main converts it; `build.sh` - the PRG and "Compile Test build 2.d64" (OCTOCODE, HELLO.ASM, STOCK.ASM).
 - `main-compile.patch.draft` - the first draft of the MiSTer Main side; the real one is
   `tools/octoos/main/octophonic-compile.patch` (built with Main, with ACME for the ARM beside it;
-  recipe step 055 puts `octophonic/acme` and `Apps/OCTOCODE.PRG` on the card).
+  recipe step 055 puts `octophonic/acme` and `Tools/OCTOCODE.PRG` on the card).
 
 The protocol (`13` COMPILE, `14` COMPLOG, `15` GO) is in `docs/OCTOOS.md`; the emulator's Main does it
 in `vice/src/octophonic/octocompile.c` (Octophonic 64 Emulator build 5).

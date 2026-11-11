@@ -25,7 +25,7 @@ affected. Write $4F then $38 to $D03F (an unused VIC register) and $D600-$D6FF b
 registers; write anything else to $D03F and they are SID mirrors again. Reading $D61E then
 gives $8C (the ID) and $D61F the version: 2 = the first OctoVIC (core builds up to 6), 3 = with the
 memory work (line-end wait, copper read-ahead, late-line repeat, the meters at $D6A8-$D6B1) - core
-memory build 3 on. A demo that needs the memory work checks for 3 or more and says so if it isn't there.
+memory build 3 on, 4 = with FINE SCROLL (quarter pixels, Fix 42). A demo that needs the memory work checks for 3 or more and says so if it isn't there.
 
 ## Coordinates
 
@@ -42,8 +42,8 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | 04 | VDATA | write: VRAM[VADDR] = value (queued: up to 63 bytes wait while the DDR3 is busy - 63 us of an REU upload; a byte that finds the queue full is lost and counted in LOST). Read: VRAM[VADDR] (fetched when VADDR was set or moved on; allow 2 us) |
 | 05 | CTRL | b0 ENABLE (draw the layers and sprites), b1 VICPAL (the VIC's 16 colours from OctoVIC's VIC palette), b2 VICBACK (the VIC behind everything, else in front), b3 KEYEN (with the VIC in front: its KEY colour is see-through, to the layers or else the backdrop), b4 HIDEVIC (with ENABLE: the VIC is left out of the picture - the layers and sprites over the backdrop; see SPLIT SCREENS) |
 | 06 | KEY | the VIC colour (0-15) that is see-through when KEYEN |
-| 07 | - | (reserved) |
-| 08 | STATUS (r) | b0 VRAM writes still queued, b1 the divider busy, b2 the blitter busy, b3 SPLIT (the Split Screens menu option is on) |
+| 07 | SPRFINE | version 4: b1-0 every sprite 0-3 quarter pixels further right (see FINE SCROLL) |
+| 08 | STATUS (r) | b0 VRAM writes still queued, b1 the divider busy, b2 the blitter busy, b3 SPLIT (the Split Screens menu option is on), b4 QUARTER PIXELS (version 4: the 4x pixel clock reaches the output - FINE SCROLL shows), b5 60 Hz recording mode (always 0: there is none on the MiSTer) |
 | 09-0A | LINE (r) | the raster line being shown |
 | 0B | FRAME (r) | counts frames |
 | 0C | XADJ | signed: moves all of OctoVIC's picture right (fine alignment, normally 0) |
@@ -57,7 +57,7 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | 1A | PALIDX | the palette entry to write |
 | 1B-1D | PALR, PALG, PALB | its red, green, blue; writing PALB stores the entry and moves PALIDX on |
 | 1E | ID (r) | $8C |
-| 1F | VERSION (r) | 2; 3 with the memory work (core build 7 on) |
+| 1F | VERSION (r) | 2; 3 with the memory work (core build 7 on); 4 with FINE SCROLL |
 | 20-2F | LAYER 0 | see below |
 | 30-3F | LAYER 1 | |
 | 40-42 | COPSTEP | the animation: added to the copper list's address each step |
@@ -123,6 +123,7 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | 8-9 | SCROLLX | |
 | A-B | SCROLLY | |
 | C-E | LSBASE | the line scroll table: a signed 16-bit X offset per raster line (line n at LSBASE + 2n) |
+| 7 | FINE | version 4: b1-0 the layer 0-3 quarter pixels further left (on from SCROLLX; see FINE SCROLL) |
 | F | LMODE | version 2: b0-1 how the layer's pixels mix with what is under them (see SEE-THROUGH COLOURS), b2 TURNED AND SIZED (a bitmap layer), b3 with b2: nothing drawn outside the picture (else it repeats) |
 
 A map entry is 16 bits: bits 0-9 the tile, 10 flip across, 11 flip up-down, 12-15 the palette
@@ -133,6 +134,19 @@ see-through.
 
 The layer pixel at screen (x, y) is map pixel (x + SCROLLX + LS[line], y + SCROLLY), wrapping
 round the map.
+
+**FINE SCROLL (version 4, Fix 42).** FINE (b1-0 of $D627 / $D637) carries on from SCROLLX: the
+layer's position in quarter pixels is 4 x SCROLLX + FINE. Keep the scroll as 8.8 and write the whole
+part to SCROLLX and the top two bits of the fraction (frac >> 6) to FINE - it moves a quarter pixel
+at a time, the same way, across every whole-pixel step. SPRFINE ($D607) does the same for every sprite:
+4 x X + SPRFINE. The copper can write all three (parallax bands: a FINE beside each band's SCROLLX).
+Nothing is blended: each C64 pixel goes out as 4 sub-pixels on a 31.5 MHz pixel clock and the layer
+just starts 1-3 of them later (inside: drawn a pixel further on and held back 4 - FINE). Where two
+things with different FINE meet, the edge of the one in front is exact; what is behind it can be off
+by up to 3/4 of a pixel right at that edge. A turned-and-sized layer ignores FINE; the VIC never moves.
+It shows only while the menu's Quarter Pixels is On (the default) with Scandoubler Fx None and no
+gamma curve - STATUS b4 says so; otherwise FINE is not used and everything moves in whole pixels.
+On HDMI the scaler gets about 1,600 pixels a line: at 1080p a quarter step is about 0.9 HDMI pixel.
 
 **BITMAP (version 2).** With LCTRL b3 set the layer has no map and no tiles: it is a picture of
 one byte a pixel (256 colours, 0 see-through) at TILEBASE, (map width x 8) pixels wide and

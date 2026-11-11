@@ -164,7 +164,7 @@ if [ -d "$FWD" ]; then cp -r "$FWD" "$PAY/tty2oled-firmware"
     find "$PAY/tty2oled-firmware" -type f -name '*.py' -size 0 -exec sh -c 'echo "# (package marker)" > "$1"' _ {} \;
     echo "screen firmware kit: $(ls "$PAY/tty2oled-firmware" | grep -c '_octo.bin$') firmware(s)"
 else echo "no screen firmware kit (step 088 has nothing to put on the screen later)"; fi
-# OCTOCODE, the code editor, from this commit's source (step 055 puts it in Apps)
+# OCTOCODE, the code editor, from this commit's source (step 055 puts it in Tools)
 acme -f cbm -o "$PAY/OCTOCODE.PRG" "$REPO/tools/octoos/octocode/octocode.asm"
 echo "OCTOCODE.PRG: $(stat -c %s "$PAY/OCTOCODE.PRG") bytes"
 # no menu core in the payload: since build 4 the stock (white noise) menu.rbf stays; step 095 puts

@@ -126,7 +126,7 @@ no ROM change. So F1 (and the jingle) now use `$B800-$BFFF` of the RAM under BAS
 
 ## Drives and the network
 
-The top of the browser is the drives: **SD CARD** (`games/C64` on the card: Demos, Games, Apps,
+The top of the browser is the drives: **SD CARD** (`games/C64` on the card: Demos, Games, Tools,
 Code, Music, SIDs, Pictures, My Chips, Disks, Screenshots, Saves - docs/SDCARD.md), **NETWORK** (the
 C64 folder of a network share) and **USB n** (`games/C64` on a stick). F1 opens the browser there;
 F3 from the top of a drive goes up to them. NETWORK is always listed but only opens while a share
@@ -379,7 +379,7 @@ Build 2 of the editor (build 6 of the emulator) has the one key map: **F1 BROWSE
 code go into VRAM, then the browser at the drives; RUN brings it back), **F2 COMPILE**, F3 LOAD,
 F5 SAVE, F7 READY, SHIFT+RETURN deletes a line, F4 a new line, F6/F8 page up/down. Its bar is in the
 start screen's style: `F1Browse F2Compile F3Load F5Save F7Ready`, keys yellow. OCTOCODE.PRG goes in
-the SD card's `Apps` folder, so the browser starts it at once.
+the SD card's `Tools` folder, so the browser starts it at once.
 
 **The target.** A comment line `; target stock` anywhere in the source makes the file a stock C64
 program: COMPILE's log says `Target: STOCK C64`, warns about each line that names an Octophonic-only

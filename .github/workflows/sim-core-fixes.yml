@@ -1,0 +1,55 @@
+# OCTOPHONIC: the quick checks for the core-fixes branch (a few minutes; no Quartus). Runs on every push
+# to core-fixes that touches OctoVIC or the sims: the register map, FINE SCROLL (Fix 42: every sub-pixel
+# against the OctoVIC from before), the whole-scene pixel check against the Python reference, and the
+# sprite-table check. The fine-scroll picture is kept as an artifact.
+name: Core checks (core-fixes)
+
+on:
+  push:
+    branches: [ core-fixes ]
+    paths: [ 'rtl/octovic/**', 'rtl/pal50.sv', 'rtl/cia_tod_clk.vhd', 'rtl/c1530.sv', 'rtl/video_vicII_656x.vhd', 'sim/**', '.github/workflows/sim-core-fixes.yml' ]
+  workflow_dispatch:
+
+jobs:
+  sim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Tools
+        run: |
+          sudo apt-get install -y -qq verilator ghdl >/dev/null
+          python3 -c "import numpy, PIL" 2>/dev/null || pip install -q numpy pillow
+          verilator --version
+
+      - name: OctoVIC register map (FINE registers, STATUS b4/b5, VERSION 4)
+        run: sim/regmap/run.sh
+
+      - name: FINE SCROLL (Fix 42) - quarter-pixel steps, monotone, sharp; FINE 0 identical to before
+        run: sim/finescroll/run.sh
+
+      - name: The whole scene against the Python reference (every pixel, FINE 0)
+        run: |
+          cd sim/octovic
+          verilator --cc --exe -O3 -Wno-WIDTH -Wno-fatal --top-module octovic ../../rtl/octovic/octovic.sv ../../rtl/octovic/ovram.sv tb.cpp -o tb --Mdir obj >/tmp/oct_build.txt 2>&1 || { tail -30 /tmp/oct_build.txt; exit 1; }
+          make -s -j4 -C obj -f Voctovic.mk >/dev/null
+          python3 run.py 1 20 6 30 | tail -3
+          python3 run.py 7 30 4 60 | tail -3
+
+      - name: Sprite table, frame by frame
+        run: sim/sprtable/run.sh
+
+      - name: EXACT 50 Hz (Fix 48) - PLL writes, VIC frame, TOD, 1541/RTC enables, fast-loader handshake, tape
+        run: sim/pal50/run.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: finescroll
+          path: |
+            /tmp/finescroll/finescroll.png
+            /tmp/finescroll/*.txt
+            /tmp/pal50/*.txt

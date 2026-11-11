@@ -11,7 +11,7 @@ Every folder outside `games/C64` is one that something already uses:
 - MiSTer itself: `menu.rbf`, `Scripts/`, `screenshots/`.
 
 The twelve folders in `games/C64` (build 6, Neal's list; Textures from Fusion build 4) are the browser's SD CARD drive: Demos,
-Games, Apps, Code, Music, SIDs, Pictures, My Chips, Disks, Screenshots, Saves, Textures. os.ini's `start=` is
+Games, Tools, Code, Music, SIDs, Pictures, My Chips, Disks, Screenshots, Saves, Textures. os.ini's `start=` is
 `/media/fat/games/C64`.
 
 ```
@@ -45,8 +45,9 @@ Games, Apps, Code, Music, SIDs, Pictures, My Chips, Disks, Screenshots, Saves, T
 |       |       +-- <demo>.prg                 name, or the folder's only one, goes in first)
 |       |       +-- <demo>.reu
 |       +-- Games/                           games: .prg .crt .d64 ..., a folder each if you like
-|       +-- Apps/                            programs that make things: OCTOCODE.PRG (the code
-|       |                                     editor); later SIDWeaver Lite, OctoPaint
+|       +-- Tools/                           programs that make things: OCTOCODE.PRG (the code
+|       |                                     editor); later a disassembler, a cruncher, a
+|       |                                     cheats/trainer program, OctoPaint, OctoWeaver Lite
 |       +-- Code/                            your source code (.asm) and what it makes
 |       +-- Music/                           music programs and tunes as .prg
 |       +-- SIDs/                            SID tunes (the browser runs .prg; a raw .sid is not

@@ -38,6 +38,8 @@ module octovic
 	output reg [23:0] rgb,         // the picture
 	output reg [23:0] rgb_vic,     // SPLIT SCREENS: the VIC's picture alone (for the VGA output), in step with rgb
 	input             split,       // SPLIT SCREENS: the menu option is on (read in STATUS b3)
+	input             quarter,     // FINE SCROLL (Fix 42): the 4x pixel clock reaches the output (OSD Quarter Pixels on,
+	                               //   no scandoubler) - STATUS b4; off, the FINE registers are not used
 
 	// the DDR3 (Avalon)
 	output reg [28:0] ddr_addr,
@@ -94,6 +96,11 @@ reg   [7:0] lmode[2];               // version 2: b0-1 how the layer's pixels mi
 reg  [31:0] af_u0, af_v0, af_dux, af_dvx, af_duy, af_dvy;   // version 2: turning and sizing, 16.16
 reg  [23:0] mapbase[2], tilebase[2], lsbase[2];
 reg  [15:0] scrollx[2], scrolly[2];
+// FINE SCROLL (Fix 42): quarter pixels. A layer's FINE moves it 0-3 quarter pixels further the way SCROLLX
+// moves it (left): it is drawn a whole pixel further on and held back 4-FINE quarter pixels on the
+// 4x clock. SPRFINE moves every sprite 0-3 quarter pixels right (the way X moves them): held back SPRFINE.
+reg   [1:0] lfine[2];
+reg   [1:0] sprfine;
 reg  [23:0] vpal[16];
 reg  [23:0] backdrop;
 reg   [7:0] frame;
@@ -187,7 +194,7 @@ always @(posedge clk) begin
 		copstep <= 0; satstep <= 0; copsteps <= 0; satsteps <= 0; copdiv <= 0; satdiv <= 0; anim_rst <= 1;
 		vaddr <= 0; vinc <= 1; ctrl <= 0; key <= 0; xadj <= 0; yadj <= 0; copen <= 0; sprcount <= 0;
 		copbase <= 0; satbase <= 0; sprgfx <= 0; palsel <= 0; palidx <= 0; palr <= 0; palg <= 0;
-		lctrl[0] <= 0; lctrl[1] <= 0; lmode[0] <= 0; lmode[1] <= 0;
+		lctrl[0] <= 0; lctrl[1] <= 0; lmode[0] <= 0; lmode[1] <= 0; lfine[0] <= 0; lfine[1] <= 0; sprfine <= 0;
 		af_u0 <= 0; af_v0 <= 0; af_dux <= 32'h10000; af_dvx <= 0; af_duy <= 0; af_dvy <= 32'h10000; scrollx[0] <= 0; scrollx[1] <= 0; scrolly[0] <= 0; scrolly[1] <= 0;
 		mapbase[0] <= 0; mapbase[1] <= 0; tilebase[0] <= 0; tilebase[1] <= 0; lsbase[0] <= 0; lsbase[1] <= 0;
 		for (ii = 0; ii < 16; ii = ii + 1) vpal[ii] <= c64col(ii[3:0]);
@@ -240,6 +247,8 @@ always @(posedge clk) begin
 				8'hB2: if (rw_cpu) vlost <= 0;
 				8'h05: ctrl <= rw_d;
 				8'h06: key <= rw_d[3:0];
+				8'h07: sprfine <= rw_d[1:0];
+				8'h27, 8'h37: lfine[rw_a[4]] <= rw_d[1:0];
 				8'h0C: xadj <= rw_d;
 				8'h0D: yadj <= rw_d;
 				8'h0E: copen <= rw_d[0];
@@ -320,11 +329,13 @@ always @(*) begin
 	case (addr)
 		8'h00: dout = vaddr[7:0];   8'h01: dout = vaddr[15:8];  8'h02: dout = vaddr[23:16];
 		8'h03: dout = vinc;         8'h04: dout = vrd_data;     8'h05: dout = ctrl;
-		8'h06: dout = {4'd0, key};  8'h08: dout = {4'd0, split, blt_busy, div_busy, ~wf_empty};
+		8'h06: dout = {4'd0, key};  8'h08: dout = {2'd0, 1'b0, quarter, split, blt_busy, div_busy, ~wf_empty};   // b5: 60 Hz mode (none: 0)
+		8'h07: dout = {6'd0, sprfine};
+		8'h27, 8'h37: dout = {6'd0, lfine[addr[4]]};
 		8'h09: dout = vic_y[7:0];   8'h0A: dout = {7'd0, vic_y[8]};  8'h0B: dout = frame;
 		8'h0C: dout = xadj;         8'h0D: dout = yadj;          8'h0E: dout = {7'd0, copen};
 		8'h0F: dout = sprcount;     8'h19: dout = {6'd0, palsel}; 8'h1A: dout = palidx;
-		8'h1E: dout = 8'h8C;        8'h1F: dout = 8'h03;   // VERSION 3: the memory work (line-end wait, copper read-ahead, late-line repeat, meters $A8-$B1)
+		8'h1E: dout = 8'h8C;        8'h1F: dout = 8'h04;   // VERSION 4: FINE SCROLL ($07, $27, $37; STATUS b4). 3: the memory work (line-end wait, copper read-ahead, late-line repeat, meters $A8-$B1)
 		8'hA0: dout = h_late;       8'hA1: dout = h_late0;       8'hA2: dout = h_late1;      8'hA3: dout = h_lateo;
 		8'hA4: dout = h_first[7:0]; 8'hA5: dout = {7'd0, h_first[8]};
 		8'hA6: dout = h_total[7:0]; 8'hA7: dout = h_total[15:8];
@@ -367,10 +378,12 @@ localparam K_MAP = 3'd0, K_TILE = 3'd1, K_SPR = 3'd2, K_SAT = 3'd3, K_LS = 3'd4,
 //   SPR:  [18:3] raster X of the sprite's pixel 0 (signed), [20:19] width, [21] flip, [22] high half,
 //         [26:23] bank, [27] 256 colours, [33:28] the word's first sprite pixel, [40:34] the sprite
 //   TILE and SPR: [42:41] how the pixels mix (0 over, 1 half and half, 2 added, 3 taken away)
+//   TILE and SPR (FINE SCROLL): [45:43] the pass that drew it (0-4: which is in front), [47:46] how many
+//         quarter pixels it is held back on the 4x clock
 //   TILE, turned and sized (version 2): [20] set, [22:21] pixels in the word less 1, [34:23] each
 //         one's byte in the word (3 bits each), [12:3] the first one's place on the line
 //   SAT:  [9:3] the sprite    LS: [4:3] lane    VRD: [5:3] byte    BLT: (the blitter's word)
-localparam TW = 43;
+localparam TW = 48;
 
 // the renderer's requests: a little FIFO, so it can ask once a clock
 reg    [20:0] rqf_w[4];
@@ -525,28 +538,29 @@ always @(posedge clk) begin
 end
 
 // ---------------------------------------------------------------------------------
-//  THE LINE BUFFER: four lines of 512 pixels {opaque, rgb}, in four banks by raster X mod 4, so
+//  THE LINE BUFFER: four lines of 512 pixels {opaque, hold-back, pass, rgb} (FINE SCROLL: the hold-back
+//  and pass ride in bits the two M10Ks a bank already have - 30 of their 40), in four banks by raster X mod 4, so
 //  four neighbouring pixels go in at once. A line's slot is cleared (99 clocks, the four banks
 //  together) before it is drawn; the one write port does both.
 // ---------------------------------------------------------------------------------
 reg         bw_we[4];          // the consumer's writes, a bank each
 reg   [8:0] bw_a[4];
-reg  [23:0] bw_d[4];
+reg  [28:0] bw_d[4];
 reg         clr_we;            // the renderer clearing a slot
 reg   [8:0] clr_a;
 reg   [1:0] d_bank;            // the display's pixel: its bank
-reg  [24:0] lb_q[4];
+reg  [29:0] lb_q[4];
 
 genvar gb;
 generate
 	for (gb = 0; gb < 4; gb = gb + 1) begin : bank
-		wire [24:0] q;
-		ovram #(.AW(9), .DW(25)) lbm
+		wire [29:0] q;
+		ovram #(.AW(9), .DW(30)) lbm
 		(
 			.clk(clk),
 			.we(clr_we | bw_we[gb]),
 			.wa(clr_we ? clr_a : bw_a[gb]),
-			.wd(clr_we ? 25'd0 : {1'b1, bw_d[gb]}),
+			.wd(clr_we ? 30'd0 : {1'b1, bw_d[gb]}),
 			.ra({vic_y[1:0], vic_x[8:2]}),
 			.q(q)
 		);
@@ -573,10 +587,28 @@ reg  [8:0] dy_prev;
 reg  [8:0] last_good;
 reg        show_ok;
 reg  [7:0] rep_n, blank_n, h_rep, h_blank;
+// FINE SCROLL: the cell being shown and the one to its left (f_ / fp_), and the sub-pixel
+reg        f_op, fp_op;
+reg  [1:0] f_d, fp_d, f_ph;
+reg  [2:0] f_z, fp_z;
+reg [23:0] f_out, f_under, fp_out;
+function [23:0] fpick(input [1:0] s, input aop, input [1:0] ad, input [2:0] az, input [23:0] aout, input [23:0] aund,
+                      input bop, input [1:0] bd, input [2:0] bz, input [23:0] bout);
+	reg avis, bvis;
+	begin
+		avis = !aop || s >= ad;                 // the cell's own pixel has started
+		bvis = bop && s < bd;                   // the left one's still reaches here
+		if (avis && bvis)  fpick = (!aop || bz > az) ? bout : aout;
+		else if (avis)     fpick = aout;
+		else if (bvis)     fpick = bout;
+		else if (bop && bz > az) fpick = aout;  // the left one (in front) has ended: its edge stays exact
+		else               fpick = bop ? bout : aund;   // not started yet: what is under it
+	end
+endfunction
 always @(posedge clk) begin
 	d1 <= pix_en;
 	if (reset) begin
-		dy_prev <= 9'h1FF; last_good <= 9'h1FF; show_ok <= 0; rep_n <= 0; blank_n <= 0; h_rep <= 0; h_blank <= 0;
+		dy_prev <= 9'h1FF; last_good <= 9'h1FF; show_ok <= 0; f_ph <= 0; f_op <= 0; f_d <= 0; f_z <= 0; f_out <= 0; f_under <= 0; rep_n <= 0; blank_n <= 0; h_rep <= 0; h_blank <= 0;
 	end
 	else if (pix_en) begin
 		d_bank <= vic_x[1:0];
@@ -597,22 +629,41 @@ always @(posedge clk) begin
 			end
 		end
 	end
+	// FINE SCROLL (Fix 42): each pixel is 4 clocks (the 4x clock: 31.5 MHz) - sub-pixels 0-3. A cell's
+	// pixel starts at its hold-back (0-3); before that the pixel to its left still shows if its own
+	// hold-back reaches that far, else what is under. Where both reach, the one drawn in front wins (pass).
+	// So the edges of whatever is in front move exactly; only what is behind it, right at its edges, can be
+	// off by up to 3/4 of a pixel (that part of the picture isn't in the line buffer).
+	// All hold-backs 0 (FINE all 0, or no 4x clock): every sub-pixel is the cell's own - as before.
 	if (d1) begin
 		reg [23:0] vc;
-		reg [24:0] q;
+		reg [29:0] q;
 		reg        op;
 		reg  [4:0] c;
-		reg [23:0] vh;
+		reg [23:0] vh, o_n, u_n;
+		reg        aop;
+		reg  [1:0] ad;
+		reg  [2:0] az;
 		c  = cdl[d_slot];
 		vc = c[1] ? vpal[vic_index] : vic_rgb;
 		vh = (c[0] & c[4]) ? bdl[d_slot] : vc;     // HIDEVIC: the VIC is left out of this picture - the backdrop instead
 		q  = lb_q[d_bank];
-		op = d1_in & q[24] & show_ok;
+		op = d1_in & q[29] & show_ok;
 		rgb_vic <= vc;                              // SPLIT SCREENS: the VIC alone, whatever CTRL says
-		if (!c[0])                                  rgb <= vc;
-		else if (c[2] | c[4])                       rgb <= op ? q[23:0] : vh;
-		else if (c[3] && vic_index == kdl[d_slot])  rgb <= op ? q[23:0] : bdl[d_slot];
-		else                                        rgb <= vc;
+		// the cell: its colour (o_n), what is under its layer pixel (u_n), and what it is for the sub-pixels:
+		// a layer/sprite pixel (its hold-back and pass), the VIC in front (pass 7, never held back), or nothing
+		if (!c[0])                                  begin o_n = vc;                 u_n = vc;          aop = 1;  ad = 0;       az = 3'd7;   end
+		else if (c[2] | c[4])                       begin o_n = op ? q[23:0] : vh;  u_n = vh;          aop = op; ad = q[28:27]; az = q[26:24]; end
+		else if (c[3] && vic_index == kdl[d_slot])  begin o_n = op ? q[23:0] : bdl[d_slot]; u_n = bdl[d_slot]; aop = op; ad = q[28:27]; az = q[26:24]; end
+		else                                        begin o_n = vc;                 u_n = vc;          aop = 1;  ad = 0;       az = 3'd7;   end
+		rgb <= fpick(2'd0, aop, ad, az, o_n, u_n, f_op, f_d, f_z, f_out);
+		fp_op <= f_op; fp_d <= f_d; fp_z <= f_z; fp_out <= f_out;      // this cell becomes the one to the left
+		f_op <= aop; f_d <= ad; f_z <= az; f_out <= o_n; f_under <= u_n;
+		f_ph <= 2'd1;
+	end
+	else if (f_ph != 2'd0) begin
+		rgb  <= fpick(f_ph, f_op, f_d, f_z, f_out, f_under, fp_op, fp_d, fp_z, fp_out);
+		f_ph <= f_ph + 2'd1;
 	end
 end
 
@@ -669,6 +720,8 @@ reg    [8:0] slot_base;        // the line being drawn: its slot, as the top of 
 reg    [7:0] map_done;
 reg          p_spr[4];         // version 2: a sprite's pixel (else a layer's), and which sprite
 reg    [1:0] p_m[4];           // version 2: how it mixes
+reg    [2:0] p_z[4];           // FINE SCROLL: the pass that drew it, its hold-back
+reg    [1:0] p_d[4];
 reg    [6:0] p_id[4];
 // version 2: THE OWNER BUFFER - beside the line buffer, for each pixel of the line being drawn:
 // {drawn, its colour, a layer pixel is there, a sprite pixel is there, which sprite} - a copy
@@ -680,6 +733,8 @@ reg          o_v[4], o_spr[4]; // stage 3, by bank: the pixel written, its write
 reg    [6:0] o_id[4];
 reg    [1:0] o_m[4];            // how it mixes
 reg   [23:0] o_rgb[4];          // its colour
+reg    [2:0] o_z[4];            // FINE SCROLL: its pass, its hold-back
+reg    [1:0] o_d[4];
 reg    [8:0] o_a[4];
 reg          ow_we[4];
 reg    [8:0] ow_a[4];
@@ -799,7 +854,7 @@ always @(posedge clk) begin
 						endcase
 						c[ch*8 +: 8] = t[7:0];
 					end
-				bw_we[b] <= o_v[b]; bw_a[b] <= o_a[b]; bw_d[b] <= c;
+				bw_we[b] <= o_v[b]; bw_a[b] <= o_a[b]; bw_d[b] <= {o_d[b], o_z[b], c};
 				ow_we[b] <= o_v[b];
 				ow_a[b]  <= o_a[b];
 				if (o_spr[b]) begin
@@ -817,7 +872,7 @@ always @(posedge clk) begin
 		end
 		for (b = 0; b < 4; b = b + 1) o_v[b] <= 0;
 		for (k = 0; k < 4; k = k + 1)
-			if (p_v[k]) begin o_v[p_b[k]] <= 1; o_a[p_b[k]] <= p_a[k]; o_spr[p_b[k]] <= p_spr[k]; o_id[p_b[k]] <= p_id[k]; o_m[p_b[k]] <= p_m[k]; o_rgb[p_b[k]] <= palq[k]; end
+			if (p_v[k]) begin o_v[p_b[k]] <= 1; o_a[p_b[k]] <= p_a[k]; o_spr[p_b[k]] <= p_spr[k]; o_id[p_b[k]] <= p_id[k]; o_m[p_b[k]] <= p_m[k]; o_rgb[p_b[k]] <= palq[k]; o_z[p_b[k]] <= p_z[k]; o_d[p_b[k]] <= p_d[k]; end
 		if (blt_got_clr) blt_got <= 0;
 		// (stage 2, the pixels through the palette: into stage 3 above, which writes the banks)
 		for (k = 0; k < 4; k = k + 1) p_v[k] <= 0;
@@ -829,6 +884,8 @@ always @(posedge clk) begin
 				p_spr[k] <= (c_kind == K_SPR);
 				p_id[k]  <= c_t[40:34];
 				p_m[k]   <= c_t[42:41];
+				p_z[k]   <= c_t[45:43];
+				p_d[k]   <= c_t[47:46];
 			end
 			c_g <= c_g + 2'd1;
 			if (c_g == c_ng) c_busy <= 0;
@@ -898,6 +955,7 @@ reg  [7:0] sat_i;
 reg  [5:0] mi;                 // map entries asked for
 reg  [7:0] map_issued;
 reg  [2:0] fine;
+reg  [1:0] ldel;               // FINE SCROLL: this layer's pixels held back this many quarter pixels (this line)
 reg  [2:0] ty;
 reg  [7:0] mr;
 reg  [8:0] mc0;
@@ -916,6 +974,8 @@ reg  [6:0] sidx;               // version 2: which sprite it is
 
 wire       lay = pass[1];      // pass 1 -> layer 0, pass 3 -> layer 1
 wire [1:0] sprio = (pass == 0) ? 2'd2 : (pass == 2) ? 2'd1 : 2'd0;
+wire [1:0] lf_now = quarter ? lfine[lay] : 2'd0;     // FINE SCROLL: this layer's FINE (0 without the 4x clock)
+wire [1:0] sdel   = quarter ? sprfine : 2'd0;        // and the sprites' hold-back
 wire signed [15:0] sy  = $signed({7'd0, L}) - 16'sd51 - $signed({{8{yadj[7]}}, yadj});
 wire signed [15:0] sx0 = -16'sd32 - $signed({{8{xadj[7]}}, xadj});    // the x of raster X 0
 wire drained = rqf_empty && (ren_out == 0) && !c_busy
@@ -1089,7 +1149,9 @@ always @(posedge clk) begin
 			reg  [1:0] mw, mh;
 			mw = lctrl[lay][5:4]; mh = lctrl[lay][7:6];
 			vy = sy + scrolly[lay];
-			vx = sx0 + scrollx[lay] + (ls_use ? ls_val : 16'd0);
+			// FINE SCROLL: FINE f > 0 - a whole pixel further on, then held back 4-f quarter pixels
+			vx = sx0 + scrollx[lay] + (ls_use ? ls_val : 16'd0) + {15'd0, lf_now != 2'd0};
+			ldel <= 2'd0 - lf_now;
 			ty   <= vy[2:0];
 			mr   <= vy[10:3] & ((8'd32 << mh) - 8'd1);
 			mc0  <= {1'b0, vx[10:3]} & ((9'd32 << mw) - 9'd1);
@@ -1140,10 +1202,10 @@ always @(posedge clk) begin
 				mc  = (mc0 + {3'd0, ti}) & ((9'd32 << mw) - 9'd1);
 				if (lctrl[lay][3]) begin
 					ta = tilebase[lay] + ({13'd0, mr, ty} << (8 + mw)) + {12'd0, mc, 3'd0};
-					push(ta[23:3], {lmode[lay][1:0], {(TW-22){1'b0}}, 1'b1, 4'd0, 1'b0, 1'b0, xb, K_TILE});
+					push(ta[23:3], {ldel, pass, lmode[lay][1:0], {(TW-27){1'b0}}, 1'b1, 4'd0, 1'b0, 1'b0, xb, K_TILE});
 				end
 				else
-				push(ta[23:3], {lmode[lay][1:0], {(TW-22){1'b0}}, lctrl[lay][1], e[15:12], ta[2], e[10], xb, K_TILE});
+				push(ta[23:3], {ldel, pass, lmode[lay][1:0], {(TW-27){1'b0}}, lctrl[lay][1], e[15:12], ta[2], e[10], xb, K_TILE});
 				ti <= ti + 6'd1;
 			end
 		end
@@ -1207,7 +1269,7 @@ always @(posedge clk) begin
 			reg [5:0] px0;
 			xb  = $signed(se[15:0]) + 16'sd32 + $signed({{8{xadj[7]}}, xadj});
 			px0 = se[54] ? {wk[2:0], 3'd0} : {wk[1:0], 4'd0};
-			push(srow + {17'd0, wk}, {se[63:62], sidx, px0, se[54], se[59:56], shalf, se[52], se[49:48], xb, K_SPR});
+			push(srow + {17'd0, wk}, {sdel, pass, se[63:62], sidx, px0, se[54], se[59:56], shalf, se[52], se[49:48], xb, K_SPR});
 			if (wk + 4'd1 == nw) begin
 				if (hk == 0) begin pass <= pass + 3'd1; st <= S_PASS; end
 				else begin hk <= hk - 7'd1; st <= S_DRAW; end
@@ -1237,7 +1299,7 @@ always @(posedge clk) begin
 			flush = af_bn && (!ok || a[23:3] != af_w || af_n == 2'd3);
 			if (!flush || !rqf_full) begin
 				if (flush)
-					push(af_w, {lmode[lay][1:0], {(TW-37){1'b0}}, af_off, af_n, 1'b1, 1'b1, 4'd0, 1'b0, 1'b0, 1'b0, af_r0, K_TILE});
+					push(af_w, {2'd0, pass, lmode[lay][1:0], {(TW-42){1'b0}}, af_off, af_n, 1'b1, 1'b1, 4'd0, 1'b0, 1'b0, 1'b0, af_r0, K_TILE});
 				if (last) begin
 					if (!flush || !af_bn) begin pass <= pass + 3'd1; st <= S_PASS; end
 					af_bn <= 0;

@@ -12,12 +12,12 @@ OUT=${1:?OUT folder}
 G="$OUT/games/C64"
 W=$(mktemp -d)
 trap 'rm -rf "$W"' EXIT
-mkdir -p "$G"/{Demos,Games,Apps,Code,Music,SIDs,Pictures,"My Chips",Disks,Screenshots,Saves}
+mkdir -p "$G"/{Demos,Games,Tools,Code,Music,SIDs,Pictures,"My Chips",Disks,Screenshots,Saves}
 
-# Apps: OCTOCODE, the code editor
+# Tools: OCTOCODE, the code editor
 OC=${2:-}
 if [ -z "$OC" ]; then acme -f cbm -o "$W/octocode.prg" "$REPO/tools/octoos/octocode/octocode.asm" 2>/dev/null; OC="$W/octocode.prg"; fi
-cp "$OC" "$G/Apps/OCTOCODE.PRG"
+cp "$OC" "$G/Tools/OCTOCODE.PRG"
 
 # Code: the OCTOCODE examples - each .asm (as OCTOCODE's F2 leaves it in Code) and its program
 for a in hello stock raster scroll sprites plasma bounce split parallax; do
