@@ -168,7 +168,7 @@ jobs:
           git init -q
           # the rgb256 work branch keeps its own (build-reports-rgb256), so trying it never replaces the cores
           # a card is being built from
-          OUTB=build-reports-core10trial
+          OUTB=build-reports-core10trial-s13
           git checkout -q -b "$OUTB"
           git add -A
           git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Reports: $(cat result.txt) - RGB 256: $(cat rgb256/result.txt)"
