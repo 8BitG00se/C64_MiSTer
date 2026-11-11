@@ -16,6 +16,7 @@ tools/sdcard/
                         files/examples/, from the sdcard-examples branch (see docs/EXAMPLES.md)
     020-os-ini.sh       octophonic/os.ini, with startin=sd
     030-core.sh         the core (hidden .rbf) + the launchers
+    032-rgb256-core.sh  the C64RGB 256 recolour core (hidden .C64RGB256_<date>.rbf, docs/RGB256.md)
     040-main.sh         Octophonic Main
     042-main-front-screen.sh  Octophonic Main with the front screen (a program's own .oled animation)
     050-shell-prg.sh    octophonic/SHELL.PRG
@@ -46,7 +47,7 @@ tools/sdcard/
 
 ## Newer versions reach a card that is already set up
 
-Steps that carry a file - 030 (core + launchers), 040/042 (Main), 050 (SHELL.PRG), 055 (acme,
+Steps that carry a file - 030 (core + launchers), 032 (C64RGB 256 core), 040/042 (Main), 050 (SHELL.PRG), 055 (acme,
 OCTOCODE), 085 (title cards), 087 (oled.sh), 088 (screen firmware) - have a `# OCTO-RECHECK` line.
 The runner runs them even when `steps-done.txt` lists them, and each compares the payload's md5
 with the file on the card first (`octo_skip_if_current` in `octo-step-lib.sh`):
