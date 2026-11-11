@@ -21,6 +21,8 @@ NEW IN THIS BUILD
      SHIFT+F4  wipe memory and restart              (SHIFT+F3 is spare; the MiSTer menu is F12)
    A quick tap still does what it always did.
  - Tools/SPEC.PRG: what this machine has - core, OctoVIC, SIDs, SDRAM size, REU, PAL/NTSC.
+ - Chips: your own measured SID chips (6581 5084, 6581 3184, 8580 3591, 8580 4687) for the core menu's
+   Load My Chip lines and OctoPlay's F3/F5.
  - Tools/TESTCARD.PRG: a test card (crosshatch and circles) for setting up a CRT or checking HDMI.
 The other folders are empty, ready for your own files: demos, tools and games come from the
 website (GitHub).
