@@ -235,6 +235,7 @@ reg ntsc_sys1 = 0, ntsc = 0;
 reg exact_sys1 = 0, exact = 0, exact_prev = 0;   // Fix 48
 reg reset_n;
 reg reset_wait = 0;
+wire hk_kernal, hk_brk, hk_wipe, hk_spare;   // Fix 58: SHIFT+F1-F4 hot keys (rtl/hotkeys.sv)
 reg ntsc_prev = 0;
 
 always @(posedge clk_sys) begin
@@ -254,8 +255,8 @@ always @(posedge clk_sys) begin
 	reset_n <= !reset_counter;
 	old_download <= ioctl_download;
 
-	if (RESET | status[0] | status[17] | buttons[1] | !pll_locked | (ntsc_prev != ntsc) | (exact_prev != exact)) begin
-		if(RESET) do_erase <= 1;
+	if (RESET | status[0] | status[17] | buttons[1] | hk_kernal | hk_wipe | !pll_locked | (ntsc_prev != ntsc) | (exact_prev != exact)) begin
+		if(RESET | hk_wipe) do_erase <= 1;
 		reset_counter <= 100000;
 	end
 	else if(~old_download & ioctl_download & load_prg & ~status[50]) begin
@@ -801,12 +802,19 @@ always @(posedge clk_sys) begin
 	end
 end
 
+// Fix 58: hold SHIFT+F1 (KERNAL), F2 (RUN/STOP+RESTORE), F4 (wipe and restart)
+hotkeys hotkeys (.clk(clk_sys), .ps2_key(ps2_key), .kernal(hk_kernal), .brk(hk_brk), .wipe(hk_wipe), .spare(hk_spare));
+wire       hkb_busy, hkb_stb;
+wire [9:0] hkb_code;
+hotkey_break hotkey_break (.clk(clk_sys), .start(hk_brk), .busy(hkb_busy), .stb(hkb_stb), .code(hkb_code));
+
 reg        start_strk = 0;
 reg        reset_keys = 0;
 reg [10:0] key = 0;
 always @(posedge clk_sys) begin
 	reg  [3:0] act = 0;
 	reg        joy_finish = 0;
+	reg        hkb_was = 0;
 	reg [17:0] joy_last = 0;
 	reg [17:0] joy_key;
 	int        to;
@@ -824,7 +832,15 @@ always @(posedge clk_sys) begin
 	
 	if(~reset_n) {joy_finish, act} <= 0;
 
-	if(joy[9:8]) begin
+	hkb_was <= hkb_busy;
+	if(hkb_busy ^ hkb_was) reset_keys <= 1;   // keys let go meanwhile can't stick
+	if(hkb_busy) begin              // Fix 58: RUN/STOP+RESTORE being typed
+		if(hkb_stb) begin
+			key[9:0] <= hkb_code;
+			key[10]  <= ~key[10];
+		end
+	end
+	else if(joy[9:8]) begin
 		joy_finish <= 1;
 		if(!joy[7:0] && joy_last) begin
 			joy_last <= 0;

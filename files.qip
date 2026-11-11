@@ -27,6 +27,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/tap_time_map.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/tape_counter.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/tape_subsystem.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/pal50.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/hotkeys.sv
 set_global_assignment -name SYSTEMVERILOG_FILE c64.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/octovic/octovic.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/octovic/sid_fx.sv
