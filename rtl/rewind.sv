@@ -89,7 +89,7 @@ module rewind #(
 localparam        NW     = 27;                 // words of a save state
 localparam  [3:0] T_RAM  = 4'h1, T_COL = 4'h2, T_MARK = 4'hF;
 localparam [11:0] MAGIC  = 12'hA5C;
-localparam [AW:0] LIMIT  = (1 << AW) - (1 << 20);   // words held before the oldest frames go
+localparam [AW:0] LIMIT  = (1 << AW) - ((AW >= 22) ? (1 << 20) : (1 << (AW - 2)));   // words held before the oldest frames go
 
 // ------------------------------------------------------------------ the 64K copy
 reg         m_ce_d = 0;
@@ -101,15 +101,16 @@ reg         a_wpend = 0, a_main = 0;
 reg         b_req = 0;                         // an old byte to put back (b_addr, b_data)
 reg  [15:0] b_addr;
 reg   [7:0] b_data;
-wire        b_do = b_req & ~a_wpend;
+wire        b_do = b_req;                      // (it goes first: a write from outside waits a clock)
+wire        a_do = a_wpend & ~b_req;
 wire  [7:0] qa;
 
 ovram #(16, 8) ram
 (
 	.clk(clk),
-	.we(a_wpend | b_do),
-	.wa(a_wpend ? a_addr_r : b_addr),
-	.wd(a_wpend ? a_din_r  : b_data),
+	.we(a_do | b_do),
+	.wa(b_do ? b_addr : a_addr_r),
+	.wd(b_do ? b_data : a_din_r),
 	.ra((m_start & m_low) ? m_addr[15:0] : a_addr_r),
 	.q(qa)
 );
@@ -121,7 +122,7 @@ reg         ovf = 0;                           // a journal word was lost: the h
 
 always @(posedge clk) begin
 	m_ce_d  <= m_ce;
-	a_wpend <= 0;
+	a_wpend <= a_wpend & b_req;
 	if (m_start) begin
 		m_sel <= m_low;
 		if (m_low) begin
@@ -255,7 +256,7 @@ always @(posedge clk) begin
 	// ---------- the program's writes: the journal and the shadows
 	if (jr_take) jr_req <= 0;
 	if (jc_take) jc_req <= 0;
-	if (a_wpend & a_main) begin
+	if (a_do & a_main) begin
 		if (jr_req & ~jr_take) ovf <= 1;
 		jr_req  <= 1;
 		jr_word <= {T_RAM, 36'd0, a_addr_r, qa};
@@ -374,7 +375,7 @@ always @(posedge clk) begin
 		end
 
 		// everything pushed so far must be in the DDR3 before it is read back
-		S_DRAIN: if (f_cnt == 0 && wst == 0 && !f_we && !jr_req && !jc_req && !a_wpend && !sh2_pend) begin
+		S_DRAIN: if (f_cnt == 0 && wst == 0 && !f_we && !jr_req && !jc_req && !a_wpend && !sh2_pend && !seq_on) begin
 			rd_phase <= 1;
 			cur      <= wp;
 			used     <= 0;
@@ -403,11 +404,11 @@ always @(posedge clk) begin
 				state <= S_PROC0;
 			end
 		end
-		S_PROC0: state <= S_PROC1;                     // (rb_q is word idx next clock)
+		// a word a clock: rb_q is word idx, rb_ra runs one ahead
+		S_PROC0: begin rb_ra <= idx - 6'd1; state <= S_PROC1; end
 		S_PROC1: begin
 			w = rb_q;
-			if (b_req && !b_do) ;                      // the byte before is still waiting for the RAM
-			else begin
+			begin
 				adv = 1;
 				if (skip != 0) skip <= skip - 1'd1;     // a save state passed over
 				else if (w[63:60] == T_RAM) begin
@@ -430,7 +431,7 @@ always @(posedge clk) begin
 				if (adv) begin
 					used <= used + 1'd1;
 					if (idx == 0) begin cur <= rd_ptr; state <= S_FETCH; end
-					else begin idx <= idx - 1'd1; rb_ra <= idx - 6'd1; state <= S_PROC0; end
+					else begin idx <= idx - 1'd1; rb_ra <= idx - 6'd2; end
 				end
 			end
 		end

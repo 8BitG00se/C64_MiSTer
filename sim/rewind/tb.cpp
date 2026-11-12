@@ -1,0 +1,272 @@
+// REWIND simulation (sim/rewind): the whole C64 with the rewind unit.            (c) 2026 Mong00se
+//
+//   tb game  <frames.bin>   the test game (rwgame.asm): record, rewind, play on, rewind to the oldest
+//                           frame, drop the history. After every rewind step the machine is compared
+//                           with a copy taken when that frame's save state was made: all 64K of RAM,
+//                           the colour RAM, every flip-flop of the 6510 and both CIAs, the SID registers.
+//   tb boot  <frames.bin>   the Octophonic KERNAL to READY. without OctoVIC, then a rewind on the BASIC screen
+//
+// The picture (the VIC's colour index and the on-screen REWIND, every pixel of the raster) goes to
+// frames.bin, 512 x 320 bytes a frame, for mkclip.py.
+#include "Vtb_top.h"
+#include "Vtb_top___024root.h"
+#include "verilated.h"
+#include <cstdio>
+#include <cstdint>
+#include <cstring>
+#include <cstdlib>
+#include <deque>
+#include <vector>
+#include <string>
+
+static Vtb_top *top;
+static uint64_t clocks = 0;
+static const int FW = 512, FH = 320;
+static uint8_t fb[FH][FW];   // (bit 7: blanking, or never drawn)
+static int fx = 0, fy = 0, vframe = 0;
+static bool phb = false, pvb = false;
+static FILE *fvid = nullptr;
+static bool vid_on = false;
+static int fails = 0, checks = 0;
+
+struct Snap {
+	std::vector<uint8_t> ram;
+	uint8_t  col[1024];
+	uint8_t  sid[64];
+	uint32_t cpu[6], c1[10], c2[10];
+	int      vf;
+};
+static std::deque<Snap> gold;
+
+#define ROOT (top->rootp)
+#define RAMCOPY (ROOT->tb_top__DOT__rw__DOT__ram__DOT__m)
+#define COLRAM  (ROOT->tb_top__DOT__c64__DOT__colorram__DOT__ram)
+#define SIDREGS (ROOT->tb_top__DOT__c64__DOT__sid__DOT__regs)
+
+static void snap(Snap &s) {
+	s.ram.resize(65536);
+	for (int i = 0; i < 65536; i++) s.ram[i] = RAMCOPY[i];
+	for (int i = 0; i < 1024; i++) s.col[i] = COLRAM[i] & 15;
+	for (int i = 0; i < 64; i++) s.sid[i] = SIDREGS[i];
+	for (int i = 0; i < 6; i++) s.cpu[i] = top->cpu_o[i];
+	for (int i = 0; i < 10; i++) { s.c1[i] = top->cia1_o[i]; s.c2[i] = top->cia2_o[i]; }
+	s.vf = vframe;
+}
+
+// the CIA bits that run on by themselves while the 6510 is held: the TOD's divider and digits (192-221)
+static uint32_t ciamask(int w) { return w == 6 ? 0xC0000000u : 0xFFFFFFFFu; }
+
+static int diffbits(const uint32_t *a, const uint32_t *b, int n, bool cia) {
+	int d = 0;
+	for (int i = 0; i < n; i++) d += __builtin_popcount((a[i] ^ b[i]) & (cia ? ciamask(i) : 0xFFFFFFFFu));
+	return d;
+}
+
+static bool compare(const Snap &g, const char *what, bool quiet = false) {
+	Snap n; snap(n);
+	int dr = 0, first = -1;
+	for (int i = 0; i < 65536; i++) if (n.ram[i] != g.ram[i]) { if (first < 0) first = i; dr++; }
+	int dc = 0; for (int i = 0; i < 1024; i++) if (n.col[i] != g.col[i]) dc++;
+	int ds = 0; for (int i = 0; i < 64; i++) if ((i & 31) < 25 && n.sid[i] != g.sid[i]) ds++;
+	int dp = diffbits(n.cpu, g.cpu, 6, false), d1 = diffbits(n.c1, g.c1, 10, true), d2 = diffbits(n.c2, g.c2, 10, true);
+	bool ok = !dr && !dc && !ds && !dp && !d1 && !d2;
+	checks++;
+	if (!ok) fails++;
+	if (!ok || !quiet)
+		printf("%s %s: frame of %d: RAM %d differ%s, colour RAM %d, SID regs %d, 6510 bits %d, CIA1 bits %d, CIA2 bits %d  PC=%04X FRAME=%02X%02X\n",
+		       ok ? "OK  " : "FAIL", what, g.vf, dr, "", dc, ds, dp, d1, d2, n.cpu[0] & 0xFFFF, n.ram[3], n.ram[2]);
+	if (dr && first >= 0) printf("     first RAM difference at $%04X: is %02X, was %02X\n", first, n.ram[first], g.ram[first]);
+	if (dp) { printf("     6510 now "); for (int i = 5; i >= 0; i--) printf("%08X ", n.cpu[i]); printf("\n     6510 was "); for (int i = 5; i >= 0; i--) printf("%08X ", g.cpu[i]); printf("\n"); }
+	if (d1) { printf("     CIA1 now "); for (int i = 9; i >= 0; i--) printf("%08X ", n.c1[i]); printf("\n     CIA1 was "); for (int i = 9; i >= 0; i--) printf("%08X ", g.c1[i]); printf("\n"); }
+	if (d2) { printf("     CIA2 now "); for (int i = 9; i >= 0; i--) printf("%08X ", n.c2[i]); printf("\n     CIA2 was "); for (int i = 9; i >= 0; i--) printf("%08X ", g.c2[i]); printf("\n"); }
+	return ok;
+}
+
+// statistics
+static uint64_t t_freeze = 0;
+static int frames_before = 0, steps = 0;
+static uint64_t fr_min = ~0ull, fr_max = 0, fr_sum = 0;
+static int max_fifo = 0;
+static bool p_freeze = false, p_seq = false, p_err = false;
+static int ry_unfreeze_max = 0;
+static uint32_t lfsr = 0x1234567;
+static int stall_pct = 0;
+static bool quiet_steps = false;
+static int sid_wr_in_step = 0;
+
+static void tick() {
+	// the DDR3 held off at random
+	lfsr = (lfsr >> 1) ^ (-(lfsr & 1u) & 0xD0000001u);
+	top->ddr_stall = ((int)(lfsr % 100) < stall_pct);
+	top->clk = 0; top->eval();
+	top->clk = 1; top->eval();
+	clocks++;
+
+	if (top->fifo_cnt > max_fifo) max_fifo = top->fifo_cnt;
+	if (top->err && !p_err) { printf("FAIL the rewind unit's error flag came on (clock %llu)\n", (unsigned long long)clocks); fails++; }
+	p_err = top->err;
+
+	// a save state is being made: the copy to compare with, later
+	if (top->seq_on && !p_seq) {
+		gold.emplace_back(); snap(gold.back());
+		if (gold.size() > 4000) gold.pop_front();
+	}
+	p_seq = top->seq_on;
+
+	if (top->freeze && !p_freeze) { t_freeze = clocks; frames_before = top->frames; sid_wr_in_step = 0; }
+	if (top->freeze && top->sid_wr) sid_wr_in_step++;
+	if (!top->freeze && p_freeze) {
+		uint64_t d = clocks - t_freeze;
+		if (d < fr_min) fr_min = d;
+		if (d > fr_max) fr_max = d;
+		fr_sum += d; steps++;
+		if (top->ry > ry_unfreeze_max && top->ry >= 256) ry_unfreeze_max = top->ry;
+		if (frames_before >= 2 && gold.size() >= 2) gold.pop_back();
+		if (gold.empty()) { printf("FAIL a rewind step with no save state known\n"); fails++; }
+		else {
+			char w[96];
+			snprintf(w, sizeof w, "step %d (held %.0f us, to line %d, %d left, %d SID writes)", steps, d / 31.4496, (int)top->ry, (int)top->frames, sid_wr_in_step);
+			compare(gold.back(), w, quiet_steps);
+		}
+	}
+	p_freeze = top->freeze;
+
+	// the picture
+	if (top->pix_en) {
+		bool hb = top->hblank, vb = top->vblank;
+		if (vb && !pvb) {
+			if (fvid && vid_on) fwrite(fb, 1, sizeof fb, fvid);
+			memset(fb, 0x80, sizeof fb);
+			fy = 0; vframe++;
+		}
+		if (hb && !phb) { fx = 0; if (fy < FH - 1) fy++; }
+		else if (fx < FW) fb[fy][fx++] = (top->index & 15) | (top->osd << 4) | (hb || vb ? 0x80 : 0);
+		phb = hb; pvb = vb;
+	}
+}
+
+static void run_frames(int n) { int e = vframe + n; while (vframe < e) tick(); }
+static void run_clocks(uint64_t n) { while (n--) tick(); }
+
+static int peek16(int a) { return RAMCOPY[a] | (RAMCOPY[a + 1] << 8); }
+
+static void stats(const char *what) {
+	if (steps) printf("INFO %s: %d steps, the 6510 held %.0f / %.0f / %.0f us (least / mean / most), back on by raster line %d, FIFO at most %d of 256\n",
+	                  what, steps, fr_min / 31.4496, fr_sum / 31.4496 / steps, fr_max / 31.4496, ry_unfreeze_max, max_fifo);
+	steps = 0; fr_min = ~0ull; fr_max = 0; fr_sum = 0; ry_unfreeze_max = 0;
+}
+
+int main(int argc, char **argv) {
+	Verilated::commandArgs(argc, argv);
+	std::string mode = argc > 1 ? argv[1] : "game";
+	if (argc > 2) fvid = fopen(argv[2], "wb");
+	if (argc > 3) stall_pct = atoi(argv[3]);
+	top = new Vtb_top;
+	top->enable = 1; top->hold = 0; top->block = 0; top->joyA = 0; top->bios = 0; top->ddr_lat = 60;
+	top->reset_n = 0;
+	run_clocks(4000);
+	top->reset_n = 1;
+
+	if (mode == "boot") {
+		// the Octophonic KERNAL with no OctoVIC in the core: it must come up as on a stock VIC-II
+		run_frames(150);
+		vid_on = true;
+		run_frames(20);
+		// READY. on the screen? (screen codes 18 5 1 4 25 46)
+		int scr = 0x0400, found = -1;
+		static const uint8_t rdy[6] = {18, 5, 1, 4, 25, 46};
+		for (int i = 0; i < 1000 - 6 && found < 0; i++) { bool m = true; for (int k = 0; k < 6; k++) if (RAMCOPY[scr + i + k] != rdy[k]) m = false; if (m) found = i; }
+		printf("%s the Octophonic KERNAL reaches READY. without OctoVIC (found at row %d), %zu save states so far\n", found >= 0 ? "OK  " : "FAIL", found / 40, gold.size());
+		checks++; if (found < 0) fails++;
+		printf("     screen rows 0-7:\n");
+		for (int r = 0; r < 8; r++) { printf("     |"); for (int c = 0; c < 40; c++) { int ch = RAMCOPY[scr + r * 40 + c] & 0x7F; putchar(ch == 32 ? ' ' : ch < 27 ? '@' + ch : ch < 64 ? ch : '.'); } printf("|\n"); }
+		// a rewind on the BASIC screen (the cursor blinks, the jiffy clock runs)
+		int j0 = RAMCOPY[0xA2] | (RAMCOPY[0xA1] << 8);
+		top->hold = 1; run_frames(40); top->hold = 0;
+		int j1 = RAMCOPY[0xA2] | (RAMCOPY[0xA1] << 8);
+		printf("%s the jiffy clock went back while rewinding: %d -> %d\n", j1 < j0 ? "OK  " : "FAIL", j0, j1);
+		checks++; if (!(j1 < j0)) fails++;
+		run_frames(30);
+		int j2 = RAMCOPY[0xA2] | (RAMCOPY[0xA1] << 8);
+		printf("%s and runs on after: %d -> %d\n", j2 > j1 + 20 ? "OK  " : "FAIL", j1, j2);
+		checks++; if (!(j2 > j1 + 20)) fails++;
+		stats("boot");
+	}
+	else {
+		vid_on = true;
+		// A: play
+		run_frames(80);
+		int na = RAMCOPY[0xFB], ca = RAMCOPY[0xFC];
+		run_frames(40);
+		int nmis_a = (RAMCOPY[0xFB] - na) & 255, cias_a = (RAMCOPY[0xFC] - ca) & 255;
+		int f_a = peek16(2);
+		printf("INFO A: played 120 frames: game frame %d, %d save states, CIA1 irqs $%02X, NMIs $%02X\n", f_a, (int)top->frames, RAMCOPY[0xFC], RAMCOPY[0xFB]);
+		// B: rewind 60 frames
+		top->hold = 1; run_frames(60); top->hold = 0;
+		while (top->freeze) tick();
+		int f_b = peek16(2);
+		printf("%s B: 60 frames of rewind: game frame %d -> %d\n", (f_a - f_b >= 58 && f_a - f_b <= 61) ? "OK  " : "FAIL", f_a, f_b);
+		checks++; if (!(f_a - f_b >= 58 && f_a - f_b <= 61)) fails++;
+		stats("B");
+		// C: play on
+		uint32_t cnt0 = RAMCOPY[0xF8] | (RAMCOPY[0xF9] << 8) | (RAMCOPY[0xFA] << 16);
+		int n0 = RAMCOPY[0xFB], c0 = RAMCOPY[0xFC];
+		run_frames(40);
+		int f_c = peek16(2);
+		uint32_t cnt1 = RAMCOPY[0xF8] | (RAMCOPY[0xF9] << 8) | (RAMCOPY[0xFA] << 16);
+		int nmis = (RAMCOPY[0xFB] - n0) & 255, cias = (RAMCOPY[0xFC] - c0) & 255;
+		bool okc = (f_c - f_b >= 39 && f_c - f_b <= 41) && cnt1 != cnt0;
+		printf("%s C: played on 40 frames: game frame %d -> %d, the main loop ran %u times\n", okc ? "OK  " : "FAIL", f_b, f_c, (cnt1 - cnt0) & 0xFFFFFF);
+		checks++; if (!okc) fails++;
+		// 40 frames = 786240 cycles: the CIA 2 NMI every 777 -> 1011 or 1012 (mod 256: 243, 244); the CIA 1 interrupt
+		// (every 1000, some lost while the frame's work holds interrupts off) as in the 40 frames before the rewind
+		bool okt = abs(((cias - cias_a + 128) & 255) - 128) <= 3 && abs(((nmis - nmis_a + 128) & 255) - 128) <= 2 && abs(((nmis - 243 + 128) & 255) - 128) <= 2;
+		printf("%s C: the timers keep their pace after the rewind: CIA1 interrupts +%d (before: +%d), CIA2 NMIs +%d (before: +%d; 243-244 expected), mod 256\n", okt ? "OK  " : "FAIL", cias, cias_a, nmis, nmis_a);
+		checks++; if (!okt) fails++;
+		// D: rewind to the oldest save state and stay there
+		quiet_steps = true;
+		top->hold = 1;
+		int guard = 0;
+		while (top->frames > 1 && guard++ < 400) run_frames(1);
+		int f_d = peek16(2);
+		printf("%s D: rewound to the oldest save state: %d left, game frame %d\n", top->frames == 1 ? "OK  " : "FAIL", (int)top->frames, f_d);
+		checks++; if (top->frames != 1) fails++;
+		quiet_steps = false;
+		run_frames(8);
+		while (top->freeze) tick();
+		int f_d2 = peek16(2);
+		printf("%s D: held there 8 more frames: game frame %d (stands still)\n", abs(f_d2 - f_d) <= 1 ? "OK  " : "FAIL", f_d2);
+		checks++; if (abs(f_d2 - f_d) > 1) fails++;
+		top->hold = 0;
+		stats("D");
+		// E: play on from there
+		run_frames(25);
+		int f_e = peek16(2);
+		printf("%s E: played on 25 frames: game frame %d -> %d, %d save states\n", (f_e - f_d2 >= 24 && f_e - f_d2 <= 26) ? "OK  " : "FAIL", f_d2, f_e, (int)top->frames);
+		checks++; if (!(f_e - f_d2 >= 24 && f_e - f_d2 <= 26)) fails++;
+		// F: the history dropped (drive busy / a file loading), no rewind then; recording starts again after
+		top->block = 1; run_clocks(2000); top->block = 0;
+		bool okf = top->frames == 0;
+		run_clocks(100);
+		top->hold = 1; top->block = 1;
+		uint64_t c0f = clocks; bool froze = false;
+		while (clocks < c0f + 3 * 630000ull) { tick(); if (top->freeze) froze = true; }
+		top->block = 0; top->hold = 0;
+		printf("%s F: history dropped while blocked (0 save states: %s), no freeze with the key held: %s\n", (okf && !froze) ? "OK  " : "FAIL", okf ? "yes" : "NO", froze ? "FROZE" : "yes");
+		checks++; if (!(okf && !froze)) fails++;
+		gold.clear();
+		run_frames(12);
+		int f_f = peek16(2);
+		top->hold = 1; run_frames(6); top->hold = 0;
+		while (top->freeze) tick();
+		int f_g = peek16(2);
+		printf("%s F: recording again afterwards: %d save states, rewind %d -> %d\n", f_g < f_f ? "OK  " : "FAIL", (int)top->frames, f_f, f_g);
+		checks++; if (!(f_g < f_f)) fails++;
+		stats("F");
+		run_frames(10);
+	}
+	if (fvid) fclose(fvid);
+	printf("%s: %d checks, %d failed, %llu clocks, %d frames\n", fails ? "REWIND_SIM_FAILED" : "REWIND_SIM_OK", checks, fails, (unsigned long long)clocks, vframe);
+	top->final();
+	return fails ? 1 : 0;
+}

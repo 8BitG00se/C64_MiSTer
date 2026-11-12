@@ -10,6 +10,7 @@ ghdl -a $GF $R/rtl/t65/T65_Pack.vhd $R/rtl/t65/T65_ALU.vhd $R/rtl/t65/T65_MCode.
   $R/rtl/cpu_6510.vhd $R/rtl/dprom.vhd $R/rtl/spram.vhd $R/rtl/video_vicII_656x.vhd $R/sim/rewind/stubs.vhd \
   $R/rtl/fpga64_keyboard.vhd $R/rtl/fpga64_buslogic.vhd $R/rtl/sid_mix.vhd $R/rtl/cia_tod_clk.vhd $R/rtl/fpga64_sid_iec.vhd
 ghdl --synth $GF --out=verilog -gREWIND=1 fpga64_sid_iec > fpga64_synth.v 2> synth.log || { tail -40 synth.log; exit 1; }
+python3 $R/sim/rewind/fixnet.py fpga64_synth.v
 tail -5 synth.log
 wc -l fpga64_synth.v
 grep -n "^module " fpga64_synth.v | head -60
