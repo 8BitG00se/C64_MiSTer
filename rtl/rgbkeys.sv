@@ -3,6 +3,8 @@
 // Hold the Windows key and press a function key:
 //   WIN+F1  back to the Octophonic core (its start screen)
 //   WIN+F2  held: REWIND - the game runs backwards until F2 is let go (Build 13, rtl/rewind.sv)
+//           (the Menu key, between right ALT and right CTRL on a PC keyboard, held does the same -
+//           the C64 has no use for that key)
 //   WIN+F3  the next palette of the pack (1, 2, ... the last, Off, 1 ...)
 //   WIN+F5  the next colour grading            (Octophonic Main remakes the pack and sends it)
 //   WIN+F7  the gradient strength: next step   (Octophonic Main remakes the pack and sends it)
@@ -28,7 +30,8 @@ module rgbkeys
 reg       old_stb = 0;
 reg       win_l = 0, win_r = 0;
 reg [7:0] held = 0;            // F1-F8 whose press was held back (their release is held back too)
-assign    rew = held[1];
+reg       menu = 0;            // the Menu key is down
+assign    rew = held[1] | menu;
 
 function [3:0] fkey(input [7:0] c);    // 1-8 for F1-F8, 0 for any other key
 	case (c)
@@ -51,6 +54,7 @@ always @(posedge clk) begin
 		pass = 1;
 		if (ext && ps2_key[7:0] == 8'h1F) win_l <= down;
 		if (ext && ps2_key[7:0] == 8'h27) win_r <= down;
+		if (ext && ps2_key[7:0] == 8'h2F) begin menu <= down; pass = 0; end
 		if (f != 0) begin
 			if (down && (win_l | win_r | held[fi])) begin   // (held: the keyboard's repeats after WIN is let go)
 				pass = 0;
