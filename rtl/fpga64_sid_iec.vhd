@@ -1569,6 +1569,7 @@ begin
 					when "01" => turbo_m <= "110";
 					when "10" => turbo_m <= "111";
 					when "11" => turbo_m <= "111"; -- unused
+					when others => null;
 				end case;
 			end if;
 		end if;
