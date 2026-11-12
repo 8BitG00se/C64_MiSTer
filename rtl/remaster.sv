@@ -342,6 +342,7 @@ function [2:0] low8(input [7:0] v);
 	end
 endfunction
 
+wire  [2:0] sjn = low8(sj_pend);             // the next sprite for the engine
 reg   [7:0] pre_byte;
 always @(*) begin
 	case (cnt[1:0])
@@ -535,10 +536,10 @@ always @(posedge clk) begin
 				st <= E_REQ; st_ret <= E_HDRW;
 			end
 			else if (sj_pend != 0) begin
-				sn <= low8(sj_pend);
-				sj_pend[low8(sj_pend)] <= 0;
-				sj_kill[low8(sj_pend)] <= 0;
-				sj_pp[low8(sj_pend)]   <= spp[low8(sj_pend)];
+				sn <= sjn;
+				sj_pend[sjn] <= 0;
+				sj_kill[sjn] <= 0;
+				sj_pp[sjn]   <= spp[sjn];
 				crc <= 64'hFFFFFFFFFFFFFFFF; cnt <= 0; is_spr <= 1;
 				st <= l2_ok ? S_PRE : E_IDLE;
 			end

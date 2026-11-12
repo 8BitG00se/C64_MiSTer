@@ -14,7 +14,7 @@
 // colour at E0; E1 the cell/char/line tables, E2 the remap, E3 the palette - out after E3, steady
 // until the next pixel's E3. So the picture comes out 3 clocks (under one pixel) after the stock one.
 //
-// The pack comes in over ioctl (Main's file loader), 14336 bytes, laid out as the file is:
+// The pack comes in over ioctl (Main's file loader), its first 14336 bytes, laid out as the file is:
 //   $0000 header ("RGB256PK", version, palettes)   $0100 line table (512)   $0300 char table (256)
 //   $0400 cell table (1024; 1000 = outside the window)   $0800 remap (4096)   $1800 palettes (8x256x4: R,G,B,0)
 
@@ -54,7 +54,7 @@ reg  [7:0] lat_r, lat_g;
 reg  [3:0] npal_l;
 assign loaded = good;
 
-wire       wr = ld_download & ld_wr & (ld_addr[24:14] == 0);
+wire       wr = ld_download & ld_wr & (ld_addr < 25'h3800);   // (Build 14: a version 2 pack goes on after $37FF - Level 2, read from the DDR3)
 wire [13:0] a = ld_addr[13:0];
 
 function [7:0] magic(input [2:0] i);

@@ -143,7 +143,8 @@ def frame_sprites(f):
             if not (r[0] & 1): ln.append(None); continue
             if (r[0] & 16) or cur[n] is None:
                 k, pre, data = sprite_key(r, f['ram']); cur[n] = k; keys[k] = (pre, data)
-            ln.append((cur[n], int(r[1]), int(r[2]) | (int(r[3]) << 8), (r[0] >> 1) & 1, (r[0] >> 2) & 1))
+            X = int(r[2]) | (int(r[3]) << 8)
+            ln.append((cur[n], int(r[1]), X - 65536 if X >= 32768 else X, (int(r[0]) >> 1) & 1, (int(r[0]) >> 2) & 1))
         lines.append(ln)
     return lines, keys
 

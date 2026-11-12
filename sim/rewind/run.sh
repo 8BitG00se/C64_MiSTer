@@ -22,7 +22,7 @@ python3 -c "open('zero.hex','w').write('00\n'*65536)"
 
 build() {   # $1 the stack's address bits, $2 the folder
 	verilator --cc --exe --build -j 4 -O3 --x-assign fast --x-initial fast -Wno-fatal --top-module tb_top -GAW=$1 \
-	  +1364-2005ext+v05 $S/public.vlt $S/tb_top.sv fpga64_synth.v05 $R/rtl/mos6526.v $R/rtl/cartridge.v $R/rtl/am29f040.sv $R/rtl/rewind.sv $R/rtl/octovic/ovram.sv \
+	  +1364-2005ext+v05 $S/public.vlt $S/tb_top.sv fpga64_synth.v05 $R/rtl/mos6526.v $R/rtl/cartridge.v $R/rtl/am29f040.sv $R/rtl/rewind.sv $R/rtl/remaster.sv $R/rtl/rgb256.sv $R/rtl/octovic/ovram.sv \
 	  $R/rtl/octovic/ddram_arb2.sv $R/rtl/octovic/sid_fx.sv $R/rtl/octovic/octo_os.sv $S/tb.cpp \
 	  -CFLAGS "-O2 -Wno-attributes" -o tb --Mdir $2 > $2.txt 2>&1 || { grep -E "%Error|error:" $2.txt | head -30; tail -5 $2.txt; exit 1; }
 }

@@ -44,7 +44,25 @@ module tb_top #(parameter AW = 20)
 	output   [8:0] fifo_cnt,
 	output         sid_wr,          // the SIDs are written (the stub below)
 	output  [15:0] c64_addr,
-	output         ram_we
+	output         ram_we,
+	// Build 14: the Level 2 remaster unit and the recolour unit behind the VIC, as in c64.sv
+	input          rm_on,
+	input          rm_learn,
+	input          rm_reload,
+	input          ld_download,
+	input          ld_wr,
+	input   [24:0] ld_addr,
+	input    [7:0] ld_data,
+	input    [2:0] palette,
+	output  [28:0] v_tag,           // the VIC's own outputs (index is above)
+	output  [25:0] v_l2pix,
+	output [183:0] v_l2spr,
+	output   [1:0] v_bank,
+	output  [23:0] o_rgb,           // the picture after both units (16 lines late)
+	output  [28:0] o_tag,
+	output         o_vsync,
+	output         rm_ok,
+	output  [15:0] rm_lcount
 );
 
 wire  [7:0] c64_data_out;
@@ -126,7 +144,7 @@ fpga64_sid_iec c64
 	.io_cycle(io_cycle), .ext_cycle(ext_cycle), .refresh(refresh),
 	.cia_mode(1'b0), .turbo_mode(2'b00), .turbo_speed(2'b00),
 	.vic_variant(2'b00), .ntscMode(1'b0), .sysinfo(8'd0), .exact50(1'b1), .palette(3'd0), .split(1'b0), .quarter(1'b0),
-	.hsync(hs), .vsync(vs), .rgb_index(index), .rgb_pix_en(pix_en),
+	.hsync(hs), .vsync(vs), .rgb_index(index), .rgb_pix_en(pix_en), .rgb_tag(v_tag), .l2_pix(v_l2pix), .l2_spr(v_l2spr), .l2_bank(v_bank),
 	.game(game), .exrom(exrom), .io_rom(io_rom), .io_ext(cart_oe), .io_data(cart_data), .irq_n(1'b1), .nmi_n(~nmi), .nmi_ack(nmi_ack),
 	.romL(romL), .romH(romH), .UMAXromH(UMAXromH), .IOE(IOE), .IOF(IOF),
 	.dma_req(1'b0), .dma_addr(16'd0), .dma_dout(8'd0), .dma_we(1'b0), .irq_ext_n(1'b1),
@@ -171,9 +189,46 @@ rewind #(.AW(AW)) rw
 	.col_we(rw_col_we), .col_addr(rw_col_addr), .col_data(rw_col_data),
 	.m_addr(sd_addr), .m_ce(sd_ce), .m_we(sd_we), .m_din(sd_din), .m_main(~io_cycle & ~ext_cycle),
 	.m_q(rw_mq), .m_sel(rw_msel),
-	.ddr_addr(b_addr), .ddr_burstcnt(b_burstcnt), .ddr_rd(b_rd), .ddr_we(b_we), .ddr_din(b_din), .ddr_be(b_be),
-	.ddr_busy(b_busy), .ddr_dout(d_dout), .ddr_ready(b_ready),
+	.x_addr(rm_addr), .x_req(rm_req), .x_ack(rm_ack), .x_q(rm_q),
+	.ddr_addr(w_addr), .ddr_burstcnt(w_burstcnt), .ddr_rd(w_rd), .ddr_we(w_we), .ddr_din(w_din), .ddr_be(w_be),
+	.ddr_busy(w_busy), .ddr_dout(d_dout), .ddr_ready(w_ready),
 	.active(active), .frames(frames), .err(err)
+);
+// Build 14: the remaster unit shares port B with the rewind unit, and feeds the recolour unit
+wire [28:0] w_addr, m_addr;
+wire  [7:0] w_burstcnt, w_be, m_burstcnt, m_be;
+wire [63:0] w_din, m_din;
+wire        w_rd, w_we, w_busy, w_ready, m_rd, m_we, m_busy, m_ready;
+wire [15:0] rm_addr;
+wire        rm_req, rm_ack;
+wire  [7:0] rm_q;
+wire  [3:0] rm_index;
+wire        rm_ovr;
+wire  [7:0] rm_slot;
+wire  [3:0] rc_npal;
+wire        rc_loaded;
+ddram_arb2 arb_b
+(
+	.clk(clk), .reset(~reset_n),
+	.a_addr(w_addr), .a_burstcnt(w_burstcnt), .a_rd(w_rd), .a_we(w_we), .a_din(w_din), .a_be(w_be), .a_busy(w_busy), .a_ready(w_ready),
+	.b_addr(m_addr), .b_burstcnt(m_burstcnt), .b_rd(m_rd), .b_we(m_we), .b_din(m_din), .b_be(m_be), .b_busy(m_busy), .b_ready(m_ready),
+	.addr(b_addr), .burstcnt(b_burstcnt), .rd(b_rd), .we(b_we), .din(b_din), .be(b_be), .busy(b_busy), .ready(b_ready)
+);
+remaster remaster
+(
+	.clk(clk), .reset(~reset_n), .on(rm_on & rc_loaded), .learn(rm_learn), .reload(rm_reload),
+	.index(index), .tag(v_tag), .l2_pix(v_l2pix), .l2_spr(v_l2spr), .bank(v_bank), .vsync_in(vs),
+	.d_index(rm_index), .d_tag(o_tag), .d_vsync(o_vsync), .ovr(rm_ovr), .ovr_slot(rm_slot),
+	.x_addr(rm_addr), .x_req(rm_req), .x_ack(rm_ack), .x_q(rm_q),
+	.ddr_addr(m_addr), .ddr_burstcnt(m_burstcnt), .ddr_rd(m_rd), .ddr_we(m_we), .ddr_din(m_din), .ddr_be(m_be),
+	.ddr_busy(m_busy), .ddr_dout(d_dout), .ddr_ready(m_ready),
+	.l2_ok(rm_ok), .lcount(rm_lcount)
+);
+rgb256 recolour
+(
+	.clk(clk), .ld_download(ld_download), .ld_wr(ld_wr), .ld_addr(ld_addr), .ld_data(ld_data),
+	.index(rm_index), .tag(o_tag), .ovr(rm_ovr), .ovr_slot(rm_slot),
+	.palette(palette), .npal(rc_npal), .rgb(o_rgb), .loaded(rc_loaded)
 );
 assign seq_on   = rw.seq_on;
 assign fifo_cnt = rw.f_cnt;
@@ -188,6 +243,12 @@ ddram_arb2 arb
 
 // ---- the DDR3: a memory behind an Avalon port - held off at random (ddr_stall), reads ddr_lat clocks late
 reg  [63:0] ddr [0:(1 << AW) - 1];
+reg  [63:0] ddrp [0:(1 << 19) - 1];          // Build 14: the pack (word $06800000 on, 4 MB here)
+reg  [63:0] ddrl [0:(1 << 15) - 1];          //           the learn log (word $06C00000 on)
+wire        d_ring  = (d_addr >= 29'h07000000);
+wire        d_log   = !d_ring && (d_addr >= 29'h06C00000);
+wire        r_ring  = (r_addr >= 29'h07000000);
+wire        r_log   = !r_ring && (r_addr >= 29'h06C00000);
 reg  [63:0] ddr_q;
 reg         ddr_v = 0;
 reg   [8:0] r_wait = 0;
@@ -199,17 +260,19 @@ assign d_ready = ddr_v;
 always @(posedge clk) begin
 	ddr_v <= 0;
 	if (d_we & ~d_busy) begin
-		if (d_addr[28:AW] != (29'h07000000 >> AW)) $display("DDR_BAD_ADDR write %h", d_addr);
-		ddr[d_addr[AW-1:0]] <= d_din;
+		if (d_addr < 29'h06800000 || (d_ring && d_addr[28:AW] != (29'h07000000 >> AW))) $display("DDR_BAD_ADDR write %h", d_addr);
+		if (d_ring) ddr[d_addr[AW-1:0]] <= d_din;
+		else if (d_log) ddrl[d_addr[14:0]] <= d_din;
+		else ddrp[d_addr[18:0]] <= d_din;
 	end
 	if (d_rd & ~d_busy) begin
-		if (d_addr[28:AW] != (29'h07000000 >> AW)) $display("DDR_BAD_ADDR read %h", d_addr);
+		if (d_addr < 29'h06800000 || (d_ring && d_addr[28:AW] != (29'h07000000 >> AW))) $display("DDR_BAD_ADDR read %h", d_addr);
 		r_addr <= d_addr; r_left <= d_burstcnt; r_wait <= {1'b0, ddr_lat} + 9'd1;
 	end
 	if (r_left != 0) begin
 		if (r_wait != 0) r_wait <= r_wait - 1'd1;
 		else if (!ddr_stall) begin
-			ddr_q  <= ddr[r_addr[AW-1:0]];
+			ddr_q  <= r_ring ? ddr[r_addr[AW-1:0]] : r_log ? ddrl[r_addr[14:0]] : ddrp[r_addr[18:0]];
 			ddr_v  <= 1;
 			r_addr <= r_addr + 1'd1;
 			r_left <= r_left - 1'd1;

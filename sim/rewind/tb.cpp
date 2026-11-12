@@ -105,6 +105,7 @@ static void tick() {
 	top->clk = 0; top->eval();
 	top->clk = 1; top->eval();
 	clocks++;
+	if (rm::on) rm::sample();
 
 	if (top->fifo_cnt > max_fifo) max_fifo = top->fifo_cnt;
 	if (top->err && !p_err) { printf("FAIL the rewind unit's error flag came on (clock %llu)\n", (unsigned long long)clocks); fails++; }
@@ -146,6 +147,95 @@ static void tick() {
 		if (hb && !phb) { fx = 0; if (fy < FH - 1) fy++; }
 		else if (fx < FW) fb[fy][fx++] = (top->index & 15) | (top->osd << 4) | (hb || vb ? 0x80 : 0);
 		phb = hb; pvb = vb;
+	}
+}
+
+// ---------------------------------------------------------------- Build 14: the remaster unit behind the real VIC
+// tb remaster OUT stall [PACK] [first frame] [frames]: the test game runs; from the first frame on, what the VIC gives
+// the remaster unit is written as OUT.l2f (the format of docs/RGB256.md, made from the VIC's own signals) and the
+// picture after the remaster and recolour units as OUT.rgb (the same W x H). sim/remaster/full.sh checks them.
+#define DDRP (ROOT->tb_top__DOT__ddrp)
+#define DDRL (ROOT->tb_top__DOT__ddrl)
+namespace rm {
+	const int W = 396, H = 284, L0 = 16;
+	struct Fr { std::vector<uint8_t> idx, gfx, cell, code, spr, ram, out; std::vector<uint16_t> tag; int fno; bool in_done = false, out_done = false; };
+	std::deque<Fr> frs;
+	bool on = false; int first = 0, count = 0, fno = -1;
+	int px = -1, line_abs = 0, ccol = -1, cbit = 8;
+	struct Ln { int fno, ry; } hist[64];
+	bool sfirst[8];
+	struct Due { uint64_t at; int fno, ry, x; };
+	std::deque<Due> due;
+	FILE *fl = nullptr, *fo = nullptr;
+	Fr *find(int f) { for (auto &r : frs) if (r.fno == f) return &r; return nullptr; }
+	void flush() {
+		while (!frs.empty() && frs.front().in_done && frs.front().out_done) {
+			Fr &r = frs.front();
+			uint32_t h[8] = { 0x3146324C, (uint32_t)r.fno, W, H, L0, 32, 0, 0 };
+			fwrite(h, 4, 8, fl); fwrite(r.idx.data(), 1, W * H, fl); fwrite(r.tag.data(), 2, W * H, fl);
+			fwrite(r.gfx.data(), 1, W * H, fl); fwrite(r.cell.data(), 1, W * H, fl); fwrite(r.code.data(), 1, W * H, fl);
+			fwrite(r.spr.data(), 1, 96 * H, fl); fwrite(r.ram.data(), 1, 65536, fl);
+			fwrite(r.out.data(), 1, W * H * 3, fo);
+			frs.pop_front();
+		}
+	}
+	void sample() {
+		while (!due.empty() && due.front().at <= clocks) {
+			Due &q = due.front();
+			Fr *r = find(q.fno);
+			int y = q.ry - L0;
+			if (r && y >= 0 && y < H && q.x < W) { uint32_t c = top->o_rgb; uint8_t *o = &r->out[(y * W + q.x) * 3]; o[0] = c >> 16; o[1] = c >> 8; o[2] = c; }
+			if (r && q.ry == L0 + H && q.x == 0) { r->out_done = true; flush(); }
+			due.pop_front();
+		}
+		uint32_t tag = top->v_tag; int x = (tag >> 9) & 1023, ry = tag & 511;
+		if (x == px) return;
+		px = x;
+		uint32_t p = top->v_l2pix;
+		if (x == 0) {
+			line_abs++;
+			if (ry == 0) {
+				fno++;
+				for (int n = 0; n < 8; n++) sfirst[n] = true;
+				if (on && fno >= first && fno < first + count) {
+					frs.emplace_back(); Fr &r = frs.back(); r.fno = fno;
+					r.idx.assign(W * H, 0); r.tag.assign(W * H, 3 << 8); r.gfx.assign(W * H, 0); r.cell.assign(W * H, 0xFF); r.code.assign(W * H, 0);
+					r.spr.assign(96 * H, 0); r.ram.resize(65536); r.out.assign(W * H * 3, 0);
+				}
+			}
+			hist[line_abs & 63] = { fno, ry };
+			ccol = -1; cbit = 8;
+		}
+		// the pixel that left the ring: 16 lines back, one pixel back; its colour is out 3 clocks from now
+		{
+			int la = line_abs - 16, ox = x - 1;
+			if (ox < 0) { ox = 503; la--; }
+			if (la > 0) due.push_back({ clocks + 3, hist[la & 63].fno, hist[la & 63].ry, ox });
+		}
+		Fr *r = find(fno);
+		if (!r || r->in_done) return;
+		int y = ry - L0;
+		bool cs = (p >> 5) & 1, cv = (p >> 6) & 1;
+		if (cs && cv) { ccol++; cbit = 0; } else if (cbit < 8) cbit++;
+		if (ry == L0 + H && x == 0) { for (int i = 0; i < 65536; i++) r->ram[i] = RAMCOPY[i]; r->in_done = true; flush(); return; }
+		if (y < 0 || y >= H) return;
+		for (int n = 0; n < 8; n++) if ((p >> (10 + n)) & 1) {
+			const VlWide<6> &sp = top->v_l2spr;
+			auto bits = [&](int lo, int w) { uint32_t v = 0; for (int k = 0; k < w; k++) if (sp[(lo + k) / 32] & (1u << ((lo + k) % 32))) v |= 1u << k; return v; };
+			int mc = bits(n * 22, 6), row = mc / 3 - 1, X = x - 8, addr = (top->v_bank << 14) | (bits(n * 22 + 13, 8) << 6);
+			bool first = (mc == 3) && sfirst[n];
+			if (mc == 3) { if (first) sfirst[n] = false; } else sfirst[n] = true;
+			uint8_t *s = &r->spr[(y * 8 + n) * 12];
+			s[0] = 1 | (bits(n * 22 + 6, 1) << 1) | (bits(n * 22 + 7, 1) << 2) | (bits(n * 22 + 8, 1) << 3) | (first ? 16 : 0);
+			s[1] = row; s[2] = X & 255; s[3] = (X >> 8) & 255; s[4] = bits(n * 22 + 9, 4); s[5] = bits(176, 4); s[6] = bits(180, 4);
+			s[8] = addr & 255; s[9] = addr >> 8;
+		}
+		if (x >= W) return;
+		int i = y * W + x, kind = tag >> 27;
+		r->idx[i] = top->index & 15;
+		r->tag[i] = (kind << 8) | ((tag >> 19) & 255);
+		r->gfx[i] = p & 31;
+		if (ccol >= 0 && ccol < 40 && cbit < 8) { r->cell[i] = (((p >> 7) & 7) << 3) | cbit; r->code[i] = (p >> 18) & 255; }
 	}
 }
 
@@ -204,6 +294,37 @@ int main(int argc, char **argv) {
 		run_clocks(2000);
 	}
 	top->reset_n = 1;
+
+	if (mode == "remaster") {
+		// (see rm above) the pack: its first $3800 bytes through the loader, the whole file into the DDR3; none: no Level 2
+		std::string o = argc > 2 ? argv[2] : "rm";
+		if (fvid) { fclose(fvid); fvid = nullptr; remove(argv[2]); }
+		rm::fl = fopen((o + ".l2f").c_str(), "wb"); rm::fo = fopen((o + ".rgb").c_str(), "wb");
+		rm::first = argc > 5 ? atoi(argv[5]) : 60; rm::count = argc > 6 ? atoi(argv[6]) : 3;
+		top->rm_on = 1; top->rm_learn = argc > 7 ? atoi(argv[7]) : 0; top->palette = 0; top->enable = 0;
+		for (int i = 0; i < (1 << 15); i++) DDRL[i] = 0;
+		for (int i = 0; i < (1 << 19); i++) DDRP[i] = 0;
+		if (argc > 4 && argv[4][0]) {
+			FILE *f = fopen(argv[4], "rb");
+			if (!f) { printf("FAIL no pack %s\n", argv[4]); return 2; }
+			std::vector<uint8_t> d(4 << 20); size_t n = fread(d.data(), 1, d.size(), f); fclose(f);
+			for (size_t i = 0; i < (n + 7) / 8; i++) { uint64_t w = 0; for (int k = 7; k >= 0; k--) w = (w << 8) | d[i * 8 + k]; DDRP[i] = w; }
+			top->ld_download = 1; run_clocks(2);
+			for (int a = 0; a < 0x3800; a++) { top->ld_addr = a; top->ld_data = d[a]; top->ld_wr = 1; run_clocks(1); top->ld_wr = 0; run_clocks(1); }
+			top->ld_download = 0; run_clocks(2);
+			top->rm_reload = 1; run_clocks(1); top->rm_reload = 0;
+			run_clocks(4000);
+			printf("INFO pack %s: %zu bytes, Level 2 %s\n", argv[4], n, top->rm_ok ? "found" : "NOT found");
+		}
+		rm::on = true;
+		while (rm::fno < rm::first + rm::count + 1) tick();
+		run_clocks(40000);
+		fclose(rm::fl); fclose(rm::fo);
+		printf("INFO remaster: frames %d-%d written to %s.l2f / .rgb; learned %d; %llu clocks\n", rm::first, rm::first + rm::count - 1, o.c_str(), (int)top->rm_lcount, (unsigned long long)clocks);
+		printf("REMASTER_FULL_RUN_DONE\n");
+		top->final();
+		return 0;
+	}
 
 	if (mode == "boot") {
 		// the Octophonic KERNAL with no OctoVIC in the core: it must come up as on a stock VIC-II

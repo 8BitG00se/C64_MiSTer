@@ -19,7 +19,7 @@ index 1be2061..e0698ea 100644
  
  #define OS_DIR      "/media/fat/octophonic"
  #define OS_INI      OS_DIR "/os.ini"
-@@ -115,6 +118,9 @@ static uint8_t cur_seq = 0;              // the 6502's number for the request be
+@@ -115,6 +118,9 @@ static uint8_t cur_seq = 0;
  static std::string disk8;                // the disk last put in drive 8 (COMPILE works beside it)
  static int  os_showcase = 0;             // os.ini showcase=1: NET b3, demos leave out their debug rows
  static std::string prog_dir;             // the folder the running program came from (REU, $18)
@@ -54,7 +54,7 @@ index 1be2061..e0698ea 100644
  
  	// where to start: os.ini's startin= (network, SD card, the last folder); without it the SD
  	// card, always - Main never waits for a network unless os.ini asks for one (startin=net).
-@@ -803,10 +813,488 @@ static void reu_load(const char *path)
+@@ -803,10 +813,617 @@ static void reu_load(const char *path)
  	reu_in = path;
  }
  
@@ -222,6 +222,118 @@ index 1be2061..e0698ea 100644
 +static int         rgb_evt_seen = -1;       // the poll word's count of remaster keys, last seen
 +static unsigned long rgb_autorun_at = 0;    // a disk game: SHIFT+RUN/STOP typed at this time (LOAD"*",8 and RUN)
 +
++// ------------------------------------------------------------ Level 2 (Build 14, docs/RGB256.md "Level 2")
++// A version 2 pack has redrawn blocks and sprite frames after its first PK_SIZE bytes ("LVL2" at $3800). The
++// core reads them from the DDR3, so the whole file is copied there (byte $34000000) BEFORE the pack goes in
++// over the loader; a pack without Level 2 gets an empty table there, so learn mode (WIN+F6) works for any game.
++// The core logs each block and sprite it does not find to the DDR3 (byte $36000000); the log is saved beside
++// the game as <game>.learn (added to one already there, each key once).
++#include "../../shmem.h"
++#define L2_DDR    0x34000000
++#define L2_MAX    (32u << 20)
++#define LRN_DDR   0x36000000
++#define LRN_MAX   (6u << 20)
++#define LRN_REC   80
++static std::vector<uint8_t> rgb_l2;         // the pack file after its first PK_SIZE bytes (empty: no Level 2)
++static uint8_t    *lrn_map = NULL;          // the learn log in the DDR3
++static uint32_t    lrn_saved = 0, lrn_seen = 0;
++static unsigned long lrn_timer = 0;
++static void rgb_ulog(const char *fmt, ...);
++static int  rgb_write_file(const std::string &path, const uint8_t *d, size_t n);
++
++static void l2_put32(uint8_t *p, uint32_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); p[2] = (uint8_t)(v >> 16); p[3] = (uint8_t)(v >> 24); }
++static uint32_t l2_get32(const uint8_t *p) { return p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t)p[3] << 24); }
++
++// the pack of the game now starting -> the DDR3 (pk: its first PK_SIZE bytes, rgb_l2: the rest)
++static void rgb_l2_load(const uint8_t *pk)
++{
++	int has = rgb_l2.size() >= 0x40 && !memcmp(rgb_l2.data(), "LVL2", 4) && PK_SIZE + rgb_l2.size() <= L2_MAX;
++	uint32_t nb = 13, ns = 8;                 // no Level 2 in the pack: an empty table (8192 and 256 buckets)
++	uint32_t boff = 0x3A40, soff = boff + (144u << nb), len = has ? (uint32_t)(PK_SIZE + rgb_l2.size()) : soff + (1024u << ns);
++	uint8_t *m = (uint8_t *)shmem_map(L2_DDR, len);
++	if (!m) { os_log("  Level 2: the DDR3 could not be mapped"); return; }
++	memcpy(m, pk, PK_SIZE);
++	if (has) memcpy(m + PK_SIZE, rgb_l2.data(), rgb_l2.size());
++	else
++	{
++		memset(m + PK_SIZE, 0, len - PK_SIZE);
++		uint8_t *h = m + PK_SIZE;
++		memcpy(h, "LVL2", 4);
++		l2_put32(h + 8, boff); l2_put32(h + 12, nb); l2_put32(h + 16, soff); l2_put32(h + 20, ns);
++		l2_put32(h + 24, 0);   l2_put32(h + 28, len);
++	}
++	shmem_unmap(m, len);
++	if (!lrn_map) lrn_map = (uint8_t *)shmem_map(LRN_DDR, LRN_MAX);
++	if (lrn_map) { memcpy(lrn_map, "LRN2", 4); l2_put32(lrn_map + 4, 0); }
++	lrn_saved = lrn_seen = 0;
++	if (has) os_log("  Level 2: %u blocks, %u sprite frames in the DDR3 (%u bytes)", l2_get32(rgb_l2.data() + 0x20), l2_get32(rgb_l2.data() + 0x24), len);
++	else os_log("  Level 2: none in this pack (an empty table in the DDR3, for learn mode)");
++}
++
++// the learn log -> <game>.learn ("RGBLEARN", u32 2, u32 count, 80-byte records), added to what the file has
++static void rgb_learn_save(int quiet)
++{
++	if (!lrn_map || memcmp(lrn_map, "LRN2", 4) || rgb_game.empty()) return;
++	uint32_t n = l2_get32(lrn_map + 4);
++	if (n > (LRN_MAX - 8) / LRN_REC) n = (LRN_MAX - 8) / LRN_REC;
++	if (n == lrn_saved) return;
++	size_t sl = rgb_game.rfind('/');
++	std::string name = rgb_game.substr(sl + 1);
++	std::string path = rgb_game.substr(0, sl + 1) + base_of(name) + ".learn";
++	std::vector<uint8_t> out(16, 0);
++	FILE *f = fopen(path.c_str(), "rb");
++	if (!f) { std::string alt = std::string(RGB_PACKS) + "/" + base_of(name) + ".learn"; f = fopen(alt.c_str(), "rb"); }
++	if (f)
++	{
++		uint8_t h[16];
++		if (fread(h, 1, 16, f) == 16 && !memcmp(h, "RGBLEARN", 8))
++		{
++			uint32_t c = l2_get32(h + 12);
++			if (c <= 1000000) { out.resize(16 + (size_t)c * LRN_REC); if (fread(out.data() + 16, LRN_REC, c, f) != c) out.resize(16); }
++		}
++		fclose(f);
++	}
++	uint32_t had = (uint32_t)((out.size() - 16) / LRN_REC), added = 0;
++	std::vector<uint64_t> keys;               // type in the top byte's place: (key, type) pairs, sorted
++	keys.reserve(had + n);
++	for (uint32_t i = 0; i < had; i++) { const uint8_t *r = out.data() + 16 + (size_t)i * LRN_REC; uint64_t k; memcpy(&k, r + 8, 8); keys.push_back(k ^ r[0]); }
++	std::sort(keys.begin(), keys.end());
++	std::vector<uint64_t> fresh;
++	for (uint32_t i = 0; i < n; i++)
++	{
++		const uint8_t *r = lrn_map + 8 + (size_t)i * LRN_REC;
++		if (r[0] != 1 && r[0] != 2) continue;
++		uint64_t k; memcpy(&k, r + 8, 8); k ^= r[0];
++		if (std::binary_search(keys.begin(), keys.end(), k) || std::find(fresh.begin(), fresh.end(), k) != fresh.end()) continue;
++		fresh.push_back(k);
++		out.insert(out.end(), r, r + LRN_REC); added++;
++	}
++	lrn_saved = n;
++	if (!added) return;
++	memcpy(out.data(), "RGBLEARN", 8); l2_put32(out.data() + 8, 2); l2_put32(out.data() + 12, had + added);
++	if (!rgb_write_file(path, out.data(), out.size()))
++	{
++		mkdir(RGB_PACKS, 0777);
++		path = std::string(RGB_PACKS) + "/" + base_of(name) + ".learn";
++		if (!rgb_write_file(path, out.data(), out.size())) { os_log("  Learn: could not save %s", path.c_str()); return; }
++	}
++	os_log("  Learn: %u new blocks and sprites -> %s (%u in all)", added, path.c_str(), had + added);
++	rgb_ulog("learn file %s: %u new, %u in all", path.c_str(), added, had + added);
++	if (!quiet) { char msg[64]; snprintf(msg, sizeof(msg), "Learned: %u new", added); Info(msg, 1500); }
++}
++
++// once a second in the companion core: the log has grown and has stood still for 3 seconds -> save it
++static void rgb_learn_poll()
++{
++	if (!lrn_map || (lrn_timer && !CheckTimer(lrn_timer))) return;
++	static int still = 0;
++	lrn_timer = GetTimer(1000);
++	if (memcmp(lrn_map, "LRN2", 4)) return;
++	uint32_t n = l2_get32(lrn_map + 4);
++	if (n != lrn_seen) { lrn_seen = n; still = 0; return; }
++	if (n != lrn_saved && ++still >= 3) { still = 0; rgb_learn_save(0); }
++}
++
 +static void rgb_ulog(const char *fmt, ...)   // one line, with its time, to octophonic/update.log
 +{
 +	FILE *f = fopen(RGB_ULOG, "a");
@@ -243,6 +355,15 @@ index 1be2061..e0698ea 100644
 +	FILE *f = fopen(path.c_str(), "rb");
 +	if (!f) return 0;
 +	size_t n = fread(rgb_pk, 1, PK_SIZE, f);
++	// Build 14: a version 2 pack goes on after PK_SIZE - Level 2 (kept whole: the DDR3's copy, and WIN+F8 saves it back)
++	rgb_l2.clear();
++	if (n == PK_SIZE && !memcmp(rgb_pk, "RGB256PK", 8))
++	{
++		rgb_l2.resize(L2_MAX - PK_SIZE);
++		size_t m = fread(rgb_l2.data(), 1, rgb_l2.size(), f);
++		rgb_l2.resize(m);
++		rgb_l2.shrink_to_fit();
++	}
 +	fclose(f);
 +	if (n != PK_SIZE || memcmp(rgb_pk, "RGB256PK", 8)) return 0;
 +	memcpy(rgb_pk_base, rgb_pk + 0x1800, sizeof(rgb_pk_base));
@@ -371,6 +492,7 @@ index 1be2061..e0698ea 100644
 +	}
 +	fclose(f);
 +	rgb_pk_in = !rgb_pack.empty() && rgb_read_pack(rgb_pack);
++	if (rgb_pk_in) rgb_l2_load(rgb_pk);      // Build 14: Level 2 into the DDR3 before the .mgl's pack goes in
 +	if (autorun) { rgb_autorun_at = GetTimer(3500); rgb_now_write(rgb_game, rgb_pack, 0); }   // once only
 +	os_log("core: Octophonic64RGB - game %s, pack %s%s", rgb_game.c_str(), rgb_pack.c_str(), autorun ? ", disk: LOAD and RUN typed" : "");
 +}
@@ -410,9 +532,12 @@ index 1be2061..e0698ea 100644
 +		if (!rgb_is_auto())
 +		{
 +			std::string bak = rgb_pack + ".bak";       // a hand-made pack is kept once, as it came
-+			if (access(bak.c_str(), F_OK)) { FILE *b = fopen(bak.c_str(), "wb"); if (b) { uint8_t t[PK_SIZE]; memcpy(t, rgb_pk, PK_SIZE); memcpy(t + 0x1800, rgb_pk_base, sizeof(rgb_pk_base)); fwrite(t, 1, PK_SIZE, b); fclose(b); } }
++			if (access(bak.c_str(), F_OK)) { FILE *b = fopen(bak.c_str(), "wb"); if (b) { uint8_t t[PK_SIZE]; memcpy(t, rgb_pk, PK_SIZE); memcpy(t + 0x1800, rgb_pk_base, sizeof(rgb_pk_base)); fwrite(t, 1, PK_SIZE, b); if (!rgb_l2.empty()) fwrite(rgb_l2.data(), 1, rgb_l2.size(), b); fclose(b); } }
 +		}
-+		int ok = rgb_write_file(rgb_pack, rgb_pk, PK_SIZE);
++		std::vector<uint8_t> whole(rgb_pk, rgb_pk + PK_SIZE);            // Build 14: with its Level 2 part
++		whole.insert(whole.end(), rgb_l2.begin(), rgb_l2.end());
++		int ok = rgb_write_file(rgb_pack, whole.data(), whole.size());
++		rgb_learn_save(1);                                               // ... and what learn mode has logged
 +		snprintf(msg, sizeof(msg), ok ? "Pack saved" : "Pack NOT saved");
 +		rgb_ulog("pack %s %s", ok ? "saved:" : "NOT saved:", rgb_pack.c_str());
 +	}
@@ -493,6 +618,7 @@ index 1be2061..e0698ea 100644
 +	char full[1024];
 +	snprintf(full, sizeof(full), "%s%s%s", os_boot[0] == '/' ? "" : OS_TOP, os_boot[0] == '/' ? "" : "/", os_boot);
 +	os_log("RGB 256: back to the Octophonic core (%s)", full);
++	rgb_learn_save(1);                              // Build 14
 +	unlink(RGB_NOW);
 +	rgb_ulog("switch to the Octophonic core (will restart the core) - back to the start screen");
 +	octo_oled_logo(1);
@@ -527,15 +653,18 @@ index 1be2061..e0698ea 100644
 +		if (!pack.empty() && rgb_core)
 +		{
 +			os_log("  RGB 256: pack %s (index 4)", pack.c_str());
-+			if (!octo_file_send(pack.c_str(), 4, NULL)) os_log("  RGB 256: the pack could not be read");
++			rgb_learn_save(1);                      // Build 14: the last game's learn log first
 +			rgb_game = path; rgb_pack = pack;
 +			rgb_pk_in = rgb_read_pack(pack);
++			if (rgb_pk_in) rgb_l2_load(rgb_pk);     // Build 14: Level 2 into the DDR3, then the pack over the loader
++			if (!octo_file_send(pack.c_str(), 4, NULL)) os_log("  RGB 256: the pack could not be read");
 +			rgb_ulog("in Octophonic64RGB: game %s, pack %s", p, pack.c_str());
 +		}
 +		else if (pack.empty() && rgb_core)
 +		{
 +			mb_reply(ST_DONE, 0, -1, 1);
 +			octo_oled_program(p);
++			rgb_learn_save(1);                      // Build 14
 +			rgb_switch("_Computer/.C64_Octophonic", NULL, p);
 +			return 1;
 +		}
@@ -543,7 +672,7 @@ index 1be2061..e0698ea 100644
  	if (ends_with(p, ".d64") || ends_with(p, ".g64") || ends_with(p, ".t64") || ends_with(p, ".d81"))
  	{
  		mb_reply(ST_DONE, 0, -1, 8);                // VALUE 8: a disk went into drive 8
-@@ -1289,6 +1777,7 @@ static void cmd_setapply()
+@@ -1289,6 +1906,7 @@ static void cmd_setapply()
  void octo_exit()
  {
  	if (!os_active) return;
@@ -551,12 +680,13 @@ index 1be2061..e0698ea 100644
  	os_log("CTRL+F12: reset to the start screen (folder /%s)", cwd);
  	octo_oled_logo(1);                                // the front screen: back to the Octophonic logo
  	user_io_status_set("[17]", 1);
-@@ -1728,6 +2217,17 @@ void octo_poll()
+@@ -1728,6 +2346,18 @@ void octo_poll()
  	poll_timer = GetTimer(4);
  
  	uint16_t w = mb_poll();
 +	if ((w >> 8) == OCTO_MAGIC && (w & 4) && rgb_core) { rgb_core = 0; rgb_home(); return; }   // SHIFT+F1 held / WIN+F1
 +	if ((w >> 8) == OCTO_MAGIC && rgb_core) rgb_keys(w);      // Build 12: WIN+F5/F7/F8
++	if (rgb_core) rgb_learn_poll();                            // Build 14: learn mode's log -> <game>.learn
 +	if (rgb_core && rgb_autorun_at && CheckTimer(rgb_autorun_at))
 +	{
 +		rgb_autorun_at = 0;                       // Build 12: a disk game - SHIFT+RUN/STOP: LOAD"*",8 and RUN
