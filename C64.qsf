@@ -49,6 +49,11 @@ set_global_assignment -name PERIPHERY_TO_CORE_PLACEMENT_AND_ROUTING_OPTIMIZATION
 set_global_assignment -name PHYSICAL_SYNTHESIS_ASYNCHRONOUS_SIGNAL_PIPELINING ON
 set_global_assignment -name ALM_REGISTER_PACKING_EFFORT LOW
 set_global_assignment -name SEED 8
+# SPACE AUDIT: the MiSTer framework's own switches (sys_top.v) - Linux (ALSA) sound into the core off,
+# the scaler's adaptive scanlines off, nearest-neighbour downscaling (only used when the output is smaller)
+set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_ALSA=1"
+set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_ADAPTIVE=1"
+set_global_assignment -name VERILOG_MACRO "MISTER_DOWNSCALE_NN=1"
 
 source sys/sys.tcl
 source sys/sys_analog.tcl
