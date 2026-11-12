@@ -70,6 +70,13 @@ module rewind #(
 	output       [7:0] m_q,
 	output reg         m_sel = 0,    // m_q is the byte (the access was to the C64's 64K)
 
+	// Build 14: a second reader of the 64K copy (rtl/remaster.sv reads sprite data). A read is taken in
+	// any clock the C64 does not start an access of its own (x_ack); x_q is the byte on the next clock.
+	input       [15:0] x_addr,
+	input              x_req,
+	output             x_ack,
+	output       [7:0] x_q,
+
 	// DDR3 (rtl/octovic/ddram_arb2.sv port B)
 	output      [28:0] ddr_addr,
 	output       [7:0] ddr_burstcnt,
@@ -111,10 +118,20 @@ ovram #(16, 8) ram
 	.we(a_do | b_do),
 	.wa(b_do ? b_addr : a_addr_r),
 	.wd(b_do ? b_data : a_din_r),
-	.ra((m_start & m_low) ? m_addr[15:0] : a_addr_r),
+	.ra((m_start & m_low) ? m_addr[15:0] : x_req ? x_addr : a_addr_r),
 	.q(qa)
 );
-assign m_q = qa;
+// (Build 14: the C64's byte is kept from the clock after its read, so the other reader can use the port between)
+reg         m_rd1 = 0;
+reg   [7:0] m_hold;
+wire  [7:0] qm = m_rd1 ? qa : m_hold;
+always @(posedge clk) begin
+	m_rd1 <= m_start & m_low;
+	if (m_rd1) m_hold <= qa;
+end
+assign m_q   = qm;
+assign x_ack = x_req & ~(m_start & m_low);
+assign x_q   = qa;
 
 reg         jr_req = 0, jc_req = 0;            // a journal word waiting for the FIFO
 reg  [63:0] jr_word, jc_word;
@@ -259,7 +276,7 @@ always @(posedge clk) begin
 	if (a_do & a_main) begin
 		if (jr_req & ~jr_take) ovf <= 1;
 		jr_req  <= 1;
-		jr_word <= {T_RAM, 36'd0, a_addr_r, qa};
+		jr_word <= {T_RAM, 36'd0, a_addr_r, qm};
 	end
 	if (io_wr & io_sel[3]) begin
 		if (jc_req & ~jc_take) ovf <= 1;

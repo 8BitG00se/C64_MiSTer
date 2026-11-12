@@ -57,6 +57,27 @@ ddram_arb2 ddram_arb
 	.addr(DDRAM_ADDR), .burstcnt(DDRAM_BURSTCNT), .rd(DDRAM_RD), .we(DDRAM_WE), .din(DDRAM_DIN), .be(DDRAM_BE),
 	.busy(DDRAM_BUSY), .ready(DDRAM_DOUT_READY)
 );
+`ifdef RGB256
+// Build 14: in the RGB companion core port B is shared again - the rewind unit (its journal) and the
+// Level 2 remaster unit (the pack's tables)
+wire [7:0]  rwd_ddram_burstcnt, rm_ddram_burstcnt;
+wire [28:0] rwd_ddram_addr, rm_ddram_addr;
+wire        rwd_ddram_rd, rwd_ddram_we, rm_ddram_rd, rm_ddram_we;
+wire [63:0] rwd_ddram_din, rm_ddram_din;
+wire [7:0]  rwd_ddram_be, rm_ddram_be;
+wire        rwd_ddram_busy, rwd_ddram_ready, rm_ddram_busy, rm_ddram_ready;
+ddram_arb2 ddram_arb_b
+(
+	.clk(clk_sys),
+	.reset(~pll_locked),
+	.a_addr(rwd_ddram_addr), .a_burstcnt(rwd_ddram_burstcnt), .a_rd(rwd_ddram_rd), .a_we(rwd_ddram_we),
+	.a_din(rwd_ddram_din), .a_be(rwd_ddram_be), .a_busy(rwd_ddram_busy), .a_ready(rwd_ddram_ready),
+	.b_addr(rm_ddram_addr), .b_burstcnt(rm_ddram_burstcnt), .b_rd(rm_ddram_rd), .b_we(rm_ddram_we),
+	.b_din(rm_ddram_din), .b_be(rm_ddram_be), .b_busy(rm_ddram_busy), .b_ready(rm_ddram_ready),
+	.addr(ogx_ddram_addr), .burstcnt(ogx_ddram_burstcnt), .rd(ogx_ddram_rd), .we(ogx_ddram_we), .din(ogx_ddram_din), .be(ogx_ddram_be),
+	.busy(ogx_ddram_busy), .ready(ogx_ddram_ready)
+);
+`endif
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 assign LED_DISK   = 0;
@@ -261,6 +282,12 @@ reg   [1:0] rgb_evt = 0;                     // Build 12: the last remaster key 
 reg   [2:0] rgb_evt_n = 0;                   // Build 12: counts the remaster keys - Main acts when it changes
 wire        rk_home, rk_pal, rk_grade, rk_grad, rk_save;   // Build 12: WIN+F1/F3/F5/F7/F8 (rtl/rgbkeys.sv)
 wire        rk_rew;                          // Build 13: WIN+F2 held - rewind
+wire        rk_l2, rk_learn;                 // Build 14: WIN+F4 Level 2 on/off, WIN+F6 learn mode on/off
+reg         l2_on = 1, learn_on = 0;
+always @(posedge clk_sys) begin
+	if (rk_l2)    l2_on    <= ~l2_on;
+	if (rk_learn) learn_on <= ~learn_on;
+end
 wire [10:0] rk_key;                          // Build 12: the keyboard without the held-back WIN+F keys
 `endif
 reg ntsc_prev = 0;
@@ -850,7 +877,7 @@ hotkey_break hotkey_break (.clk(clk_sys), .start(hk_brk), .busy(hkb_busy), .stb(
 `ifdef RGB256
 // Build 12: the remaster keys (WIN+F1/F3/F5/F7/F8) - held back from the C64, so no game ever sees them
 rgbkeys rgbkeys (.clk(clk_sys), .ps2_key(ps2_key), .key_out(rk_key),
-                 .home(rk_home), .pal(rk_pal), .grade(rk_grade), .grad(rk_grad), .save(rk_save), .rew(rk_rew));
+                 .home(rk_home), .pal(rk_pal), .grade(rk_grade), .grad(rk_grad), .save(rk_save), .rew(rk_rew), .l2(rk_l2), .learn(rk_learn));
 wire [10:0] c64_ps2 = rk_key;
 `else
 wire [10:0] c64_ps2 = ps2_key;
@@ -1006,6 +1033,7 @@ wire        UMAXromH;
 wire [17:0] audio_l,audio_r;
 wire  [7:0] r,g,b;
 wire  [7:0] vr, vg, vb;                    // the picture to the output (C64RGB 256: recoloured)
+wire        vsync_vic;                     // the VIC's own vertical sync
 
 `ifdef RGB256
 // ------------------------------------------------------------------ C64RGB 256 (Fix 60, docs/RGB256.md)
@@ -1022,15 +1050,55 @@ rgb256 recolour
 	.ld_wr(ioctl_wr),
 	.ld_addr(ioctl_addr),
 	.ld_data(ioctl_data),
-	.index(rgb_index),
-	.tag(rgb_tag),
+	.index(rm_index),
+	.tag(rm_tag),
+	.ovr(rm_ovr),
+	.ovr_slot(rm_slot),
 	.palette(rc_sel[2:0]),
 	.npal(rc_npal),
 	.rgb(rc_rgb),
 	.loaded(rc_loaded)
 );
 wire rc_on = rc_loaded && !rc_sel[3] && (rc_sel[2:0] < rc_npal[2:0] || rc_npal[3]);
-assign {vr, vg, vb} = rc_on ? rc_rgb : {r, g, b};
+
+// ------------------------------------------------------------------ LEVEL 2 REMASTER (Build 14: rtl/remaster.sv)
+// The VIC's pixels pass through the remaster unit and come out 16 raster lines later (the vertical sync
+// with them), as an index and tag for the recolour unit, or as a slot of the pack's palette (a redrawn
+// block or sprite). The stock colours are made here from the same late index.
+wire  [25:0] l2_pix;
+wire [183:0] l2_spr;
+wire   [1:0] l2_bank;
+wire   [3:0] rm_index;
+wire  [28:0] rm_tag;
+wire         rm_vsync, rm_ovr, rm_ok;
+wire   [7:0] rm_slot;
+wire  [15:0] rm_addr, rm_learned;
+wire         rm_req, rm_ack;
+wire   [7:0] rm_q;
+reg          rm_reload = 0, rm_dl_d = 0;
+always @(posedge clk_sys) begin
+	rm_dl_d   <= ioctl_download && ioctl_index == 8'd4;
+	rm_reload <= rm_dl_d && !(ioctl_download && ioctl_index == 8'd4);   // a pack has gone in: Main put the whole file in the DDR3 first
+end
+remaster remaster
+(
+	.clk(clk_sys),
+	.reset(~pll_locked),
+	.on(l2_on & rc_on),
+	.learn(learn_on),
+	.reload(rm_reload),
+	.index(rgb_index), .tag(rgb_tag), .l2_pix(l2_pix), .l2_spr(l2_spr), .bank(l2_bank), .vsync_in(vsync_vic),
+	.d_index(rm_index), .d_tag(rm_tag), .d_vsync(rm_vsync), .ovr(rm_ovr), .ovr_slot(rm_slot),
+	.x_addr(rm_addr), .x_req(rm_req), .x_ack(rm_ack), .x_q(rm_q),
+	.ddr_addr(rm_ddram_addr), .ddr_burstcnt(rm_ddram_burstcnt), .ddr_rd(rm_ddram_rd), .ddr_we(rm_ddram_we),
+	.ddr_din(rm_ddram_din), .ddr_be(rm_ddram_be), .ddr_busy(rm_ddram_busy), .ddr_dout(DDRAM_DOUT), .ddr_ready(rm_ddram_ready),
+	.l2_ok(rm_ok), .lcount(rm_learned)
+);
+wire [7:0] sr, sg, sb;
+fpga64_rgbcolor stock_colours (.palette(status[84:82]), .index(rm_index), .r(sr), .g(sg), .b(sb));
+reg [23:0] stock_d1, stock_d2, stock_d3;      // (in step with the recolour unit's three clocks)
+always @(posedge clk_sys) begin stock_d1 <= {sr, sg, sb}; stock_d2 <= stock_d1; stock_d3 <= stock_d2; end
+assign {vr, vg, vb} = rc_on ? rc_rgb : (rm_tag[28:27] == 2'd3) ? 24'd0 : stock_d3;
 
 // WIN+F3: the next palette (1, 2, ... the pack's last, Off, 1 ...) - set in the OSD's status, so
 // the OSD shows it and it is saved with the core's settings (Build 12: was SHIFT+F3, which the game saw as F4)
@@ -1156,9 +1224,10 @@ rewind rewind
 	.m_addr(sd_addr), .m_ce(sd_ce), .m_we(sd_we), .m_din(sd_din), .m_main(~io_cycle & ~ext_cycle),
 	.m_q(rw_mq), .m_sel(rw_msel),
 
-	.ddr_addr(ogx_ddram_addr), .ddr_burstcnt(ogx_ddram_burstcnt), .ddr_rd(ogx_ddram_rd), .ddr_we(ogx_ddram_we),
-	.ddr_din(ogx_ddram_din), .ddr_be(ogx_ddram_be), .ddr_busy(ogx_ddram_busy), .ddr_dout(DDRAM_DOUT),
-	.ddr_ready(ogx_ddram_ready),
+	.x_addr(rm_addr), .x_req(rm_req), .x_ack(rm_ack), .x_q(rm_q),
+	.ddr_addr(rwd_ddram_addr), .ddr_burstcnt(rwd_ddram_burstcnt), .ddr_rd(rwd_ddram_rd), .ddr_we(rwd_ddram_we),
+	.ddr_din(rwd_ddram_din), .ddr_be(rwd_ddram_be), .ddr_busy(rwd_ddram_busy), .ddr_dout(DDRAM_DOUT),
+	.ddr_ready(rwd_ddram_ready),
 
 	.active(rw_active), .frames(rw_frames), .err(rw_err)
 );
@@ -1201,7 +1270,7 @@ fpga64_sid_iec fpga64
 	.exact50(exact),
 	.sysinfo({sdram_sz[15], 1'b0, reu_cfg, 2'b00, sdram_sz[1:0]}),   // Fix 59: the spec page
 	.hsync(hsync),
-	.vsync(vsync),
+	.vsync(vsync_vic),
 	.palette(status[84:82]),
 	.r(r),
 	.g(g),
@@ -1209,6 +1278,9 @@ fpga64_sid_iec fpga64
 `ifdef RGB256
 	.rgb_index(rgb_index),
 	.rgb_tag(rgb_tag),
+	.l2_pix(l2_pix),
+	.l2_spr(l2_spr),
+	.l2_bank(l2_bank),
 `endif
 	.vic_rgb_out(vic_rgb),
 	.split(split),
@@ -1505,7 +1577,11 @@ assign USER_OUT[6] = '1;
 
 
 wire hsync;
-wire vsync;
+`ifdef RGB256
+wire vsync = rm_vsync;                     // Build 14: the picture is 16 lines late (rtl/remaster.sv), its vertical sync too
+`else
+wire vsync = vsync_vic;
+`endif
 wire hblank;
 wire vblank;
 wire hsync_out;

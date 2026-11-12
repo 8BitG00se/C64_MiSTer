@@ -6,6 +6,8 @@
 //           (the Menu key, between right ALT and right CTRL on a PC keyboard, held does the same -
 //           the C64 has no use for that key)
 //   WIN+F3  the next palette of the pack (1, 2, ... the last, Off, 1 ...)
+//   WIN+F4  Level 2 (redrawn blocks and sprites) on/off - before/after     (Build 14, rtl/remaster.sv)
+//   WIN+F6  learn mode on/off: blocks and sprites not in the pack are logged for Main (Build 14)
 //   WIN+F5  the next colour grading            (Octophonic Main remakes the pack and sends it)
 //   WIN+F7  the gradient strength: next step   (Octophonic Main remakes the pack and sends it)
 //   WIN+F8  save the pack beside the game      (Octophonic Main)
@@ -24,6 +26,8 @@ module rgbkeys
 	output reg        grade = 0,
 	output reg        grad = 0,
 	output reg        save = 0,
+	output reg        l2 = 0,      // WIN+F4
+	output reg        learn = 0,   // WIN+F6
 	output            rew          // a level: WIN+F2 is held
 );
 
@@ -48,7 +52,7 @@ wire [2:0] fi   = f[2:0] - 3'd1;
 
 always @(posedge clk) begin
 	reg pass;
-	{home, pal, grade, grad, save} <= 0;
+	{home, pal, grade, grad, save, l2, learn} <= 0;
 	old_stb <= ps2_key[10];
 	if (old_stb != ps2_key[10]) begin
 		pass = 1;
@@ -63,6 +67,8 @@ always @(posedge clk) begin
 					case (f)
 						4'd1: home  <= 1;
 						4'd3: pal   <= 1;
+						4'd4: l2    <= 1;
+						4'd6: learn <= 1;
 						4'd5: grade <= 1;
 						4'd7: grad  <= 1;
 						4'd8: save  <= 1;

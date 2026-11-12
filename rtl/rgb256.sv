@@ -31,6 +31,10 @@ module rgb256
 	// the VIC's pixel (rtl/video_vicII_656x.vhd pixTag)
 	input       [3:0] index,
 	input      [28:0] tag,
+	// LEVEL 2 (Build 14, rtl/remaster.sv): this pixel's slot is given (a tile's or a sprite frame's
+	// pixel); valid in the pixel's remap clock (two clocks after its index and tag)
+	input             ovr,
+	input       [7:0] ovr_slot,
 
 	input       [2:0] palette,         // which of the pack's palettes
 	output reg  [3:0] npal = 0,        // how many the pack has (0: no pack)
@@ -133,7 +137,7 @@ wire  [7:0] group = (s1_kind == 2'd1) ? {5'b11110, s1_spr} :
 reg   [7:0] q_slot;
 reg   [1:0] s2_kind;
 always @(posedge clk) begin
-	q_slot  <= remap_m[{group, s1_idx}];
+	q_slot  <= ovr ? ovr_slot : remap_m[{group, s1_idx}];
 	s2_kind <= s1_kind;
 end
 

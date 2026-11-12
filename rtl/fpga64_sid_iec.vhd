@@ -95,6 +95,11 @@ port(
 	rgb_index   : out unsigned(3 downto 0);
 	rgb_tag     : out unsigned(28 downto 0);
 	rgb_pix_en  : out std_logic;
+	-- LEVEL 2 REMASTER (Build 14): the VIC's extra pixel and sprite state (rtl/video_vicII_656x.vhd l2_pix,
+	-- l2_spr) and the VIC's bank (address bits 15-14), for rtl/remaster.sv
+	l2_pix      : out unsigned(25 downto 0);
+	l2_spr      : out unsigned(183 downto 0);
+	l2_bank     : out unsigned(1 downto 0);
 
 	-- cartridge port
 	game        : in  std_logic;
@@ -859,6 +864,8 @@ port map (
 	vsync => vSync,
 	colorIndex => vicColorIndex,
 	pixTag => rgb_tag,
+	l2_pix => l2_pix,
+	l2_spr => l2_spr,
 	rasterXo => vicRasterX,
 	rasterYo => vicRasterY,
 
@@ -866,6 +873,7 @@ port map (
 );
 
 rgb_index  <= vicColorIndex;
+l2_bank    <= vicAddr(15 downto 14);
 rgb_pix_en <= enablePixel;
 
 c64colors: entity work.fpga64_rgbcolor

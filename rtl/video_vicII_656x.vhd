@@ -77,6 +77,17 @@ entity video_vicii_656x is
 		-- Nothing reads it in the Octophonic core, so it costs nothing there.
 		pixTag : out unsigned(28 downto 0);
 
+		-- LEVEL 2 REMASTER (Build 14, docs/RGB256.md, rtl/remaster.sv)             (c) 2026 Mong00se
+		-- l2_pix, latched with colorIndex: [3:0] the graphics layer's colour (under sprites and the border),
+		-- [4] its foreground bit, [5] this is the first pixel of a cell (the shift register was just loaded),
+		-- [6] the cell was fetched in display state, [9:7] its row counter, [17:10] sprite n's first pixel is here,
+		-- [25:18] the cell's char code (the screen byte).
+		-- l2_spr: sprite n at n*22: [5:0] MC (the data counter), [6] X expansion, [7] behind graphics,
+		-- [8] multicolour, [12:9] its colour, [20:13] its pointer; [179:176] $D025, [183:180] $D026.
+		-- Nothing reads them in the Octophonic core.
+		l2_pix : out unsigned(25 downto 0);
+		l2_spr : out unsigned(183 downto 0);
+
 		-- Debug outputs
 		debugX  : out unsigned(9 downto 0);
 		debugY  : out unsigned(8 downto 0);
@@ -243,6 +254,13 @@ architecture rtl of video_vicii_656x is
 	signal currentPixels : unsigned(1 downto 0);
 	signal currentPixels_d : unsigned(1 downto 0);
 	signal shifting_ff : std_logic; -- Multicolor shift-regiter status bit.
+	-- LEVEL 2 REMASTER: the cell's "display state" bit, row counter and first-pixel mark ride with its pixels
+	signal waitingV, waitingV_r, shiftingV, shiftingV_d : std_logic := '0';
+	signal shiftingS, shiftingS_d : std_logic := '0';
+	signal waitingRC, waitingRC_r, shiftingRC, shiftingRC_d : unsigned(2 downto 0) := "000";
+	signal l2_sstart_a, l2_sstart_b : unsigned(7 downto 0) := (others => '0');
+	type l2PtrDef is array(0 to 7) of unsigned(7 downto 0);
+	signal l2_ptrs : l2PtrDef := (others => (others => '0'));
 
 -- Sprite work registers
 	signal MPtr : unsigned(7 downto 0); -- sprite base pointer
@@ -532,6 +550,7 @@ vicStateMachine: process(clk)
 			if phi = '0'
 			and enaData = '1'
 			and vicCycle = cycleSpriteA then
+				l2_ptrs(to_integer(sprite)) <= di;
 				MPtr <= (others => '1');
 				if MActive_next(to_integer(sprite)) then
 					MPtr <= di;
@@ -1010,6 +1029,8 @@ calcBitmap: process(clk)
 				if rasterXDelay(2 downto 0) = "111" then
 					waitingChar_r <= waitingChar;
 					waitingPixels_r <= waitingPixels;
+					waitingV_r <= waitingV;
+					waitingRC_r <= waitingRC;
 				end if;
 				
 				--
@@ -1017,10 +1038,14 @@ calcBitmap: process(clk)
 				-- otherwise shift pixels
 				if shiftLoadEna and xscroll = rasterXDelay(2 downto 0) then
 					shifting_ff <= '0';
+					shiftingV <= waitingV_r;
+					shiftingRC <= waitingRC_r;
+					shiftingS <= '1';
 					shiftingChar <= waitingChar_r;
 					shiftingPixels <= waitingPixels_r;
 					currentPixels <= waitingPixels_r(7 downto 6);
 				else
+					shiftingS <= '0';
 					shiftingPixels <= shiftingPixels(6 downto 0) & '0';
 					if multiColor = '0' or shifting_ff = '1' then
 						currentPixels <= shiftingPixels(6 downto 5);
@@ -1033,6 +1058,9 @@ calcBitmap: process(clk)
 
 				currentPixels_d <= currentPixels;
 				shiftingChar_d <= shiftingChar;
+				shiftingV_d <= shiftingV;
+				shiftingRC_d <= shiftingRC;
+				shiftingS_d <= shiftingS;
 				MCMDelay <= MCM;
 				ECMDelay <= ECM;
 				BMMDelay <= BMM;
@@ -1045,11 +1073,14 @@ calcBitmap: process(clk)
 			and phi = '0' then
 				-- Store the characters until shiftregister is empty
 				waitingPixels <= (others => '0');
+				waitingV <= '0';
 				if shiftChars then
 					waitingPixels <= di;
 					waitingChar <= (others => '0');
+					waitingRC <= rowCounter;
 					if idle = '0' then
 						waitingChar <= nextChar;
+						waitingV <= '1';
 					end if;
 				end if;
 			end if;
@@ -1201,9 +1232,14 @@ calcBitmap: process(clk)
 
 		if rising_edge(clk) then
 			if enaPixel = '1' then
+				l2_sstart_b <= l2_sstart_a;
 				for i in 0 to 7 loop
 					-- Enable sprites on the correct X position
+					l2_sstart_a(i) <= '0';
 					if MActive(i) and rasterXDelay = MX(i) then
+						if not MShift(i) then
+							l2_sstart_a(i) <= '1';
+						end if;
 						MShift(i) := true;
 					end if;
 					-- Stop shifting in the third s cycle
@@ -1405,6 +1441,7 @@ calcBitmap: process(clk)
 				end if;
 				pixTag(18 downto 9) <= rasterX;
 				pixTag(8 downto 0) <= rasterY;
+				l2_pix <= shiftingChar_d(7 downto 0) & l2_sstart_b & shiftingRC_d & shiftingV_d & shiftingS_d & pixelBgFlag & pixelColor;
 				if MainBorder = '1' then pixTag(28 downto 27) <= "10"; end if;
 				if hBlack = '1' then pixTag(28 downto 27) <= "11"; end if;
 
@@ -1777,4 +1814,17 @@ readRegisters: process(clk)
 			end if;
 		end if;
 	end process;
+-- LEVEL 2 REMASTER: the sprites' state for rtl/remaster.sv
+	l2_spr_g: for i in 0 to 7 generate
+		l2_spr(i*22 + 5 downto i*22)       <= MCnt(i);
+		l2_spr(i*22 + 6)                   <= MXE(i);
+		l2_spr(i*22 + 7)                   <= MPRIO(i);
+		l2_spr(i*22 + 8)                   <= MC(i);
+		l2_spr(i*22 + 12 downto i*22 + 9)  <= spriteColors(i);
+		l2_spr(i*22 + 20 downto i*22 + 13) <= l2_ptrs(i);
+		l2_spr(i*22 + 21)                  <= '0';
+	end generate;
+	l2_spr(179 downto 176) <= MM0;
+	l2_spr(183 downto 180) <= MM1;
+
 end architecture;
