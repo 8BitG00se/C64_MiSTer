@@ -63,10 +63,10 @@ endfunction
 always @(posedge clk) begin
 	old_dl <= ld_download;
 	if (ld_download & ~old_dl) begin
-		good     <= 0;
+		// Build 12: a pack already in stays on while the next streams in over it (Main re-sends the pack
+		// for each grading or gradient change - no flash of the stock colours); a bad one ends it below
 		magic_ok <= 1;
 		top      <= 0;
-		npal     <= 0;
 	end
 	if (wr) begin
 		if (a > top) top <= a;

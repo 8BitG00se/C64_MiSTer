@@ -21,7 +21,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [ octophonic, rgb256 ]
+        # Build 12 branches (build12, build12-s<seed>) build only the companion core, Octophonic64RGB
+        variant: ${{ fromJSON(startsWith(github.ref_name, 'build12') && '["rgb256"]' || '["octophonic","rgb256"]') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -92,7 +93,7 @@ jobs:
           mkdir -p out
           REV=${{ steps.proj.outputs.rev }}
           if [ "$REV" = C64RGB256 ]; then
-            cp output_files/C64RGB256.rbf "out/C64RGB256_$(date -u +%Y%m%d).rbf"
+            cp output_files/C64RGB256.rbf "out/Octophonic64RGB_$(date -u +%Y%m%d).rbf"
           else
             # (the last CORE_TAG line: the Octophonic one - the RGB 256 one sits in an `ifdef above it)
             TAG=$(sed -n 's/^localparam \[63:0\] CORE_TAG *= *"\([^"]*\)".*/\1/p' rtl/octovic/octovic.sv | tail -1 | tr -d ' ' | tr 'A-Z' 'a-z')
@@ -102,7 +103,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.variant == 'rgb256' && 'C64RGB256' || 'C64_Octophonic' }}
+          name: ${{ matrix.variant == 'rgb256' && 'Octophonic64RGB' || 'C64_Octophonic' }}
           path: |
             out/*.rbf
             output_files/*.summary
@@ -163,12 +164,14 @@ jobs:
           mkdir -p /tmp/reports/rgb256
           [ -s /tmp/reports/result.txt ] || echo "failure ${GITHUB_SHA::7} $(date -u +%Y-%m-%dT%H:%MZ)" > /tmp/reports/result.txt
           [ -s /tmp/reports/rgb256/result.txt ] || echo "failure ${GITHUB_SHA::7} $(date -u +%Y-%m-%dT%H:%MZ)" > /tmp/reports/rgb256/result.txt
-          mv /tmp/reports/rgb256/C64RGB256_*.rbf /tmp/reports/ 2>/dev/null || true
+          mv /tmp/reports/rgb256/Octophonic64RGB_*.rbf /tmp/reports/ 2>/dev/null || true
           cd /tmp/reports
           git init -q
           # the rgb256 work branch keeps its own (build-reports-rgb256), so trying it never replaces the cores
           # a card is being built from
           OUTB=build-reports; [ "${GITHUB_REF_NAME}" = rgb256 ] && OUTB=build-reports-rgb256
+          # Build 12 branches (and their seeds) each keep their own, too
+          case "${GITHUB_REF_NAME}" in build12*) OUTB="build-reports-${GITHUB_REF_NAME}" ;; esac
           git checkout -q -b "$OUTB"
           git add -A
           git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Reports: $(cat result.txt) - RGB 256: $(cat rgb256/result.txt)"

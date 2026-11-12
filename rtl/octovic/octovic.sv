@@ -61,7 +61,7 @@ module octovic
 // spaces), $D6B4-$D6B6 its build date (BCD: day, month, year - 20xx). The build stamps CORE_DATE
 // (.github/workflows/build.yml); CORE_TAG is set by hand for each core build.
 `ifdef RGB256
-localparam [63:0] CORE_TAG  = "RGB256  ";      // C64RGB 256 (Fix 60): the same source, the recolour core
+localparam [63:0] CORE_TAG  = "OCTRGB12";      // Octophonic64RGB build 12 (Fix 60): the same source, the recolour core
 `else
 localparam [63:0] CORE_TAG  = "CORE9   ";
 `endif

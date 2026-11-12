@@ -90,7 +90,7 @@ localparam CONF_STR = {
 	"-;",
 	"F1,PRGCRTREU;",
 `ifdef RGB256
-	// C64RGB 256 (Fix 60): the recolour pack (docs/RGB256.md) and which of its palettes - SHIFT+F3 held cycles them
+	// Octophonic64RGB (Fix 60, Build 12): the recolour pack (docs/RGB256.md) and which of its palettes - WIN+F3 cycles them
 	"FC4,RGB,Load Recolour Pack;",
 	"O[108:105],Recolour,Palette 1,Palette 2,Palette 3,Palette 4,Palette 5,Palette 6,Palette 7,Palette 8,Off;",
 `endif
@@ -246,9 +246,13 @@ wire [15:0] sdram_sz;                        // Fix 59: from Main (hps_io)
 wire hk_kernal, hk_brk, hk_wipe, hk_spare;   // Fix 58: SHIFT+F1-F4 hot keys (rtl/hotkeys.sv)
 wire hk_reset;                               // SHIFT+F1's reset (C64RGB 256: only if Main doesn't switch cores)
 `ifdef RGB256
-reg         rgb_home = 0;                    // C64RGB 256: SHIFT+F1 held - Main is asked for the Octophonic core
-reg [127:0] rgb_status_in;                   // C64RGB 256: SHIFT+F3 sets the OSD's palette line
+reg         rgb_home = 0;                    // C64RGB 256: SHIFT+F1 held or WIN+F1 - Main is asked for the Octophonic core
+reg [127:0] rgb_status_in;                   // C64RGB 256: WIN+F3 sets the OSD's palette line
 reg         rgb_status_set = 0;
+reg   [1:0] rgb_evt = 0;                     // Build 12: the last remaster key for Main (1 grading, 2 gradient, 3 save)
+reg   [2:0] rgb_evt_n = 0;                   // Build 12: counts the remaster keys - Main acts when it changes
+wire        rk_home, rk_pal, rk_grade, rk_grad, rk_save;   // Build 12: WIN+F1/F3/F5/F7/F8 (rtl/rgbkeys.sv)
+wire [10:0] rk_key;                          // Build 12: the keyboard without the held-back WIN+F keys
 `endif
 reg ntsc_prev = 0;
 
@@ -346,8 +350,10 @@ wire [15:0] os_ext_dout;
 assign EXT_BUS[32]   = os_ext_act;
 `ifdef RGB256
 // C64RGB 256 (Fix 60): the mailbox's poll word ($6Fxx) also says b1 "this is the C64RGB 256 core" and
-// b2 "SHIFT+F1 held: back to the Octophonic core, please" (Main's octophonic-rgb256.patch)
-assign EXT_BUS[15:0] = os_ext_dout | ((os_ext_dout[15:8] == 8'h6F) ? {13'd0, rgb_home, 2'b10} : 16'd0);
+// b2 "SHIFT+F1 held: back to the Octophonic core, please" (Main's octophonic-rgb256.patch);
+// Build 12: b4-b3 the last remaster key (1 grading, 2 gradient strength, 3 save the pack), b7-b5 a count
+// of them - Main acts on each new count
+assign EXT_BUS[15:0] = os_ext_dout | ((os_ext_dout[15:8] == 8'h6F) ? {8'd0, rgb_evt_n, rgb_evt, rgb_home, 2'b10} : 16'd0);
 `else
 assign EXT_BUS[15:0] = os_ext_dout;
 `endif
@@ -832,6 +838,15 @@ wire       hkb_busy, hkb_stb;
 wire [9:0] hkb_code;
 hotkey_break hotkey_break (.clk(clk_sys), .start(hk_brk), .busy(hkb_busy), .stb(hkb_stb), .code(hkb_code));
 
+`ifdef RGB256
+// Build 12: the remaster keys (WIN+F1/F3/F5/F7/F8) - held back from the C64, so no game ever sees them
+rgbkeys rgbkeys (.clk(clk_sys), .ps2_key(ps2_key), .key_out(rk_key),
+                 .home(rk_home), .pal(rk_pal), .grade(rk_grade), .grad(rk_grad), .save(rk_save));
+wire [10:0] c64_ps2 = rk_key;
+`else
+wire [10:0] c64_ps2 = ps2_key;
+`endif
+
 reg        start_strk = 0;
 reg        reset_keys = 0;
 reg [10:0] key = 0;
@@ -892,7 +907,7 @@ always @(posedge clk_sys) begin
 	else if(joy_finish) begin
 		joy_last   <= 0;
 		key        <= 0;
-		key[10]    <= ps2_key[10];
+		key[10]    <= c64_ps2[10];
 		joy_finish <= 0;
 		reset_keys <= 1;
 	end
@@ -911,12 +926,12 @@ always @(posedge clk_sys) begin
 				10: act <= 0;
 			endcase
 			key[9]  <= act[0];
-			key[10] <= (act >= 9) ? ps2_key[10] : ~key[10];
+			key[10] <= (act >= 9) ? c64_ps2[10] : ~key[10];
 		end
 	end
 	else begin
 		to <= 0;
-		key <= {ps2_key[10], ps2_key[9] & disk_ready, ps2_key[8:0]};
+		key <= {c64_ps2[10], c64_ps2[9] & disk_ready, c64_ps2[8:0]};
 	end
 	if(start_strk & ~status[50]) begin
 		act <= 1;
@@ -995,11 +1010,11 @@ rgb256 recolour
 wire rc_on = rc_loaded && !rc_sel[3] && (rc_sel[2:0] < rc_npal[2:0] || rc_npal[3]);
 assign {vr, vg, vb} = rc_on ? rc_rgb : {r, g, b};
 
-// SHIFT+F3 held: the next palette (1, 2, ... the pack's last, Off, 1 ...) - set in the OSD's status, so
-// the OSD shows it and it is saved with the core's settings
+// WIN+F3: the next palette (1, 2, ... the pack's last, Off, 1 ...) - set in the OSD's status, so
+// the OSD shows it and it is saved with the core's settings (Build 12: was SHIFT+F3, which the game saw as F4)
 always @(posedge clk_sys) begin
 	rgb_status_set <= 0;
-	if (hk_spare && rc_loaded) begin
+	if (rk_pal && rc_loaded) begin
 		rgb_status_in <= status;
 		rgb_status_in[108:105] <= (rc_sel[3] || rc_npal == 0) ? 4'd0 :
 		                          ({1'b0, rc_sel[2:0]} + 4'd1 >= rc_npal) ? 4'd8 : rc_sel + 4'd1;
@@ -1013,13 +1028,21 @@ reg [26:0] rgb_home_t = 0;
 reg        rgb_home_rst = 0;
 always @(posedge clk_sys) begin
 	rgb_home_rst <= 0;
-	if (hk_kernal) begin rgb_home <= 1; rgb_home_t <= 0; end
+	if (hk_kernal | rk_home) begin rgb_home <= 1; rgb_home_t <= 0; end
 	else if (rgb_home) begin
 		rgb_home_t <= rgb_home_t + 1'd1;
 		if (&rgb_home_t) begin rgb_home <= 0; rgb_home_rst <= 1; end
 	end
 end
 assign hk_reset = rgb_home_rst;
+
+// Build 12: WIN+F5/F7/F8 - for Main (the poll word): it remakes the pack (grading, gradient strength) or saves it
+always @(posedge clk_sys) begin
+	if (rk_grade | rk_grad | rk_save) begin
+		rgb_evt   <= rk_save ? 2'd3 : rk_grad ? 2'd2 : 2'd1;
+		rgb_evt_n <= rgb_evt_n + 1'd1;
+	end
+end
 `else
 assign {vr, vg, vb} = {r, g, b};
 assign hk_reset = hk_kernal;
