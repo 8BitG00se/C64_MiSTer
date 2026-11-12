@@ -172,6 +172,7 @@ static void stats(const char *what) {
 
 int main(int argc, char **argv) {
 	Verilated::commandArgs(argc, argv);
+	setvbuf(stdout, nullptr, _IOLBF, 0);
 	std::string mode = argc > 1 ? argv[1] : "game";
 	if (argc > 2) fvid = fopen(argv[2], "wb");
 	if (argc > 3) stall_pct = atoi(argv[3]);

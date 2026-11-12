@@ -85,7 +85,7 @@ always @(posedge clk) begin
 	if (sd_ce & ~ce_d) begin
 		if (sd_we) sdram[sd_addr[21:0]] <= sd_din;
 		sd_a   <= sd_addr[21:0];
-		sd_cnt <= 2'd3;
+		sd_cnt <= 2'd2;                                // (the byte is there 3 clocks after the access starts, as the real SDRAM's)
 	end
 	if (sd_cnt != 0) begin
 		sd_cnt <= sd_cnt - 1'd1;
