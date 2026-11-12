@@ -350,7 +350,8 @@ signal sid2_aud_r   : std_logic_vector(17 downto 0);
 signal sid_a7       : std_logic;
 signal sid_played   : std_logic_vector(7 downto 0);
 -- AUTO SIDs (Octophonic 64 V1.1): a SID wakes when the program writes both its volume ($x18) and a
--- voice control register ($x04/$x0B/$x12) at its own address; until then it is a mirror of SID 1
+-- voice control register ($x04/$x0B/$x12) at its own address, or (Core 11) one voice control write
+-- with TEST (bit 3) set there - how a SID detection routine starts; until then it is a mirror of SID 1
 signal sid_awake    : std_logic_vector(7 downto 0);
 signal sid_volw     : std_logic_vector(7 downto 0);
 signal sid_ctlw     : std_logic_vector(7 downto 0);
@@ -1022,7 +1023,11 @@ sid_raw(7) <= cs_sid_s and     cpuAddr(5) and     cpuAddr(8) and     sid_a7;
 sid_tgt    <= to_integer(unsigned'(sid_a7 & cpuAddr(8) & cpuAddr(5)));
 sid_isvol  <= '1' when cpuAddr(4 downto 0) = "11000" else '0';
 sid_isctl  <= '1' when cpuAddr(4 downto 0) = "00100" or cpuAddr(4 downto 0) = "01011" or cpuAddr(4 downto 0) = "10010" else '0';
-sid_wakes  <= cpuWe and ((sid_volw(sid_tgt) and sid_isctl) or (sid_ctlw(sid_tgt) and sid_isvol));
+-- Core 11: or a voice control write with TEST set. A SID detection routine sets TEST on voice 3 of
+-- each SID, then clears it on one SID at a time and reads every SID's OSC3: only the one let go may
+-- move. That write must reach the SID alone (sleeping, it would reach SID 1 too, and SID 1's OSC3
+-- would move with it). A one-SID program writes TEST only at SID 1, so it stays as before.
+sid_wakes  <= cpuWe and ((sid_volw(sid_tgt) and sid_isctl) or (sid_ctlw(sid_tgt) and sid_isvol) or (sid_isctl and cpuDo(3)));
 -- a SID still asleep: SID 1 takes the access (a write goes to both: the sleeper keeps its
 -- registers for when it wakes - silent till then, as it has no volume or no voice yet), except the
 -- very write that wakes it
