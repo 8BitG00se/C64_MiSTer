@@ -1,0 +1,24 @@
+ 29. Routing Usage Summary
+; Perform Clocking Topology Analysis During Routing                          ; On                                    ; Off                                   ;
+; Periphery to Core Placement and Routing Optimization                       ; On                                    ; Off                                   ;
+; Routing (by net)    ;                       ;                            ;                          ;
+;         -- Routing optimization registers                   ; 2,627                 ;       ;
+; Average interconnect usage (total/H/V)                      ; 41.4% / 41.5% / 40.9% ;       ;
+; Peak interconnect usage (total/H/V)                         ; 57.7% / 58.5% / 73.8% ;       ;
+;         -- Routing optimization registers                   ; 2627                   ; 0                              ;
+; Routing Usage Summary                                                    ;
+; Routing Resource Type                       ; Usage                      ;
+; Block interconnects                         ; 143,025 / 289,320 ( 49 % ) ;
+; C12 interconnects                           ; 3,283 / 13,420 ( 24 % )    ;
+; C2 interconnects                            ; 48,273 / 119,108 ( 41 % )  ;
+; C4 interconnects                            ; 25,655 / 56,300 ( 46 % )   ;
+; Local interconnects                         ; 27,615 / 84,580 ( 33 % )   ;
+; R14 interconnects                           ; 3,405 / 12,676 ( 27 % )    ;
+; R14/C12 interconnect drivers                ; 5,978 / 20,720 ( 29 % )    ;
+; R3 interconnects                            ; 60,686 / 130,992 ( 46 % )  ;
+; R6 interconnects                            ; 95,514 / 266,960 ( 36 % )  ;
+Info (170193): Fitter routing operations beginning
+Info (170089): 3e+03 ns of routing delay (approximately 1.3% of available device routing delay) has been added to meet hold timing. For more information, refer to the Estimated Delay Added for Hold Timing section in the Fitter report.
+Info (170195): Router estimated average interconnect usage is 32% of the available device resources
+    Info (170196): Router estimated peak interconnect usage is 45% of the available device resources in the region that extends from location X56_Y11 to location X66_Y22
+Info (170194): Fitter routing operations ending: elapsed time is 00:04:01
