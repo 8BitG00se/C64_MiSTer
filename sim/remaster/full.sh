@@ -17,4 +17,8 @@ python3 $S/fullpack.py p1.l2f chargen.hex full.rgb
 ../obj20/tb remaster p2 10 full.rgb ${RM_FIRST:-70} ${RM_FRAMES:-3} | tail -3
 cmp p1.l2f p2.l2f && echo "the frames of both runs are the same"
 python3 $S/check.py full.rgb p2.l2f p2.rgb 0 1 "${REMASTER_FULL_PNG:-full.png}"
+# run 3: the rewind test again with the remaster unit at work beside it (learn mode on: it writes to the DDR3 too)
+RM_PACK=full.rgb ../obj20/tb game "" 20 > rewind_with_remaster.txt 2>&1 || { tail -5 rewind_with_remaster.txt; exit 1; }
+grep -E "^INFO the remaster|REWIND_SIM" rewind_with_remaster.txt
+grep -q "REWIND_SIM_OK" rewind_with_remaster.txt
 echo "REMASTER_FULL_OK"

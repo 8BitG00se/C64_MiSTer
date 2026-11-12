@@ -240,6 +240,21 @@ namespace rm {
 	}
 }
 
+static void run_clocks(uint64_t n);
+static bool load_pack(const char *path) {     // the pack: the whole file into the DDR3, its first $3800 bytes through the loader
+	FILE *f = fopen(path, "rb");
+	if (!f) { printf("FAIL no pack %s\n", path); return false; }
+	std::vector<uint8_t> d(4 << 20); size_t n = fread(d.data(), 1, d.size(), f); fclose(f);
+	for (size_t i = 0; i < (n + 7) / 8; i++) { uint64_t w = 0; for (int k = 7; k >= 0; k--) w = (w << 8) | d[i * 8 + k]; DDRP[i] = w; }
+	top->ld_download = 1; run_clocks(2);
+	for (int a = 0; a < 0x3800; a++) { top->ld_addr = a; top->ld_data = d[a]; top->ld_wr = 1; run_clocks(1); top->ld_wr = 0; run_clocks(1); }
+	top->ld_download = 0; run_clocks(2);
+	top->rm_reload = 1; run_clocks(1); top->rm_reload = 0;
+	run_clocks(4000);
+	printf("INFO pack %s: %zu bytes, Level 2 %s\n", path, n, top->rm_ok ? "found" : "NOT found");
+	return true;
+}
+
 static bool joy_script = false;
 static void joy() {     // fire now and then, a direction that changes: enough to get a game going and moving
 	if (!joy_script) return;
@@ -295,6 +310,11 @@ int main(int argc, char **argv) {
 		run_clocks(2000);
 	}
 	top->reset_n = 1;
+	// Build 14: RM_PACK=<pack>: the remaster unit at work (tiles and sprite frames from the DDR3, sprite data from
+	// the 64K copy) while the rewind tests run - the two share the DDR3 port and the copy's read port
+	for (int i = 0; i < (1 << 15); i++) DDRL[i] = 0;
+	for (int i = 0; i < (1 << 19); i++) DDRP[i] = 0;
+	if (mode != "remaster" && getenv("RM_PACK")) { top->rm_on = 1; top->rm_learn = 1; if (!load_pack(getenv("RM_PACK"))) return 2; }
 
 	if (mode == "remaster") {
 		// (see rm above) the pack: its first $3800 bytes through the loader, the whole file into the DDR3; none: no Level 2
@@ -302,21 +322,8 @@ int main(int argc, char **argv) {
 		if (fvid) { fclose(fvid); fvid = nullptr; remove(argv[2]); }
 		rm::fl = fopen((o + ".l2f").c_str(), "wb"); rm::fo = fopen((o + ".rgb").c_str(), "wb");
 		rm::first = argc > 5 ? atoi(argv[5]) : 60; rm::count = argc > 6 ? atoi(argv[6]) : 3;
-		top->rm_on = 1; top->rm_learn = argc > 7 ? atoi(argv[7]) : 0; top->palette = 0; top->enable = 0;
-		for (int i = 0; i < (1 << 15); i++) DDRL[i] = 0;
-		for (int i = 0; i < (1 << 19); i++) DDRP[i] = 0;
-		if (argc > 4 && argv[4][0]) {
-			FILE *f = fopen(argv[4], "rb");
-			if (!f) { printf("FAIL no pack %s\n", argv[4]); return 2; }
-			std::vector<uint8_t> d(4 << 20); size_t n = fread(d.data(), 1, d.size(), f); fclose(f);
-			for (size_t i = 0; i < (n + 7) / 8; i++) { uint64_t w = 0; for (int k = 7; k >= 0; k--) w = (w << 8) | d[i * 8 + k]; DDRP[i] = w; }
-			top->ld_download = 1; run_clocks(2);
-			for (int a = 0; a < 0x3800; a++) { top->ld_addr = a; top->ld_data = d[a]; top->ld_wr = 1; run_clocks(1); top->ld_wr = 0; run_clocks(1); }
-			top->ld_download = 0; run_clocks(2);
-			top->rm_reload = 1; run_clocks(1); top->rm_reload = 0;
-			run_clocks(4000);
-			printf("INFO pack %s: %zu bytes, Level 2 %s\n", argv[4], n, top->rm_ok ? "found" : "NOT found");
-		}
+		top->rm_on = 1; top->rm_learn = argc > 7 ? atoi(argv[7]) : 0; top->palette = 0;
+		if (argc > 4 && argv[4][0] && !load_pack(argv[4])) return 2;
 		rm::on = true;
 		while (rm::fno < rm::first + rm::count + 1) tick();
 		run_clocks(40000);
@@ -449,6 +456,7 @@ int main(int argc, char **argv) {
 		run_frames(10);
 	}
 	if (fvid) fclose(fvid);
+	if (getenv("RM_PACK")) printf("INFO the remaster unit ran beside: Level 2 %s, %d keys learned\n", top->rm_ok ? "on" : "OFF", (int)top->rm_lcount);
 	printf("%s: %d checks, %d failed, %llu clocks, %d frames\n", fails ? "REWIND_SIM_FAILED" : "REWIND_SIM_OK", checks, fails, (unsigned long long)clocks, vframe);
 	top->final();
 	return fails ? 1 : 0;
