@@ -1,0 +1,54 @@
+OK   the Octophonic KERNAL reaches READY. without OctoVIC (found at row 5), 170 save states so far
+     screen rows 0-7:
+     |             OCTOPHONIC 64      NET     |
+     |8 SIDS       OCTOVIC 256        16M REU |
+     |                                        |
+     |38911 BASIC BYTES FREE                  |
+     |                                        |
+     |READY.                                  |
+     |                                        |
+     |                                        |
+OK   step 1 (held 628 us, to line 265, 169 left, 50 SID writes): frame of 168: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D4 FRAME=AA00
+OK   step 2 (held 617 us, to line 265, 168 left, 50 SID writes): frame of 167: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D4 FRAME=AA00
+OK   step 3 (held 617 us, to line 265, 167 left, 50 SID writes): frame of 166: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D3 FRAME=AA00
+OK   step 4 (held 618 us, to line 265, 166 left, 50 SID writes): frame of 165: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=EA6D FRAME=AA00
+OK   step 5 (held 617 us, to line 265, 165 left, 50 SID writes): frame of 164: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5CE FRAME=AA00
+OK   step 6 (held 619 us, to line 265, 164 left, 50 SID writes): frame of 163: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D4 FRAME=AA00
+OK   step 7 (held 619 us, to line 265, 163 left, 50 SID writes): frame of 162: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D3 FRAME=AA00
+OK   step 8 (held 618 us, to line 265, 162 left, 50 SID writes): frame of 161: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D0 FRAME=AA00
+OK   step 9 (held 617 us, to line 265, 161 left, 50 SID writes): frame of 160: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5CF FRAME=AA00
+OK   step 10 (held 617 us, to line 265, 160 left, 50 SID writes): frame of 159: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D4 FRAME=AA00
+OK   step 11 (held 618 us, to line 265, 159 left, 50 SID writes): frame of 158: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D4 FRAME=AA00
+OK   step 12 (held 617 us, to line 265, 158 left, 50 SID writes): frame of 157: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D4 FRAME=AA00
+OK   step 13 (held 618 us, to line 265, 157 left, 50 SID writes): frame of 156: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D3 FRAME=AA00
+OK   step 14 (held 617 us, to line 265, 156 left, 50 SID writes): frame of 155: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D1 FRAME=AA00
+OK   step 15 (held 617 us, to line 265, 155 left, 50 SID writes): frame of 154: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5CE FRAME=AA00
+OK   step 16 (held 618 us, to line 265, 154 left, 50 SID writes): frame of 153: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D4 FRAME=AA00
+OK   step 17 (held 618 us, to line 265, 153 left, 50 SID writes): frame of 152: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D4 FRAME=AA00
+OK   step 18 (held 618 us, to line 265, 152 left, 50 SID writes): frame of 151: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D3 FRAME=AA00
+OK   step 19 (held 618 us, to line 265, 151 left, 50 SID writes): frame of 150: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D0 FRAME=AA00
+OK   step 20 (held 617 us, to line 265, 150 left, 50 SID writes): frame of 149: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5CE FRAME=AA00
+OK   step 21 (held 617 us, to line 265, 149 left, 50 SID writes): frame of 148: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D4 FRAME=AA00
+OK   step 22 (held 616 us, to line 265, 148 left, 50 SID writes): frame of 147: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D4 FRAME=AA00
+OK   step 23 (held 619 us, to line 265, 147 left, 50 SID writes): frame of 146: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D3 FRAME=AA00
+OK   step 24 (held 618 us, to line 265, 146 left, 50 SID writes): frame of 145: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D0 FRAME=AA00
+OK   step 25 (held 617 us, to line 265, 145 left, 50 SID writes): frame of 144: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5CE FRAME=AA00
+OK   step 26 (held 616 us, to line 265, 144 left, 50 SID writes): frame of 143: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D4 FRAME=AA00
+OK   step 27 (held 618 us, to line 265, 143 left, 50 SID writes): frame of 142: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D4 FRAME=AA00
+OK   step 28 (held 619 us, to line 265, 142 left, 50 SID writes): frame of 141: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D3 FRAME=AA00
+OK   step 29 (held 617 us, to line 265, 141 left, 50 SID writes): frame of 140: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D0 FRAME=AA00
+OK   step 30 (held 618 us, to line 265, 140 left, 50 SID writes): frame of 139: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5CE FRAME=AA00
+OK   step 31 (held 619 us, to line 265, 139 left, 50 SID writes): frame of 138: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D4 FRAME=AA00
+OK   step 32 (held 619 us, to line 265, 138 left, 50 SID writes): frame of 137: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D4 FRAME=AA00
+OK   step 33 (held 617 us, to line 265, 137 left, 50 SID writes): frame of 136: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D3 FRAME=AA00
+OK   step 34 (held 618 us, to line 265, 136 left, 50 SID writes): frame of 135: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D0 FRAME=AA00
+OK   step 35 (held 615 us, to line 265, 135 left, 50 SID writes): frame of 134: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5CE FRAME=AA00
+OK   step 36 (held 617 us, to line 265, 134 left, 50 SID writes): frame of 133: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D4 FRAME=AA00
+OK   step 37 (held 618 us, to line 265, 133 left, 50 SID writes): frame of 132: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D4 FRAME=AA00
+OK   step 38 (held 617 us, to line 265, 132 left, 50 SID writes): frame of 131: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D3 FRAME=AA00
+OK   step 39 (held 617 us, to line 265, 131 left, 50 SID writes): frame of 130: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5D0 FRAME=AA00
+OK   step 40 (held 618 us, to line 265, 130 left, 50 SID writes): frame of 129: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E5CE FRAME=AA00
+OK   the jiffy clock went back while rewinding: 78 -> 31
+OK   and runs on after: 31 -> 66
+INFO boot: 40 steps, the 6510 held 615 / 617 / 628 us (least / mean / most), back on by raster line 265, FIFO at most 23 of 256
+REWIND_SIM_OK: 43 checks, 0 failed, 150933571 clocks, 240 frames
