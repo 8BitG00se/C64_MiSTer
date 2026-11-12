@@ -32,12 +32,12 @@ fi
 for f in _Computer/.C64_Octophonic_*.rbf; do [ -e "$f" ] && mv -f "$f" "_Octophonic/old cores/"; done
 mv "/tmp/$NEW" "_Computer/.$NEW" || exit 1
 printf 'NAME=.%s\nORDER=%s\n' "$NEW" "$ORD" > _Octophonic/core.txt
-# Fix 60: the C64RGB 256 core sent with it (C64RGB256_<date>.rbf, the same build) - hidden in _Computer
+# Fix 60: the Octophonic64RGB core sent with it (Octophonic64RGB_<date>.rbf, the same build) - hidden in _Computer
 # beside the Octophonic core, one only; the one that was there goes to _Octophonic/old cores
-for r in /tmp/C64RGB256_*.rbf; do
+for r in /tmp/Octophonic64RGB_*.rbf; do
 	[ -s "$r" ] || continue
-	for f in _Computer/.C64RGB256_*.rbf; do [ -e "$f" ] && mv -f "$f" "_Octophonic/old cores/"; done
-	mv "$r" "_Computer/.$(basename "$r")" && echo "C64RGB 256 core: $(basename "$r")"
+	for f in _Computer/.Octophonic64RGB_*.rbf; do [ -e "$f" ] && mv -f "$f" "_Octophonic/old cores/"; done
+	mv "$r" "_Computer/.$(basename "$r")" && echo "Octophonic64RGB core: $(basename "$r")"
 done
 sync
 [ -n "$CUR" ] && [ "$CUR" != ".$NEW" ] && echo "(the core that was there, ${CUR#.}, is in _Octophonic/old cores)"

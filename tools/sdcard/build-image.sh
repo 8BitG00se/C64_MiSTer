@@ -137,19 +137,19 @@ else
     git -C "$REPO" show "origin/build-reports:$RBF" > "$PAY/$RBF"
     echo "core: $RBF (built from $C, same core source as $HEADC)"
 fi
-# the C64RGB 256 core (Fix 60, step 032): the same build's second core - its rbf at build-reports' top,
+# the Octophonic64RGB core (Fix 60, step 033): the same build's second core - its rbf at build-reports' top,
 # its result in rgb256/result.txt; the same core source as here
 if [ -n "${OCTO_RGBCORE:-}" ]; then cp "$OCTO_RGBCORE" "$PAY/"
 else
     RC=$(git -C "$REPO" show origin/build-reports:rgb256/result.txt 2>/dev/null | awk '{print $2}')
     ROK=$(git -C "$REPO" show origin/build-reports:rgb256/result.txt 2>/dev/null | awk '{print $1}')
-    RRBF=$(git -C "$REPO" ls-tree --name-only origin/build-reports 2>/dev/null | grep '^C64RGB256_.*\.rbf$' | head -1 || true)
-    [ "$ROK" = success ] && [ -n "$RRBF" ] || die "no successful C64RGB 256 core build on build-reports (or set OCTO_RGBCORE)"
-    same_src "$RC" rtl c64.sv files.qip C64.qsf sys || die "the C64RGB 256 core on build-reports was built from $RC, whose core source differs from $HEADC - wait for the core build of this commit (or set OCTO_RGBCORE)"
+    RRBF=$(git -C "$REPO" ls-tree --name-only origin/build-reports 2>/dev/null | grep '^Octophonic64RGB_.*\.rbf$' | head -1 || true)
+    [ "$ROK" = success ] && [ -n "$RRBF" ] || die "no successful Octophonic64RGB core build on build-reports (or set OCTO_RGBCORE)"
+    same_src "$RC" rtl c64.sv files.qip C64.qsf sys || die "the Octophonic64RGB core on build-reports was built from $RC, whose core source differs from $HEADC - wait for the core build of this commit (or set OCTO_RGBCORE)"
     git -C "$REPO" show "origin/build-reports:$RRBF" > "$PAY/$RRBF"
-    echo "C64RGB 256 core: $RRBF (built from $RC)"
+    echo "Octophonic64RGB core: $RRBF (built from $RC)"
 fi
-ls "$PAY"/C64RGB256_*.rbf >/dev/null 2>&1 || die "no C64RGB256_*.rbf in the payload"
+ls "$PAY"/Octophonic64RGB_*.rbf >/dev/null 2>&1 || die "no Octophonic64RGB_*.rbf in the payload"
 cp "$REPO/tools/install/core-number.txt" "$REPO/tools/install/install_core.sh" "$PAY/"
 # Octophonic Main: built from the same tools/octoos/main as here
 if [ -n "${OCTO_MAIN:-}" ]; then cp "$OCTO_MAIN" "$PAY/MiSTer"
@@ -233,7 +233,7 @@ if [ -d "$PAY/tty2oled-firmware" ]; then
 fi
 # what the check afterwards must find, file by file (md5): the payload's pieces as they are on the card
 {
-    for r in $(cd "$PAY" && ls C64_Octophonic_*.rbf C64RGB256_*.rbf); do echo "$(md5sum < "$PAY/$r" | cut -c1-32)  _Computer/.$r"; done
+    for r in $(cd "$PAY" && ls C64_Octophonic_*.rbf Octophonic64RGB_*.rbf); do echo "$(md5sum < "$PAY/$r" | cut -c1-32)  _Computer/.$r"; done
     echo "$(md5sum < "$PAY/MiSTer"| cut -c1-32)  MiSTer"
     echo "$(md5sum < "$PAY/SHELL.PRG" | cut -c1-32)  octophonic/SHELL.PRG"
     echo "$(md5sum < "$PAY/acme" | cut -c1-32)  octophonic/acme"

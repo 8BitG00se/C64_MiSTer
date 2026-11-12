@@ -1,25 +1,60 @@
 diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
-index 1be2061..09aa36d 100644
+index 1be2061..0ca5f58 100644
 --- a/support/octo/octo.cpp
 +++ b/support/octo/octo.cpp
-@@ -115,6 +115,7 @@ static uint8_t cur_seq = 0;              // the 6502's number for the request be
+@@ -67,6 +67,8 @@
+ #include <string>
+ #include <algorithm>
+ #include <fcntl.h>
++#include <math.h>
++#include <linux/input.h>
+ 
+ #include "../../spi.h"
+ #include "../../user_io.h"
+@@ -78,6 +80,7 @@
+ #include "../../scaler.h"
+ #include "../../cfg.h"
+ #include "octo.h"
++#include "../../menu.h"
+ 
+ #define OS_DIR      "/media/fat/octophonic"
+ #define OS_INI      OS_DIR "/os.ini"
+@@ -115,6 +118,9 @@ static uint8_t cur_seq = 0;              // the 6502's number for the request be
  static std::string disk8;                // the disk last put in drive 8 (COMPILE works beside it)
  static int  os_showcase = 0;             // os.ini showcase=1: NET b3, demos leave out their debug rows
  static std::string prog_dir;             // the folder the running program came from (REU, $18)
 +static int  rgb_core = 0;                // C64RGB 256 (Fix 60): the core running is the recolour core
++static int  os_remaster = 1;             // Build 12: os.ini remaster=1 (default) - a game with no pack gets one made
++static void rgb_now_read();              // Build 12 (below)
  
  // ------------------------------------------------------------------------------------------ log
  
-@@ -448,6 +449,8 @@ void octo_os_core_init()
+@@ -148,6 +154,7 @@ static void os_log(const char *fmt, ...)
+ static void read_ini()
+ {
+ 	os_enabled = 0;
++	os_remaster = 1;
+ 	FILE *f = fopen(OS_INI, "r");
+ 	if (!f) return;
+ 	os_enabled = 1;
+@@ -168,6 +175,7 @@ static void read_ini()
+ 		else if (!strcasecmp(p, "start")) snprintf(os_start, sizeof(os_start), "%s", v);
+ 		else if (!strcasecmp(p, "startin")) snprintf(os_startin, sizeof(os_startin), "%s", v);
+ 		else if (!strcasecmp(p, "showcase")) os_showcase = atoi(v) != 0;
++		else if (!strcasecmp(p, "remaster")) os_remaster = atoi(v) != 0;    // Build 12: auto packs on/off
+ 	}
+ 	fclose(f);
+ }
+@@ -448,6 +456,8 @@ void octo_os_core_init()
  	uint16_t w = mb_poll();
  	if ((w >> 8) != OCTO_MAGIC) { os_log("core: no mailbox (poll %04X) - the OS is off for this core", w); return; }
  	os_active = 1;
 +	rgb_core = (w & 2) ? 1 : 0;                      // C64RGB 256 (Fix 60): the poll word's b1
-+	if (rgb_core) os_log("core: the C64RGB 256 core (recolour packs)");
++	if (rgb_core) { os_log("core: the Octophonic64RGB core (recolour packs)"); rgb_now_read(); }
  
  	// where to start: os.ini's startin= (network, SD card, the last folder); without it the SD
  	// card, always - Main never waits for a network unless os.ini asks for one (startin=net).
-@@ -803,10 +806,112 @@ static void reu_load(const char *path)
+@@ -803,10 +813,471 @@ static void reu_load(const char *path)
  	reu_in = path;
  }
  
@@ -30,6 +65,344 @@ index 1be2061..09aa36d 100644
 +// octophonic/rgb256.mgl and started as the menu starts one - MiSTer's own way of loading a core with files.
 +// SHIFT+F1 held in the C64RGB 256 core (the mailbox's poll word, b2) - back to the Octophonic core.
 +#define RGB_MGL   OS_DIR "/rgb256.mgl"
++#define RGB_RBF   "_Computer/.Octophonic64RGB"   // Build 12: the companion core's hidden name
++#define RGB_NOW   OS_DIR "/rgb-now.txt"         // Build 12: the game and pack the companion runs (Main restarts with the core)
++#define RGB_PACKS OS_DIR "/packs"               // Build 12: made packs go here when the game's folder can't be written
++#define RGB_ULOG  OS_DIR "/update.log"          // the log Neal reads: each core switch, with its time
++
++// ------------------------------------------------------------ Octo Remaster (Build 12)
++// OCTO-PACK-BEGIN (tools/octoos/main/packtest.cpp builds this part on its own, for the proof stills)
++// A level 1-2 pack made on the ARM in a few milliseconds: the game is read for the colours it sets for
++// the border ($D020) and the background ($D021) - LDA/LDX/LDY #n then STA/STX/STY $D020/$D021 - and the
++// most used become a sky gradient down the screen (16 line bands); every colour gets 8 looks (the
++// palettes WIN+F3 steps through), one grading over them (WIN+F5) and a gradient strength (WIN+F7).
++// Slots: band*16 + colour - each line band has its own 16 colours, so a band changes only the colours
++// with a gradient. Sprites use band 7 (the middle). Pack layout: docs/RGB256.md; header bytes $0A-$0F:
++// 'O', grading, strength, background, border, 'A' (an Octophonic auto pack).
++#define PK_SIZE 14336
++#define PK_NGRADE 5
++#define PK_NSTR 4
++static const char *pk_grade_name[PK_NGRADE] = { "Natural", "Bright", "Punchy", "Film", "Deep" };
++static const char *pk_str_name[PK_NSTR]     = { "Off", "Low", "Medium", "High" };
++static const char *pk_look_name[8] = { "Vivid", "Warm", "Cool", "Dusk", "Arcade", "Pastel", "Night", "Classic" };
++static const uint8_t pk_c64[16][3] = {      // the core's default palette (Colodore)
++	{0x00,0x00,0x00},{0xff,0xff,0xff},{0x81,0x33,0x38},{0x75,0xce,0xc8},{0x8e,0x3c,0x97},{0x56,0xac,0x4d},
++	{0x2e,0x2c,0x9b},{0xed,0xf1,0x71},{0x8e,0x50,0x29},{0x55,0x38,0x00},{0xc4,0x6c,0x71},{0x4a,0x4a,0x4a},
++	{0x7b,0x7b,0x7b},{0xa9,0xff,0x9f},{0x70,0x6d,0xeb},{0xb2,0xb2,0xb2} };
++
++static float pk_clampf(float v) { return v < 0 ? 0 : v > 255 ? 255 : v; }
++static void pk_mix(const float *a, const float *b, float t, float *o) { for (int i = 0; i < 3; i++) o[i] = a[i] + (b[i] - a[i]) * t; }
++
++// one of the 8 looks: saturation, a tint, contrast, a lift of the blacks, brightness
++static void pk_look(int look, const float *in, float *o)
++{
++	static const float L[8][7] = {   // sat, tint r g b, contrast, lift, bright
++		{1.35f, 1.00f,1.00f,1.00f, 1.10f, 0.00f, 1.00f},   // Vivid
++		{1.20f, 1.08f,1.00f,0.86f, 1.05f, 0.02f, 1.02f},   // Warm
++		{1.15f, 0.88f,1.00f,1.12f, 1.05f, 0.02f, 1.00f},   // Cool
++		{1.25f, 1.06f,0.90f,1.08f, 1.08f, 0.03f, 0.97f},   // Dusk
++		{1.60f, 1.00f,1.00f,1.00f, 1.20f, 0.00f, 1.04f},   // Arcade
++		{0.80f, 1.00f,1.00f,1.00f, 0.90f, 0.12f, 1.05f},   // Pastel
++		{1.10f, 0.82f,0.92f,1.18f, 1.10f, 0.00f, 0.72f},   // Night
++		{1.00f, 1.00f,1.00f,1.00f, 1.00f, 0.00f, 1.00f} }; // Classic
++	const float *k = L[look & 7];
++	float y = 0.299f * in[0] + 0.587f * in[1] + 0.114f * in[2];
++	for (int i = 0; i < 3; i++)
++	{
++		float v = y + (in[i] - y) * k[0];                  // saturation
++		v *= k[1 + i];                                      // tint
++		v = (v - 128.f) * k[4] + 128.f;                     // contrast
++		v = v + (255.f - v) * k[5];                         // lift
++		o[i] = pk_clampf(v * k[6]);                         // brightness
++	}
++}
++
++static void pk_grade(int g, float *c)
++{
++	for (int i = 0; i < 3; i++)
++	{
++		float v = c[i] / 255.f;
++		switch (g)
++		{
++		case 1: v = powf(v, 0.82f) * 1.04f; break;                              // Bright
++		case 2: v = (v - 0.5f) * 1.22f + 0.5f; break;                          // Punchy
++		case 3: v = 0.06f + v * 0.9f; if (i == 0) v *= 1.04f; if (i == 2) v *= 0.94f; break;   // Film
++		case 4: v = powf(v, 1.25f); break;                                      // Deep
++		default: break;                                                         // Natural
++		}
++		c[i] = pk_clampf(v * 255.f);
++	}
++}
++
++// the gradient of one colour: band 0 (top) a sky-lit version, band 15 (bottom) a shaded one
++static void pk_gradient(const float *base, int band, float strength, float *o)
++{
++	float y = 0.299f * base[0] + 0.587f * base[1] + 0.114f * base[2];
++	float top[3], bot[3];
++	static const float sky[3] = { 70.f, 110.f, 255.f };
++	if (y < 24.f) { top[0] = 26.f; top[1] = 34.f; top[2] = 92.f; }          // black: a deep night-blue sky at the top
++	else { float l[3]; for (int i = 0; i < 3; i++) l[i] = base[i] + (255.f - base[i]) * 0.38f; pk_mix(l, sky, 0.22f, top); }
++	for (int i = 0; i < 3; i++) bot[i] = base[i] * 0.42f;
++	float t = band / 15.f, g[3];
++	if (t < 0.5f) pk_mix(top, base, t * 2.f, g); else pk_mix(base, bot, (t - 0.5f) * 2.f, g);
++	pk_mix(base, g, strength, o);
++}
++
++// the colours a game sets for $D020/$D021 (the most used of each; -1: none found)
++static void pk_scan(const uint8_t *d, size_t n, int *bd, int *bg)
++{
++	int vb[16] = {0}, vg[16] = {0};
++	for (size_t i = 0; i + 4 < n; i++)
++	{
++		uint8_t ld = d[i], st = d[i + 2];
++		int ok = (ld == 0xA9 && st == 0x8D) || (ld == 0xA2 && st == 0x8E) || (ld == 0xA0 && st == 0x8C);
++		if (!ok || d[i + 4] != 0xD0 || d[i + 1] > 15) continue;
++		if (d[i + 3] == 0x20) vb[d[i + 1]]++;
++		else if (d[i + 3] == 0x21) vg[d[i + 1]]++;
++	}
++	*bd = -1; *bg = -1;
++	int mb = 0, mg = 0;
++	for (int c = 0; c < 16; c++) { if (vb[c] > mb) { mb = vb[c]; *bd = c; } if (vg[c] > mg) { mg = vg[c]; *bg = c; } }
++}
++
++static void pk_put16(uint8_t *o, const char *s) { for (int i = 0; i < 16; i++) o[i] = (s && *s) ? (uint8_t)*s++ : 0; }
++
++// the whole pack (PK_SIZE bytes) for a game whose background is bg and border bd
++static void pk_build(uint8_t *pk, const char *title, int bg, int bd, int grade, int strength)
++{
++	memset(pk, 0, PK_SIZE);
++	memcpy(pk, "RGB256PK", 8);
++	pk[8] = 1; pk[9] = 8;
++	pk[0x0A] = 'O'; pk[0x0B] = (uint8_t)grade; pk[0x0C] = (uint8_t)strength; pk[0x0D] = (uint8_t)bg; pk[0x0E] = (uint8_t)bd; pk[0x0F] = 'A';
++	for (int p = 0; p < 8; p++) pk_put16(pk + 0x10 + p * 16, pk_look_name[p]);
++	for (int i = 0; i < 31 && title && title[i]; i++) pk[0x90 + i] = (uint8_t)toupper((unsigned char)title[i]);
++	const char *cr = "(c) 2026 Mong00se - Octophonic auto pack";
++	memcpy(pk + 0xC0, cr, strlen(cr));
++	for (int line = 0; line < 512; line++)               // the line bands: the screen (and a little border) in 16
++	{
++		int b = (line - 30) * 16 / 240;
++		pk[0x100 + line] = (uint8_t)(b < 0 ? 0 : b > 15 ? 15 : b);
++	}
++	for (int g = 0; g < 256; g++)                        // remap: group -> its band's 16 slots
++	{
++		int band = (g >= 0xF0) ? 7 : (g & 15);
++		for (int c = 0; c < 16; c++) pk[0x800 + g * 16 + c] = (uint8_t)(band * 16 + c);
++	}
++	static const float sv[PK_NSTR] = { 0.f, 0.35f, 0.7f, 1.f };
++	float st = sv[strength < 0 ? 0 : strength >= PK_NSTR ? PK_NSTR - 1 : strength];
++	for (int p = 0; p < 8; p++)
++		for (int s = 0; s < 256; s++)
++		{
++			int band = s >> 4, c = s & 15;
++			float in[3] = { (float)pk_c64[c][0], (float)pk_c64[c][1], (float)pk_c64[c][2] }, col[3];
++			pk_look(p, in, col);
++			if (c == bg || c == bd) { float g2[3]; pk_gradient(col, band, c == bg ? st : st * 0.8f, g2); memcpy(col, g2, sizeof(col)); }
++			pk_grade(grade, col);
++			uint8_t *o = pk + 0x1800 + (p * 256 + s) * 4;
++			o[0] = (uint8_t)(col[0] + 0.5f); o[1] = (uint8_t)(col[1] + 0.5f); o[2] = (uint8_t)(col[2] + 0.5f); o[3] = 0;
++		}
++}
++
++// a hand-made pack's palettes graded (base: the palettes as the pack came)
++static void pk_regrade(uint8_t *pk, const uint8_t *base, int grade)
++{
++	for (int i = 0; i < 8 * 256; i++)
++	{
++		float c[3] = { (float)base[i * 4], (float)base[i * 4 + 1], (float)base[i * 4 + 2] };
++		pk_grade(grade, c);
++		for (int k = 0; k < 3; k++) pk[0x1800 + i * 4 + k] = (uint8_t)(c[k] + 0.5f);
++	}
++}
++// OCTO-PACK-END
++
++static uint8_t     rgb_pk[PK_SIZE];         // the pack in the core now
++static uint8_t     rgb_pk_base[8192];        // its palettes before grading (a hand-made pack)
++static int         rgb_pk_in = 0;           // rgb_pk holds the pack of rgb_game
++static std::string rgb_game, rgb_pack;     // the game the companion runs, and its pack
++static int         rgb_evt_seen = -1;       // the poll word's count of remaster keys, last seen
++static unsigned long rgb_autorun_at = 0;    // a disk game: SHIFT+RUN/STOP typed at this time (LOAD"*",8 and RUN)
++
++static void rgb_ulog(const char *fmt, ...)   // one line, with its time, to octophonic/update.log
++{
++	FILE *f = fopen(RGB_ULOG, "a");
++	if (!f) return;
++	time_t t = time(0);
++	char ts[32];
++	strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", localtime(&t));
++	fprintf(f, "%s Octo Remaster: ", ts);
++	va_list ap;
++	va_start(ap, fmt);
++	vfprintf(f, fmt, ap);
++	va_end(ap);
++	fputc('\n', f);
++	fclose(f);
++}
++
++static int rgb_read_pack(const std::string &path)
++{
++	FILE *f = fopen(path.c_str(), "rb");
++	if (!f) return 0;
++	size_t n = fread(rgb_pk, 1, PK_SIZE, f);
++	fclose(f);
++	if (n != PK_SIZE || memcmp(rgb_pk, "RGB256PK", 8)) return 0;
++	memcpy(rgb_pk_base, rgb_pk + 0x1800, sizeof(rgb_pk_base));
++	return 1;
++}
++
++static int rgb_is_auto() { return rgb_pk[0x0A] == 'O' && rgb_pk[0x0F] == 'A'; }
++
++static int rgb_write_file(const std::string &path, const uint8_t *d, size_t n)
++{
++	std::string tmp = path + ".tmp";
++	FILE *f = fopen(tmp.c_str(), "wb");
++	if (!f) return 0;
++	int ok = fwrite(d, 1, n, f) == n;
++	ok = (fclose(f) == 0) && ok;
++	if (!ok || rename(tmp.c_str(), path.c_str())) { unlink(tmp.c_str()); return 0; }
++	sync();
++	return 1;
++}
++
++// the pack in rgb_pk to the core (index 4), through a file in /tmp (octo_file_send sends files)
++static void rgb_send()
++{
++	const char *t = "/tmp/octo-remaster.rgb";
++	if (!rgb_write_file(t, rgb_pk, PK_SIZE) || !octo_file_send(t, 4, NULL)) os_log("  Remaster: the pack could not be sent");
++}
++
++// games that get an automatic pack: .prg .crt .d64 .g64 .t64 .d81, not the Octophonic's own (Demos, Tools,
++// Apps, the octophonic folder, or a program with a .reu beside it - those use OctoVIC and stay in the main core)
++static int rgb_auto_ok(const std::string &game, const std::vector<Entry> *folder)
++{
++	const char *p = game.c_str();
++	if (!os_remaster) return 0;
++	if (!(ends_with(p, ".prg") || ends_with(p, ".crt") || ends_with(p, ".d64") || ends_with(p, ".g64") || ends_with(p, ".t64") || ends_with(p, ".d81"))) return 0;
++	std::string low = game;
++	for (auto &ch : low) ch = (char)tolower((unsigned char)ch);
++	static const char *skip[] = { "/demos/", "/tools/", "/apps/", "/octophonic/", "/stock64/", "/examples/" };
++	for (auto k : skip) if (low.find(k) != std::string::npos) return 0;
++	if (folder) for (auto &e : *folder) if (!e.dir && ends_with(e.name.c_str(), ".reu")) return 0;
++	return 1;
++}
++
++static void rgb_banner(const char *text)     // a line across the middle of the start screen (screen RAM $0400)
++{
++	uint8_t row[40];
++	int l = (int)strlen(text), at = (40 - l) / 2;
++	for (int i = 0; i < 40; i++)
++	{
++		char ch = (i >= at && i < at + l) ? text[i - at] : ' ';
++		uint8_t sc = (ch >= 'A' && ch <= 'Z') ? (uint8_t)(ch - 'A' + 1) : (ch >= 'a' && ch <= 'z') ? (uint8_t)(ch - 'a' + 1) : (uint8_t)ch;
++		row[i] = sc | 0x80;                          // reversed: a bar
++	}
++	ram_write(0x0400 + 12 * 40, row, 40);
++}
++
++// make a pack for this game: PLEASE WAIT on screen, the colours read from the file, saved beside the game
++// (or in octophonic/packs if its folder can't be written). Returns the pack's path, "" if none could be made.
++static std::string rgb_make_pack(const std::string &game)
++{
++	rgb_banner("PLEASE WAIT - BUILDING PACK");
++	unsigned long t0 = GetTimer(0);
++	int bd = -1, bg = -1;
++	FILE *f = fopen(game.c_str(), "rb");
++	if (f)
++	{
++		std::vector<uint8_t> d(4 * 1024 * 1024);
++		size_t n = fread(d.data(), 1, d.size(), f);
++		fclose(f);
++		pk_scan(d.data(), n, &bd, &bg);
++	}
++	if (bg < 0) bg = 0;                              // nothing found: black screen, light blue border (the KERNAL's own)
++	if (bd < 0) bd = (bg == 0) ? 0 : 14;
++	std::string name = game.substr(game.rfind('/') + 1);
++	pk_build(rgb_pk, base_of(name).c_str(), bg, bd, 0, 2);
++	std::string path = game.substr(0, game.rfind('/') + 1) + base_of(name) + ".rgb";
++	if (!rgb_write_file(path, rgb_pk, PK_SIZE))
++	{
++		mkdir(RGB_PACKS, 0755);
++		path = std::string(RGB_PACKS) + "/" + base_of(name) + ".rgb";
++		if (!rgb_write_file(path, rgb_pk, PK_SIZE)) { os_log("  Remaster: could not save a pack for %s", game.c_str()); return ""; }
++	}
++	memcpy(rgb_pk_base, rgb_pk + 0x1800, sizeof(rgb_pk_base));
++	os_log("  Remaster: made %s (background %d, border %d) in %lu ms", path.c_str(), bg, bd, GetTimer(0) - t0);
++	rgb_ulog("pack made for %s -> %s (background %d, border %d)", name.c_str(), path.c_str(), bg, bd);
++	while (!CheckTimer(t0 + 1200)) usleep(20000);    // long enough to read PLEASE WAIT
++	return path;
++}
++
++static void rgb_now_write(const std::string &game, const std::string &pack, int autorun)
++{
++	FILE *f = fopen(RGB_NOW, "w");
++	if (!f) return;
++	fprintf(f, "game=%s\npack=%s\nautorun=%d\n", game.c_str(), pack.c_str(), autorun);
++	fclose(f);
++}
++
++static void rgb_now_read()                     // after the switch: Main has restarted with the companion core
++{
++	FILE *f = fopen(RGB_NOW, "r");
++	if (!f) return;
++	char line[1200];
++	int autorun = 0;
++	while (fgets(line, sizeof(line), f))
++	{
++		line[strcspn(line, "\r\n")] = 0;
++		if (!strncmp(line, "game=", 5)) rgb_game = line + 5;
++		else if (!strncmp(line, "pack=", 5)) rgb_pack = line + 5;
++		else if (!strncmp(line, "autorun=", 8)) autorun = atoi(line + 8);
++	}
++	fclose(f);
++	rgb_pk_in = !rgb_pack.empty() && rgb_read_pack(rgb_pack);
++	if (autorun) { rgb_autorun_at = GetTimer(3500); rgb_now_write(rgb_game, rgb_pack, 0); }   // once only
++	os_log("core: Octophonic64RGB - game %s, pack %s%s", rgb_game.c_str(), rgb_pack.c_str(), autorun ? ", disk: LOAD and RUN typed" : "");
++}
++
++// the remaster keys from the core (the poll word: b4-b3 the key, b7-b5 a count of them)
++static void rgb_keys(uint16_t w)
++{
++	int n = (w >> 5) & 7, k = (w >> 3) & 3;
++	if (rgb_evt_seen < 0) { rgb_evt_seen = n; return; }
++	if (n == rgb_evt_seen) return;
++	rgb_evt_seen = n;
++	if (!rgb_pk_in) { Info("No pack in this game", 1500); return; }
++	char msg[64];
++	if (k == 1)                                   // WIN+F5: the next grading
++	{
++		int g = (rgb_pk[0x0B] + 1) % PK_NGRADE;
++		if (rgb_is_auto()) { char title[33] = {0}; memcpy(title, rgb_pk + 0x90, 32); pk_build(rgb_pk, title, rgb_pk[0x0D], rgb_pk[0x0E], g, rgb_pk[0x0C]); }
++		else { pk_regrade(rgb_pk, rgb_pk_base, g); rgb_pk[0x0B] = (uint8_t)g; }
++		rgb_send();
++		snprintf(msg, sizeof(msg), "Grading: %s", pk_grade_name[g]);
++	}
++	else if (k == 2)                              // WIN+F7: the gradient strength
++	{
++		if (!rgb_is_auto()) snprintf(msg, sizeof(msg), "Gradient: auto packs only");
++		else
++		{
++			int s2 = (rgb_pk[0x0C] + 1) % PK_NSTR;
++			char title[33] = {0};
++			memcpy(title, rgb_pk + 0x90, 32);
++			pk_build(rgb_pk, title, rgb_pk[0x0D], rgb_pk[0x0E], rgb_pk[0x0B], s2);
++			rgb_send();
++			snprintf(msg, sizeof(msg), "Gradient: %s", pk_str_name[s2]);
++		}
++	}
++	else if (k == 3)                              // WIN+F8: save the pack as it is now
++	{
++		if (!rgb_is_auto())
++		{
++			std::string bak = rgb_pack + ".bak";       // a hand-made pack is kept once, as it came
++			if (access(bak.c_str(), F_OK)) { FILE *b = fopen(bak.c_str(), "wb"); if (b) { uint8_t t[PK_SIZE]; memcpy(t, rgb_pk, PK_SIZE); memcpy(t + 0x1800, rgb_pk_base, sizeof(rgb_pk_base)); fwrite(t, 1, PK_SIZE, b); fclose(b); } }
++		}
++		int ok = rgb_write_file(rgb_pack, rgb_pk, PK_SIZE);
++		snprintf(msg, sizeof(msg), ok ? "Pack saved" : "Pack NOT saved");
++		rgb_ulog("pack %s %s", ok ? "saved:" : "NOT saved:", rgb_pack.c_str());
++	}
++	else return;
++	os_log("  Remaster key: %s", msg);
++	Info(msg, 1500);
++}
 +
 +static std::string rgb_pack_of(const std::string &game)
 +{
@@ -53,7 +426,7 @@ index 1be2061..09aa36d 100644
 +	if (!d) return 0;
 +	int n = 0;
 +	while (struct dirent *de = readdir(d))
-+		if (!strncasecmp(de->d_name, ".C64RGB256_", 11) && ends_with(de->d_name, ".rbf")) n++;
++		if (!strncasecmp(de->d_name, ".Octophonic64RGB_", 17) && ends_with(de->d_name, ".rbf")) n++;
 +	closedir(d);
 +	return n;
 +}
@@ -86,6 +459,14 @@ index 1be2061..09aa36d 100644
 +	fputs("</mistergamedescription>\n", f);
 +	fclose(f);
 +	os_log("  RGB 256: %s, pack %s, game %s", rbf, pack && pack[0] ? pack : "-", game && game[0] ? game : "-");
++	// Build 12: the companion learns its game and pack from rgb-now.txt (Main restarts with the core); a disk
++	// game gets LOAD"*",8 and RUN typed for it once the start screen is up
++	int is_rgb = strstr(rbf, "Octophonic64RGB") != NULL;
++	int disk = game && (ends_with(game, ".d64") || ends_with(game, ".g64") || ends_with(game, ".t64") || ends_with(game, ".d81"));
++	if (is_rgb) rgb_now_write(game ? game : "", pack ? pack : "", disk);
++	else unlink(RGB_NOW);
++	rgb_ulog("switch to %s (will restart the core) - game %s, pack %s", is_rgb ? "Octophonic64RGB" : "the Octophonic core",
++		game && game[0] ? game : "-", pack && pack[0] ? pack : "-");
 +	xml_load(RGB_MGL);
 +}
 +
@@ -95,6 +476,8 @@ index 1be2061..09aa36d 100644
 +	char full[1024];
 +	snprintf(full, sizeof(full), "%s%s%s", os_boot[0] == '/' ? "" : OS_TOP, os_boot[0] == '/' ? "" : "/", os_boot);
 +	os_log("RGB 256: back to the Octophonic core (%s)", full);
++	unlink(RGB_NOW);
++	rgb_ulog("switch to the Octophonic core (will restart the core) - back to the start screen");
 +	octo_oled_logo(1);
 +	if (ends_with(full, ".mgl") && !access(full, R_OK)) xml_load(full);
 +	else rgb_switch("_Computer/.C64_Octophonic", NULL, NULL);
@@ -109,17 +492,28 @@ index 1be2061..09aa36d 100644
 +	if (!ends_with(p, ".reu"))
 +	{
 +		std::string pack = rgb_pack_of(path);
++		if (pack.empty())                           // Build 12: one made in octophonic/packs before
++		{
++			std::string n = path.substr(path.rfind('/') + 1);
++			std::string alt = std::string(RGB_PACKS) + "/" + base_of(n) + ".rgb";
++			if (!access(alt.c_str(), R_OK)) pack = alt;
++		}
++		// Build 12: no pack - make one (only with the companion core on the card, and only for an ordinary game)
++		if (pack.empty() && (rgb_core || rgb_core_there()) && rgb_auto_ok(path, folder)) pack = rgb_make_pack(path);
 +		if (!pack.empty() && !rgb_core && rgb_core_there())
 +		{
 +			mb_reply(ST_DONE, 0, -1, 1);            // the core goes away now: the reply goes first
 +			octo_oled_program(p);
-+			rgb_switch("_Computer/.C64RGB256", pack.c_str(), p);
++			rgb_switch(RGB_RBF, pack.c_str(), p);
 +			return 1;
 +		}
 +		if (!pack.empty() && rgb_core)
 +		{
 +			os_log("  RGB 256: pack %s (index 4)", pack.c_str());
 +			if (!octo_file_send(pack.c_str(), 4, NULL)) os_log("  RGB 256: the pack could not be read");
++			rgb_game = path; rgb_pack = pack;
++			rgb_pk_in = rgb_read_pack(pack);
++			rgb_ulog("in Octophonic64RGB: game %s, pack %s", p, pack.c_str());
 +		}
 +		else if (pack.empty() && rgb_core)
 +		{
@@ -132,7 +526,7 @@ index 1be2061..09aa36d 100644
  	if (ends_with(p, ".d64") || ends_with(p, ".g64") || ends_with(p, ".t64") || ends_with(p, ".d81"))
  	{
  		mb_reply(ST_DONE, 0, -1, 8);                // VALUE 8: a disk went into drive 8
-@@ -1289,6 +1394,7 @@ static void cmd_setapply()
+@@ -1289,6 +1760,7 @@ static void cmd_setapply()
  void octo_exit()
  {
  	if (!os_active) return;
@@ -140,11 +534,21 @@ index 1be2061..09aa36d 100644
  	os_log("CTRL+F12: reset to the start screen (folder /%s)", cwd);
  	octo_oled_logo(1);                                // the front screen: back to the Octophonic logo
  	user_io_status_set("[17]", 1);
-@@ -1728,6 +1834,7 @@ void octo_poll()
+@@ -1728,6 +2200,17 @@ void octo_poll()
  	poll_timer = GetTimer(4);
  
  	uint16_t w = mb_poll();
-+	if ((w >> 8) == OCTO_MAGIC && (w & 4) && rgb_core) { rgb_core = 0; rgb_home(); return; }   // SHIFT+F1 held
++	if ((w >> 8) == OCTO_MAGIC && (w & 4) && rgb_core) { rgb_core = 0; rgb_home(); return; }   // SHIFT+F1 held / WIN+F1
++	if ((w >> 8) == OCTO_MAGIC && rgb_core) rgb_keys(w);      // Build 12: WIN+F5/F7/F8
++	if (rgb_core && rgb_autorun_at && CheckTimer(rgb_autorun_at))
++	{
++		rgb_autorun_at = 0;                       // Build 12: a disk game - SHIFT+RUN/STOP: LOAD"*",8 and RUN
++		user_io_kbd(KEY_LEFTSHIFT, 1); usleep(60000);
++		user_io_kbd(KEY_ESC, 1);       usleep(120000);
++		user_io_kbd(KEY_ESC, 0);       usleep(60000);
++		user_io_kbd(KEY_LEFTSHIFT, 0);
++		os_log("  Remaster: SHIFT+RUN/STOP typed (LOAD\"*\",8 and RUN)");
++	}
  	if ((w >> 8) != OCTO_MAGIC || !(w & 1)) return;
  
  	uint8_t reg[16];

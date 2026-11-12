@@ -34,7 +34,7 @@ if exist "%D%\linux\linux.img" (
   if "!SZ!"=="393216000" (echo   ok       linux\linux.img  393216000 bytes) else (echo   SHORT    linux\linux.img is !SZ! bytes, should be 393216000 & set BAD=1)
 ) else (echo   MISSING  linux\linux.img & set BAD=1)
 dir /a "%D%\_Computer\.C64_Octophonic*_core8.rbf" >nul 2>&1 && (echo   ok       the Octophonic core - Core 8) || (echo   MISSING  Core 8 in _Computer & set BAD=1)
-dir /a "%D%\_Computer\.C64RGB256_*.rbf" >nul 2>&1 && (echo   ok       the C64RGB 256 core - recolour packs) || (echo   MISSING  the C64RGB 256 core in _Computer & set BAD=1)
+dir /a "%D%\_Computer\.Octophonic64RGB_*.rbf" >nul 2>&1 && (echo   ok       the Octophonic64RGB core - recolour packs) || (echo   MISSING  the Octophonic64RGB core in _Computer & set BAD=1)
 echo.
 if "%BAD%"=="0" (echo CARD OK - eject it, put it in the MiSTer and power on.) else (echo HALF INSTALLED - the install was cut short. Flash the image again and leave the MiSTer 10 minutes on first power-on.)
 goto end

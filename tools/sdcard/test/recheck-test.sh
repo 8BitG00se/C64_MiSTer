@@ -13,7 +13,7 @@ rm -rf "$T"; mkdir -p "$T"; cd "$T" || exit 1
 mkpay() {
     P=$1; V=$2; mkdir -p "$P/_Computer" "$P/tty2oled"
     head -c 100000 /dev/urandom > "$P/C64_Octophonic_2026110${V}_core${V}.rbf"
-    head -c 90000 /dev/urandom > "$P/C64RGB256_2026110${V}.rbf"          # Fix 60: the C64RGB 256 core (step 032)
+    head -c 90000 /dev/urandom > "$P/Octophonic64RGB_2026110${V}.rbf"          # Fix 60: the Octophonic64RGB core (step 033)
     echo $((V + 2)) > "$P/core-number.txt"; cp "$R/tools/install/install_core.sh" "$P/"
     printf '<mistergamedescription>\n<rbf>_Computer/.C64_Octophonic</rbf>\n<setname same_dir="1">Octophonic64</setname>\n</mistergamedescription>\n' > "$P/_Computer/Octophonic 64.mgl"
     { echo "Octophonic OS COMPILE main v$V"; head -c 5000 /dev/urandom; } > "$P/MiSTer"
@@ -36,9 +36,9 @@ same card/MiSTer new/MiSTer "Main is the newer one"
 same card/octophonic/SHELL.PRG new/SHELL.PRG "SHELL.PRG is the newer one"
 same card/_Computer/.C64_Octophonic_20261108_core8.rbf new/C64_Octophonic_20261108_core8.rbf "Core 8 in _Computer"
 N=$(ls -a card/_Computer | grep -c '^\.C64_Octophonic_.*\.rbf$'); [ "$N" = 1 ] && echo "   ok  exactly one core in _Computer" || { echo "   BAD $N cores in _Computer"; FAIL=1; }
-same card/_Computer/.C64RGB256_20261108.rbf new/C64RGB256_20261108.rbf "the newer C64RGB 256 core in _Computer"
-N=$(ls -a card/_Computer | grep -c '^\.C64RGB256_.*\.rbf$'); [ "$N" = 1 ] && echo "   ok  exactly one C64RGB 256 core in _Computer" || { echo "   BAD $N C64RGB 256 cores in _Computer"; FAIL=1; }
-[ -e "card/_Octophonic/old cores/.C64RGB256_20261107.rbf" ] && echo "   ok  the older C64RGB 256 core kept in _Octophonic/old cores" || { echo "   BAD the older C64RGB 256 core not kept"; FAIL=1; }
+same card/_Computer/.Octophonic64RGB_20261108.rbf new/Octophonic64RGB_20261108.rbf "the newer Octophonic64RGB core in _Computer"
+N=$(ls -a card/_Computer | grep -c '^\.Octophonic64RGB_.*\.rbf$'); [ "$N" = 1 ] && echo "   ok  exactly one Octophonic64RGB core in _Computer" || { echo "   BAD $N Octophonic64RGB cores in _Computer"; FAIL=1; }
+[ -e "card/_Octophonic/old cores/.Octophonic64RGB_20261107.rbf" ] && echo "   ok  the older Octophonic64RGB core kept in _Octophonic/old cores" || { echo "   BAD the older Octophonic64RGB core not kept"; FAIL=1; }
 [ -e "card/_Octophonic/old cores/.C64_Octophonic_20261107_core7.rbf" ] && echo "   ok  Core 7 kept in _Octophonic/old cores" || { echo "   BAD Core 7 not kept"; FAIL=1; }
 grep -q -- '-DEV-.*Z' card/octophonic/steps-done.txt && { echo "   BAD a DEV step ran"; FAIL=1; }
 echo "update.log:"; sed 's/^/   /' card/octophonic/update.log
