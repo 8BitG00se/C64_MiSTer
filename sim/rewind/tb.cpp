@@ -98,6 +98,7 @@ static int stall_pct = 0;
 static bool quiet_steps = false;
 static int sid_wr_in_step = 0;
 
+namespace rm { extern bool on; void sample(); }   // Build 14 (below): the remaster run's recorder
 static void tick() {
 	// the DDR3 held off at random
 	lfsr = (lfsr >> 1) ^ (-(lfsr & 1u) & 0xD0000001u);

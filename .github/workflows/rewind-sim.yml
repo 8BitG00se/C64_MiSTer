@@ -5,7 +5,7 @@ name: Rewind simulation
 on:
   push:
     branches: [ 'build13*', 'build14*' ]
-    paths: [ 'rtl/**', 'c64.sv', 'sim/rewind/**', '.github/workflows/rewind-sim.yml' ]
+    paths: [ 'rtl/**', 'c64.sv', 'sim/rewind/**', 'sim/remaster/**', '.github/workflows/rewind-sim.yml' ]
   workflow_dispatch:
 
 permissions:
@@ -36,6 +36,10 @@ jobs:
         continue-on-error: true
         run: |
           if [ -x sim/rewind/run.sh ]; then sim/rewind/run.sh /tmp/rewind 2>&1 | tee /tmp/rewind/run.txt; fi
+      - name: The Level 2 remaster unit behind the real VIC-II (Build 14)
+        continue-on-error: true
+        run: |
+          if [ -x sim/remaster/full.sh ]; then REMASTER_FULL_PNG=/tmp/rewind/remaster_full.png sim/remaster/full.sh /tmp/rewind 2>&1 | tee /tmp/rewind/remaster_full.txt; fi
       - name: Keep the results
         if: always()
         run: |
