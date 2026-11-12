@@ -1,0 +1,4 @@
+Error (170012): Fitter requires 4198 LABs to implement the design, but the device contains only 4191 LABs
+Error (11802): Can't fit design in device. Modify your design to reduce resources, or choose a larger device. The Intel FPGA Knowledge Database contains many articles with specific details on how to resolve this error. Visit the Knowledge Database at https://www.altera.com/support/support-resources/knowledge-base/search.html and search for this specific error message number.
+Error: Quartus Prime Fitter was unsuccessful. 2 errors, 8 warnings
+; mode         ; Input  ; Critical Warning ; Can't connect array with 4 elements in array dimension 1 to port with 5 elements in the same dimension                                                                              ;

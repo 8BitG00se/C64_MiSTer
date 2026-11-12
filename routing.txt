@@ -1,0 +1,5 @@
+; Perform Clocking Topology Analysis During Routing                          ; On                                    ; Off                                   ;
+; Periphery to Core Placement and Routing Optimization                       ; On                                    ; Off                                   ;
+; Routing (by net)    ;                       ;                            ;                          ;
+;         -- Routing optimization registers                   ; 0                     ;       ;
+;         -- Routing optimization registers                   ; 0                      ; 0                              ;
