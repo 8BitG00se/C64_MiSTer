@@ -18,3 +18,19 @@ always @(posedge clk) begin
 	q <= m[ra];
 end
 endmodule
+
+// SPACE AUDIT: a small RAM with an asynchronous read, for an MLAB (the same as a reg array read
+// straight away: a write shows from the next clock)
+module ovlab #(parameter AW = 5, parameter DW = 8)
+(
+	input           clk,
+	input           we,
+	input  [AW-1:0] wa,
+	input  [DW-1:0] wd,
+	input  [AW-1:0] ra,
+	output [DW-1:0] q
+);
+(* ramstyle = "MLAB, no_rw_check" *) reg [DW-1:0] m[0:(1 << AW) - 1];
+always @(posedge clk) if (we) m[wa] <= wd;
+assign q = m[ra];
+endmodule

@@ -23,6 +23,20 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
 
+      - name: OctoVIC register map test (every register, the version, the core's name, the meters)
+        continue-on-error: true
+        timeout-minutes: 12
+        run: |
+          sudo apt-get install -y -qq verilator >/dev/null
+          sim/regmap/run.sh
+
+      - name: OctoVIC sprite table, frame by frame against the emulator's model (DDR3 idle, busy, held; no VDATA byte lost)
+        continue-on-error: true
+        timeout-minutes: 12
+        run: |
+          python3 -c "import numpy" 2>/dev/null || pip install -q numpy
+          sim/sprtable/run.sh
+
       - name: Stamp the core's build date (OctoVIC $D6B4-$D6B6)
         run: |
           sed -i "s/localparam \[23:0\] CORE_DATE = 24'h[0-9]*;/localparam [23:0] CORE_DATE = 24'h$(date -u +%y%m%d);/" rtl/octovic/octovic.sv
