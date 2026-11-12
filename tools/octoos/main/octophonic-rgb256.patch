@@ -1,5 +1,5 @@
 diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
-index 1be2061..0ca5f58 100644
+index 1be2061..e0698ea 100644
 --- a/support/octo/octo.cpp
 +++ b/support/octo/octo.cpp
 @@ -67,6 +67,8 @@
@@ -54,7 +54,7 @@ index 1be2061..0ca5f58 100644
  
  	// where to start: os.ini's startin= (network, SD card, the last folder); without it the SD
  	// card, always - Main never waits for a network unless os.ini asks for one (startin=net).
-@@ -803,10 +813,471 @@ static void reu_load(const char *path)
+@@ -803,10 +813,488 @@ static void reu_load(const char *path)
  	reu_in = path;
  }
  
@@ -279,9 +279,26 @@ index 1be2061..0ca5f58 100644
 +	if (!(ends_with(p, ".prg") || ends_with(p, ".crt") || ends_with(p, ".d64") || ends_with(p, ".g64") || ends_with(p, ".t64") || ends_with(p, ".d81"))) return 0;
 +	std::string low = game;
 +	for (auto &ch : low) ch = (char)tolower((unsigned char)ch);
-+	static const char *skip[] = { "/demos/", "/tools/", "/apps/", "/octophonic/", "/stock64/", "/examples/" };
++	static const char *skip[] = { "/demos/", "/tools/", "/apps/", "/octophonic/", "/stock64/", "/examples/",
++	                              "/code/", "/pictures/", "/music/", "/sids/", "/saves/", "/my chips/" };
 +	for (auto k : skip) if (low.find(k) != std::string::npos) return 0;
 +	if (folder) for (auto &e : *folder) if (!e.dir && ends_with(e.name.c_str(), ".reu")) return 0;
++	// a program that writes OctoVIC's registers ($D6xx: STA/STX/STY/STA,X/STA,Y abs) is an Octophonic one: the
++	// recolour unit only knows the VIC-II's pixels, so it stays in the main core
++	FILE *f = fopen(p, "rb");
++	if (f)
++	{
++		std::vector<uint8_t> d(2 * 1024 * 1024);
++		size_t n = fread(d.data(), 1, d.size(), f);
++		fclose(f);
++		int hits = 0;
++		for (size_t i = 0; i + 2 < n; i++)
++		{
++			uint8_t o = d[i];
++			if ((o == 0x8D || o == 0x8E || o == 0x8C || o == 0x9D || o == 0x99) && d[i + 2] == 0xD6) hits++;
++		}
++		if (hits >= 6) { os_log("  Remaster: %s writes OctoVIC (%d times) - stays in the Octophonic core", p, hits); return 0; }
++	}
 +	return 1;
 +}
 +
@@ -526,7 +543,7 @@ index 1be2061..0ca5f58 100644
  	if (ends_with(p, ".d64") || ends_with(p, ".g64") || ends_with(p, ".t64") || ends_with(p, ".d81"))
  	{
  		mb_reply(ST_DONE, 0, -1, 8);                // VALUE 8: a disk went into drive 8
-@@ -1289,6 +1760,7 @@ static void cmd_setapply()
+@@ -1289,6 +1777,7 @@ static void cmd_setapply()
  void octo_exit()
  {
  	if (!os_active) return;
@@ -534,7 +551,7 @@ index 1be2061..0ca5f58 100644
  	os_log("CTRL+F12: reset to the start screen (folder /%s)", cwd);
  	octo_oled_logo(1);                                // the front screen: back to the Octophonic logo
  	user_io_status_set("[17]", 1);
-@@ -1728,6 +2200,17 @@ void octo_poll()
+@@ -1728,6 +2217,17 @@ void octo_poll()
  	poll_timer = GetTimer(4);
  
  	uint16_t w = mb_poll();
