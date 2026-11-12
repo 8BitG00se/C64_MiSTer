@@ -130,7 +130,6 @@ localparam CONF_STR = {
 	"P1FC3,CHP,Load My Chip: Right SIDs;",
 	"P1O[101],My Chips,On,Off;",
 	"P1-;",
-	"P1O[12],Sound Expander,Disabled,OPL2;",
 	"P1O[41:40],DigiMax,Disabled,DE00,DF00;",
 	"P1O[19:18],Stereo Mix,None,25%,50%,100%;",
 
@@ -1584,22 +1583,10 @@ video_mixer_split #(.GAMMA(1)) video_mixer
 	.VGA_DE(vga_de)
 );
 
-wire        opl_en = status[12];
-wire [15:0] opl_out;
-wire  [7:0] opl_dout;
-opl3 #(.OPLCLK(47291931)) opl_inst
-(
-	.clk(clk_sys),
-	.clk_opl(clk48),
-	.rst_n(reset_n & opl_en),
-
-	.addr(c64_addr[4]),
-	.dout(opl_dout),
-	.we(ram_we & IOF & opl_en & c64_addr[6] & ~c64_addr[5]),
-	.din(c64_data_out),
-
-	.sample_l(opl_out)
-);
+// SPACE AUDIT: no Sound Expander (OPL2) - measures what it costs
+wire        opl_en = 1'b0;
+wire [15:0] opl_out = 16'd0;
+wire  [7:0] opl_dout = 8'hFF;
 
 reg ioe_we, iof_we;
 always @(posedge clk_sys) begin
