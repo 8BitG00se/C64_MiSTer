@@ -4,7 +4,7 @@ name: Rewind simulation
 
 on:
   push:
-    branches: [ 'build13*' ]
+    branches: [ 'build13*', 'build14*' ]
     paths: [ 'rtl/**', 'c64.sv', 'sim/rewind/**', '.github/workflows/rewind-sim.yml' ]
   workflow_dispatch:
 
