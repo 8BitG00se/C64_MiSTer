@@ -5,7 +5,7 @@ name: Build core
 
 on:
   push:
-    branches: [ master, octovic, octovic2, octophonic-v1.1, octovic-mem, octophonic-core3 ]
+    branches: [ audit-never ]
   workflow_dispatch:
 
 permissions:
@@ -22,21 +22,6 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
-
-      - name: OctoVIC register map test (every register, the version, the core's name, the meters)
-        run: |
-          sudo apt-get install -y -qq verilator >/dev/null
-          sim/regmap/run.sh
-
-      - name: OctoVIC sprite table, frame by frame against the emulator's model (DDR3 idle, busy, held; no VDATA byte lost)
-        run: |
-          python3 -c "import numpy" 2>/dev/null || pip install -q numpy
-          sim/sprtable/run.sh
-
-      - name: The eight-SID mix in GHDL against the emulator's integer model (Fix 28)
-        run: |
-          sudo apt-get install -y -qq ghdl >/dev/null
-          sim/level/mixtest.sh
 
       - name: Stamp the core's build date (OctoVIC $D6B4-$D6B6)
         run: |
@@ -80,7 +65,7 @@ jobs:
           mkdir -p /tmp/reports
           cp output_files/*.summary /tmp/reports/ 2>/dev/null || true
           cp output_files/worst_hold_*.txt /tmp/reports/ 2>/dev/null || true
-          cp out/*.rbf /tmp/reports/ 2>/dev/null || true          # the core itself, so it can be fetched with git
+          true   # SPACE AUDIT: no core in the reports (scratch builds, never for a card)
           grep -h -iE "^error|critical warning" output_files/*.rpt 2>/dev/null | head -200 > /tmp/reports/errors.txt || true
           # where the memories went (block RAM or logic), and what each part of the design costs
           grep -h -E "uninferred|Inferred .*RAM|ram_block|altsyncram" output_files/C64.map.rpt 2>/dev/null | head -100 > /tmp/reports/rams.txt || true
@@ -90,13 +75,22 @@ jobs:
           # where block RAM can be found for a new feature (OCTOSCOPE, Fix 55)
           awk '/; Fitter RAM Summary/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' output_files/C64.fit.rpt 2>/dev/null | sed 's/  */ /g' > /tmp/reports/fit_rams.txt || true
           awk '/; Fitter Resource Utilization by Entity/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' output_files/C64.fit.rpt 2>/dev/null | sed 's/  */ /g' > /tmp/reports/fit_entities.txt || true
+          # SPACE AUDIT extras: the whole synthesis and fitter reports (gzipped), the RAMs left in logic, the LAB/ALM breakdown
+          grep -h -iE "uninferred|276007|276014|276020|276027|ramstyle" output_files/C64.map.rpt 2>/dev/null | head -300 > /tmp/reports/uninferred.txt || true
+          awk '/; Fitter Resource Usage Summary/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' output_files/C64.fit.rpt 2>/dev/null | sed 's/  */ /g' > /tmp/reports/fit_usage.txt || true
+          awk '/; Analysis & Synthesis Resource Utilization by Entity/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' output_files/C64.map.rpt 2>/dev/null | sed 's/  */ /g' > /tmp/reports/map_entities.txt || true
+          awk '/; Analysis & Synthesis RAM Summary/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' output_files/C64.map.rpt 2>/dev/null | sed 's/  */ /g' > /tmp/reports/map_rams.txt || true
+          grep -h -iE "^Info \(17049[0-9]\)|routing|interconnect" output_files/C64.fit.rpt 2>/dev/null | head -80 > /tmp/reports/routing.txt || true
+          gzip -c output_files/C64.map.rpt > /tmp/reports/C64.map.rpt.gz 2>/dev/null || true
+          gzip -c output_files/C64.fit.rpt > /tmp/reports/C64.fit.rpt.gz 2>/dev/null || true
+          gzip -c output_files/C64.sta.rpt > /tmp/reports/C64.sta.rpt.gz 2>/dev/null || true
           echo "${{ steps.compile.outcome }} $(git rev-parse --short HEAD) $(date -u +%Y-%m-%dT%H:%MZ)" > /tmp/reports/result.txt
           cd /tmp/reports
           git init -q
-          git checkout -q -b build-reports
+          git checkout -q -b audit-reports
           git add -A
           git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Reports: $(cat result.txt)"
-          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" HEAD:build-reports-fix55
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" HEAD:build-reports-${{ github.ref_name }}
 
       - name: Fail if Quartus failed
         if: steps.compile.outcome != 'success'
