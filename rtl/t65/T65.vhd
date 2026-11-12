@@ -159,7 +159,12 @@ entity T65 is
     -- 6502 registers (MSB) PC, SP, P, Y, X, A (LSB)
     Regs    : out std_logic_vector(63 downto 0);
     DEBUG   : out T_t65_dbg;
-    NMI_ack : out std_logic
+    NMI_ack : out std_logic;
+    -- OCTOPHONIC REWIND (Fix 61): every flip-flop of the processor, out and (St_ld = '1') back in -
+    -- a save state at any clock, in the middle of an instruction or not. (c) 2026 Mong00se
+    St_o    : out std_logic_vector(159 downto 0);
+    St_i    : in  std_logic_vector(159 downto 0) := (others => '0');
+    St_ld   : in  std_logic := '0'
   );
 end T65;
 
@@ -249,7 +254,100 @@ architecture rtl of T65 is
 
   signal NMI_entered    : std_logic;
 
+  -- REWIND: the enumerated registers as numbers and back (spelled out, so every tool agrees)
+  function alu_n(o : T_ALU_Op) return std_logic_vector is
+  begin
+    case o is
+      when ALU_OP_OR  => return "00000"; when ALU_OP_AND => return "00001"; when ALU_OP_EOR => return "00010";
+      when ALU_OP_ADC => return "00011"; when ALU_OP_EQ1 => return "00100"; when ALU_OP_EQ2 => return "00101";
+      when ALU_OP_CMP => return "00110"; when ALU_OP_SBC => return "00111"; when ALU_OP_ASL => return "01000";
+      when ALU_OP_ROL => return "01001"; when ALU_OP_LSR => return "01010"; when ALU_OP_ROR => return "01011";
+      when ALU_OP_BIT => return "01100"; when ALU_OP_DEC => return "01101"; when ALU_OP_INC => return "01110";
+      when ALU_OP_ARR => return "01111"; when ALU_OP_ANC => return "10000"; when ALU_OP_SAX => return "10001";
+      when ALU_OP_XAA => return "10010";
+    end case;
+  end function;
+  function n_alu(n : std_logic_vector(4 downto 0)) return T_ALU_Op is
+  begin
+    case n is
+      when "00000" => return ALU_OP_OR;  when "00001" => return ALU_OP_AND; when "00010" => return ALU_OP_EOR;
+      when "00011" => return ALU_OP_ADC; when "00100" => return ALU_OP_EQ1; when "00101" => return ALU_OP_EQ2;
+      when "00110" => return ALU_OP_CMP; when "00111" => return ALU_OP_SBC; when "01000" => return ALU_OP_ASL;
+      when "01001" => return ALU_OP_ROL; when "01010" => return ALU_OP_LSR; when "01011" => return ALU_OP_ROR;
+      when "01100" => return ALU_OP_BIT; when "01101" => return ALU_OP_DEC; when "01110" => return ALU_OP_INC;
+      when "01111" => return ALU_OP_ARR; when "10000" => return ALU_OP_ANC; when "10001" => return ALU_OP_SAX;
+      when others  => return ALU_OP_XAA;
+    end case;
+  end function;
+  function wd_n(o : T_Write_Data) return std_logic_vector is
+  begin
+    case o is
+      when Write_Data_DL  => return "0000"; when Write_Data_ABC => return "0001"; when Write_Data_X   => return "0010";
+      when Write_Data_Y   => return "0011"; when Write_Data_S   => return "0100"; when Write_Data_P   => return "0101";
+      when Write_Data_PCL => return "0110"; when Write_Data_PCH => return "0111"; when Write_Data_AX  => return "1000";
+      when Write_Data_AXB => return "1001"; when Write_Data_XB  => return "1010"; when Write_Data_YB  => return "1011";
+      when Write_Data_DONTCARE => return "1100";
+    end case;
+  end function;
+  function n_wd(n : std_logic_vector(3 downto 0)) return T_Write_Data is
+  begin
+    case n is
+      when "0000" => return Write_Data_DL;  when "0001" => return Write_Data_ABC; when "0010" => return Write_Data_X;
+      when "0011" => return Write_Data_Y;   when "0100" => return Write_Data_S;   when "0101" => return Write_Data_P;
+      when "0110" => return Write_Data_PCL; when "0111" => return Write_Data_PCH; when "1000" => return Write_Data_AX;
+      when "1001" => return Write_Data_AXB; when "1010" => return Write_Data_XB;  when "1011" => return Write_Data_YB;
+      when others => return Write_Data_DONTCARE;
+    end case;
+  end function;
+  function sa_n(o : T_Set_Addr_To) return std_logic_vector is
+  begin
+    case o is
+      when Set_Addr_To_PBR => return "00"; when Set_Addr_To_SP => return "01";
+      when Set_Addr_To_ZPG => return "10"; when Set_Addr_To_BA => return "11";
+    end case;
+  end function;
+  function n_sa(n : std_logic_vector(1 downto 0)) return T_Set_Addr_To is
+  begin
+    case n is
+      when "00" => return Set_Addr_To_PBR; when "01" => return Set_Addr_To_SP;
+      when "10" => return Set_Addr_To_ZPG; when others => return Set_Addr_To_BA;
+    end case;
+  end function;
+
 begin
+  -- REWIND: the save state
+  St_o(15 downto 0)    <= std_logic_vector(PC);
+  St_o(23 downto 16)   <= std_logic_vector(S(7 downto 0));
+  St_o(31 downto 24)   <= IR;
+  St_o(39 downto 32)   <= ABC(7 downto 0);
+  St_o(47 downto 40)   <= X(7 downto 0);
+  St_o(55 downto 48)   <= Y(7 downto 0);
+  St_o(63 downto 56)   <= P;
+  St_o(71 downto 64)   <= BusA_r;
+  St_o(79 downto 72)   <= BusB;
+  St_o(87 downto 80)   <= BusB_r;
+  St_o(95 downto 88)   <= AD;
+  St_o(104 downto 96)  <= BAL;
+  St_o(112 downto 105) <= BAH;
+  St_o(120 downto 113) <= DL;
+  St_o(123 downto 121) <= MCycle;
+  St_o(128 downto 124) <= alu_n(ALU_Op_r);
+  St_o(132 downto 129) <= wd_n(Write_Data_r);
+  St_o(134 downto 133) <= sa_n(Set_Addr_To_r);
+  St_o(135) <= WRn_i;
+  St_o(136) <= IRQCycle;
+  St_o(137) <= NMICycle;
+  St_o(138) <= RstCycle;
+  St_o(139) <= NMIAct;
+  St_o(140) <= IRQReq;
+  St_o(141) <= NMIReq;
+  St_o(142) <= IRQ_n_o;
+  St_o(143) <= NMI_n_o;
+  St_o(144) <= rdy_mod;
+  St_o(145) <= NMI_entered;
+  St_o(146) <= SO_n_o;
+  St_o(159 downto 147) <= (others => '0');
+
   -- NMI_ack pulses one cycle during stack push so that an external cartridge that
   -- watches it (e.g. a SIMCRT freezer state machine) can switch into ULTIMAX mode
   -- in time for the $FFFA vector fetch at MCycle="101". Kept decoupled from the
@@ -448,6 +546,18 @@ begin
           end case;
         end if;
       end if;
+      if St_ld = '1' then                                  -- REWIND
+        PC <= unsigned(St_i(15 downto 0));
+        S(7 downto 0) <= unsigned(St_i(23 downto 16));
+        IR <= St_i(31 downto 24);
+        ALU_Op_r <= n_alu(St_i(128 downto 124));
+        Write_Data_r <= n_wd(St_i(132 downto 129));
+        Set_Addr_To_r <= n_sa(St_i(134 downto 133));
+        WRn_i <= St_i(135);
+        IRQCycle <= St_i(136);
+        NMICycle <= St_i(137);
+        rdy_mod <= St_i(144);
+      end if;
     end if;
   end process;
 
@@ -523,6 +633,13 @@ begin
       SO_n_o <= SO_n;
       if SO_n_o = '1' and SO_n = '0' then
         P(Flag_V) <= '1';
+      end if;
+      if St_ld = '1' then                                  -- REWIND
+        ABC(7 downto 0) <= St_i(39 downto 32);
+        X(7 downto 0) <= St_i(47 downto 40);
+        Y(7 downto 0) <= St_i(55 downto 48);
+        P <= St_i(63 downto 56);
+        SO_n_o <= St_i(146);
       end if;
 
     end if;
@@ -627,6 +744,16 @@ begin
           end if;
         end if;
       end if;
+      if St_ld = '1' then                                  -- REWIND
+        BusA_r <= St_i(71 downto 64);
+        BusB <= St_i(79 downto 72);
+        BusB_r <= St_i(87 downto 80);
+        AD <= St_i(95 downto 88);
+        BAL <= St_i(104 downto 96);
+        BAH <= St_i(112 downto 105);
+        DL <= St_i(120 downto 113);
+        NMI_entered <= St_i(145);
+      end if;
     end if;
   end process;
 
@@ -724,6 +851,15 @@ begin
         if NMI_entered='1' then
           NMIAct <= '0';
         end if;
+      end if;
+      if St_ld = '1' then                                  -- REWIND
+        MCycle <= St_i(123 downto 121);
+        RstCycle <= St_i(138);
+        NMIAct <= St_i(139);
+        IRQReq <= St_i(140);
+        NMIReq <= St_i(141);
+        IRQ_n_o <= St_i(142);
+        NMI_n_o <= St_i(143);
       end if;
     end if;
   end process;

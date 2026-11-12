@@ -41,6 +41,11 @@ use IEEE.numeric_std.all;
 -- -----------------------------------------------------------------------
 
 entity fpga64_sid_iec is
+generic (
+	-- OCTOPHONIC REWIND (Fix 61, Build 13): 1 = the RGB companion core's C64 - no OctoVIC and SIDs 1 and 2
+	-- only (their room goes to the rewind unit, rtl/rewind.sv); 0 = the Octophonic core as it was
+	REWIND      : integer := 0
+);
 port(
 	clk32       : in  std_logic;
 	reset_n     : in  std_logic;
@@ -206,7 +211,37 @@ port(
 	cass_motor  : out std_logic;
 	cass_write  : out std_logic;
 	cass_sense  : in  std_logic;
-	cass_read   : in  std_logic
+	cass_read   : in  std_logic;
+
+	-- OCTOPHONIC REWIND (Fix 61): the hooks for rtl/rewind.sv                     (c) 2026 Mong00se
+	rw_tick     : out std_logic;                       -- one clock at the start of each C64 cycle
+	rw_ry       : out unsigned(8 downto 0);            -- the VIC's raster line
+	rw_freeze   : in  std_logic := '0';                -- hold the 6510 and the CIAs (the VIC and SIDs run on)
+	rw_cpu_o    : out std_logic_vector(175 downto 0);  -- the save states out ...
+	rw_cia1_o   : out std_logic_vector(319 downto 0);
+	rw_cia2_o   : out std_logic_vector(319 downto 0);
+	rw_cpu_i    : in  std_logic_vector(175 downto 0) := (others => '0');   -- ... and back in, on rw_ld
+	rw_cia1_i   : in  std_logic_vector(319 downto 0) := (others => '0');
+	rw_cia2_i   : in  std_logic_vector(319 downto 0) := (others => '0');
+	rw_ld       : in  std_logic := '0';
+	-- the program's writes to the VIC, SID 1, SID 2 and the colour RAM, as they happen
+	rw_io_wr    : out std_logic;                       -- a write (one clock)
+	rw_io_sel   : out std_logic_vector(3 downto 0);    -- b0 VIC, b1 SID 1, b2 SID 2, b3 colour RAM
+	rw_io_addr  : out unsigned(9 downto 0);
+	rw_io_data  : out unsigned(7 downto 0);
+	rw_col_old  : out unsigned(3 downto 0);            -- the colour RAM nibble the write replaces
+	-- while frozen: registers put back - the VIC's (held for a whole C64 cycle), the SIDs' and the
+	-- colour RAM's (one clock each)
+	rw_vic_we   : in  std_logic := '0';
+	rw_vic_addr : in  unsigned(5 downto 0) := (others => '0');
+	rw_vic_data : in  unsigned(7 downto 0) := (others => '0');
+	rw_sid_we   : in  std_logic := '0';
+	rw_sid_cs   : in  std_logic_vector(1 downto 0) := "00";   -- b0 SID 1, b1 SID 2
+	rw_sid_addr : in  unsigned(4 downto 0) := (others => '0');
+	rw_sid_data : in  unsigned(7 downto 0) := (others => '0');
+	rw_col_we   : in  std_logic := '0';
+	rw_col_addr : in  unsigned(9 downto 0) := (others => '0');
+	rw_col_data : in  unsigned(3 downto 0) := (others => '0')
 );
 end fpga64_sid_iec;
 
@@ -381,6 +416,17 @@ signal pot_x1       : std_logic_vector(7 downto 0);
 signal pot_y1       : std_logic_vector(7 downto 0);
 signal pot_x2       : std_logic_vector(7 downto 0);
 signal pot_y2       : std_logic_vector(7 downto 0);
+-- REWIND
+signal rw_vcs, rw_vwe : std_logic;
+signal rw_vaddr     : unsigned(5 downto 0);
+signal rw_vdata     : unsigned(7 downto 0);
+signal rw_caddr     : unsigned(9 downto 0);
+signal rw_cdata     : unsigned(3 downto 0);
+signal sid_cs_m     : std_logic_vector(1 downto 0);
+signal sid_we_m     : std_logic;
+signal sid_addr_m   : unsigned(4 downto 0);
+signal sid_data_m   : unsigned(7 downto 0);
+signal nooct_d1     : std_logic;
 
 component sid_top
 	generic (
@@ -541,7 +587,10 @@ component mos6526
 		sp_out        : out std_logic;
 		cnt_in        : in  std_logic;
 		cnt_out       : out std_logic;
-		irq_n         : out std_logic
+		irq_n         : out std_logic;
+		st_o          : out std_logic_vector(319 downto 0);
+		st_i          : in  std_logic_vector(319 downto 0) := (others => '0');
+		st_ld         : in  std_logic := '0'
 	);
 end component; 
 
@@ -622,9 +671,9 @@ begin
 		when CYCLE_CPUE =>
 			enableVic <= '1';
 		when CYCLE_CPUC =>
-			enableCia_n <= '1';
+			enableCia_n <= not rw_freeze;      -- REWIND: the CIAs held with the 6510
 		when CYCLE_CPUF =>
-			enableCia_p <= '1';
+			enableCia_p <= not rw_freeze;
 			enableSid <= '1';
 		when others =>
 			null;
@@ -642,11 +691,34 @@ generic map (
 )
 port map (
 	clk => clk32,
-	we => cs_color and pulseWr_io,
-	addr => systemAddr(9 downto 0),
-	data => cpuDo(3 downto 0),
+	we => (cs_color and pulseWr_io) or rw_col_we,
+	addr => rw_caddr,
+	data => rw_cdata,
 	q => colorData
 );
+rw_caddr <= rw_col_addr when rw_col_we = '1' else systemAddr(9 downto 0);
+rw_cdata <= rw_col_data when rw_col_we = '1' else cpuDo(3 downto 0);
+
+-- REWIND: the hooks
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		rw_tick <= '0';
+		if sysCycle = CYCLE_CPUF then
+			rw_tick <= '1';
+		end if;
+	end if;
+end process;
+rw_ry      <= vicRasterY;
+rw_io_wr   <= pulseWr_io and (cs_vic or sid_sel_l or sid_sel_r or cs_color);
+rw_io_sel  <= cs_color & sid_sel_r & sid_sel_l & cs_vic;
+rw_io_addr <= cpuAddr(9 downto 0);
+rw_io_data <= cpuDo;
+rw_col_old <= colorData;
+rw_vcs     <= rw_vic_we when rw_freeze = '1' else cs_vic;
+rw_vwe     <= rw_vic_we when rw_freeze = '1' else cpuWe;
+rw_vaddr   <= rw_vic_addr when rw_freeze = '1' else cpuAddr(5 downto 0);
+rw_vdata   <= rw_vic_data when rw_freeze = '1' else cpuDo;
 
 -- -----------------------------------------------------------------------
 -- PLA and bus-switches
@@ -713,7 +785,7 @@ process(clk32)
 begin
 	if rising_edge(clk32) then
 		pulseWr_io <= '0';
-		if cpuWe = '1' then
+		if cpuWe = '1' and rw_freeze = '0' then
 			if sysCycle = CYCLE_CPUC then
 				pulseWr_io <= '1';
 			end if;
@@ -770,12 +842,12 @@ port map (
 	turbo_en => turbo_en,
 	turbo_state => turbo_state,
 	
-	cs => cs_vic,
-	we => cpuWe,
+	cs => rw_vcs,
+	we => rw_vwe,
 	lp_n => cia1_pbi(4),
 
-	aRegisters => cpuAddr(5 downto 0),
-	diRegisters => cpuDo,
+	aRegisters => rw_vaddr,
+	diRegisters => rw_vdata,
 	di => vicDiAec,
 	diColor => colorDataAec,
 	do => vicData,
@@ -865,7 +937,7 @@ port map (
 	sid1_wr  => pulseWr_io and sid_sel_l,
 	addr     => std_logic_vector(cpuAddr(4 downto 0)),
 	data     => std_logic_vector(cpuDo),
-	busy1    => sid_sel_l or sid_sel_r,
+	busy1    => sid_sel_l or sid_sel_r or rw_freeze,
 	busy2    => sid2_sel_l or sid2_sel_r,
 	inj_we   => fx_we,
 	inj_tgt  => fx_tgt,
@@ -902,6 +974,7 @@ port map (
 	ext_dout  => os_ext_dout
 );
 
+g_octo: if REWIND = 0 generate
 octo: octovic
 port map (
 	clk            => clk32,
@@ -933,6 +1006,27 @@ port map (
 	irq            => octo_irq,
 	sysinfo        => sysinfo
 );
+end generate;
+
+-- REWIND (Build 13): no OctoVIC in the RGB companion core. Its page reads $FF (the KERNAL then takes the
+-- machine for a stock VIC-II), the mailbox ($D6F0-$D6FF) stays, and the VIC's picture goes out two
+-- clocks behind the pixel strobe, as it did through OctoVIC - the recolour unit's timing is unchanged
+g_nooct: if REWIND /= 0 generate
+	octo_do  <= x"FF";
+	octo_irq <= '0';
+	ogx_ddr_addr <= (others => '0'); ogx_ddr_burstcnt <= (others => '0'); ogx_ddr_rd <= '0';
+	ogx_ddr_we <= '0'; ogx_ddr_din <= (others => '0'); ogx_ddr_be <= (others => '0');
+	vic_rgb_out <= octo_rgb;
+	process(clk32)
+	begin
+		if rising_edge(clk32) then
+			nooct_d1 <= enablePixel;
+			if nooct_d1 = '1' then
+				octo_rgb <= std_logic_vector(pal_r & pal_g & pal_b);
+			end if;
+		end if;
+	end process;
+end generate;
 
 r <= unsigned(octo_rgb(23 downto 16));
 g <= unsigned(octo_rgb(15 downto 8));
@@ -1112,15 +1206,21 @@ pot_y1 <= (others => '1' ) when cia1_pao(6) = '0' else not pot2;
 pot_x2 <= (others => '1' ) when cia1_pao(7) = '0' else not pot3;
 pot_y2 <= (others => '1' ) when cia1_pao(7) = '0' else not pot4;
 
+-- REWIND: while the rewind unit puts a SID register back, the write is its own
+sid_we_m   <= pulseWr_io or fx1 or rw_sid_we;
+sid_cs_m   <= rw_sid_cs when rw_sid_we = '1' else (sid_sel_r or fx1) & sid_sel_l;
+sid_addr_m <= rw_sid_addr when rw_sid_we = '1' else p1_addr;
+sid_data_m <= rw_sid_data when rw_sid_we = '1' else p1_data;
+
 sid : sid_top
 port map (
 	reset => reset,
 	clk => clk32,
 	ce_1m => enableSid,
-	we => pulseWr_io or fx1,
-	cs => (sid_sel_r or fx1) & sid_sel_l,
-	addr => p1_addr,
-	data_in => p1_data,
+	we => sid_we_m,
+	cs => sid_cs_m,
+	addr => sid_addr_m,
+	data_in => sid_data_m,
 	data_out => sid_do,
 	pot_x_l => pot_x1 and pot_x2,
 	pot_y_l => pot_y1 and pot_y2,
@@ -1153,6 +1253,7 @@ port map (
 	eq_any  => eq_any
 );
 
+g_sids: if REWIND = 0 generate
 -- OCTOPHONIC: SIDs 3 and 4 - a second pair, the same as the first (its own
 -- waveform tables and filter), the same types and filters as SIDs 1 and 2
 sid2 : sid_top
@@ -1281,6 +1382,16 @@ port map (
 	chip_on => chip_on,
 	eq_any  => eq_any
 );
+end generate;
+
+-- REWIND (Build 13): SIDs 1 and 2 only
+g_nosids: if REWIND /= 0 generate
+	sid2_do <= x"FF"; sid3_do <= x"FF"; sid4_do <= x"FF";
+	sid2_aud_l <= (others => '0'); sid2_aud_r <= (others => '0');
+	sid3_aud_l <= (others => '0'); sid3_aud_r <= (others => '0');
+	sid4_aud_l <= (others => '0'); sid4_aud_r <= (others => '0');
+	tacc2 <= (others => '0'); tacc3 <= (others => '0'); tacc4 <= (others => '0');
+end generate;
 
 -- OCTOPHONIC: the chip personalities, shared by all four pairs (pairs 3 and 4 a clock behind)
 chips : chip_bank
@@ -1327,7 +1438,10 @@ port map (
 
 	tod => todclk,
 
-	irq_n => irq_cia1
+	irq_n => irq_cia1,
+	st_o => rw_cia1_o,
+	st_i => rw_cia1_i,
+	st_ld => rw_ld
 );
 
 cia2: mos6526
@@ -1360,7 +1474,10 @@ port map (
 
 	tod => todclk,
 
-	irq_n => irq_cia2
+	irq_n => irq_cia2,
+	st_o => rw_cia2_o,
+	st_i => rw_cia2_i,
+	st_ld => rw_ld
 );
 
 serialBus: process(clk32)
@@ -1399,7 +1516,7 @@ cpu: entity work.cpu_6510
 port map (
 	clk => clk32,
 	reset => reset,
-	enable => enableCpu and not dma_active,
+	enable => enableCpu and not dma_active and not rw_freeze,   -- REWIND: held while a save state goes back in
 	nmi_n => irq_cia2 and nmi_n,
 	nmi_ack => nmi_ack,
 	irq_n => irq_cia1 and irq_vic and irq_n and irq_ext_n and not octo_irq,   -- OCTOPHONIC: OctoVIC 2's interrupt too
@@ -1411,7 +1528,10 @@ port map (
 	we => cpuWe_pre,
 
 	diIO => cpuIO(7) & cpuIO(6) & cpuIO(5) & cass_sense & cpuIO(3) & "111",
-	doIO => cpuIO
+	doIO => cpuIO,
+	st_o => rw_cpu_o,
+	st_i => rw_cpu_i,
+	st_ld => rw_ld
 );
 
 cass_motor <= cpuIO(5);
@@ -1419,7 +1539,7 @@ cass_write <= cpuIO(3);
 
 ramDout <= cpuDo;
 ramAddr <= systemAddr;
-ramWE   <= systemWe when sysCycle >= CYCLE_CPU0 else '0';
+ramWE   <= systemWe when sysCycle >= CYCLE_CPU0 and rw_freeze = '0' else '0';
 ramCE   <= cs_ram when sysCycle = CYCLE_VIC0 or cpu_cyc = '1' else '0';
 cpu_cyc <= '1' when 
 				(sysCycle = CYCLE_CPU0 and turbo_m(0) = '1' and cs_ram = '1' ) or

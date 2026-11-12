@@ -36,7 +36,12 @@ module mos6526 (
   input  wire       cnt_in,
   output reg        cnt_out,
 
-  output reg        irq_n
+  output reg        irq_n,
+
+  // OCTOPHONIC REWIND (Fix 61): the chip's registers and counters, out and (st_ld) back in  (c) 2026 Mong00se
+  output wire [319:0] st_o,
+  input  wire [319:0] st_i,
+  input  wire         st_ld
 );
 
 // Internal Registers
@@ -86,6 +91,21 @@ reg        cnt_out_r;
 reg [ 2:0] cnt_pulsecnt;
 
 reg        int_reset;
+reg        cra6_prev;
+reg  [7:0] imr_reg;
+reg countA0, countA1, countA2, countA3, loadA1, oneShotA0;
+reg timerAff;
+reg countB0, countB1, countB2, countB3, loadB1, oneShotB0;
+reg timerBff;
+reg    sp_out_reg;
+
+assign st_o = {48'd0, tod_latch, tod_alarm, 2'd0, cnt_pulsecnt, tod_count, tod_hr, tod_min, tod_sec, tod_10ths,
+               1'b0, cra6_prev, cnt_out, cnt_out_r, cnt_in_prev, cnt_in_r, sp_out_reg, icr3, sp_transmit, sp_pending,
+               timerBff, oneShotB0, loadB1, countB3, countB2, countB1, countB0,
+               timerAff, oneShotA0, loadA1, countA3, countA2, countA1, countA0,
+               pb_out, pa_out, sp_shiftreg, sdr, imr_reg,
+               tod_alarm_reg, tod_latched, tod_run, int_reset, irq_n, timer_b_int, icr, imr,
+               crb, cra, timer_b, timer_a, tb_hi, tb_lo, ta_hi, ta_lo, ddrb, ddra, prb, pra};
 
 wire       rd = phi2_n & !cs_n & rw;
 wire       wr = phi2_n & !cs_n & !rw;
@@ -130,6 +150,7 @@ always @(posedge clk) begin
       default: ;
     endcase
   if (phi2_p) pa_out <= pra | ~ddra;
+  if (st_ld) begin pra <= st_i[7:0]; ddra <= st_i[23:16]; pa_out <= st_i[159:152]; end
 end
 
 // Port B Output
@@ -149,6 +170,7 @@ always @(posedge clk) begin
     pb_out[6]   <= cra[1] ? (cra[2] ? timerAff ^ timerAoverflow : timerAoverflow) : prb[6] | ~ddrb[6];
     pb_out[5:0] <= prb[5:0] | ~ddrb[5:0];
   end
+  if (st_ld) begin prb <= st_i[15:8]; ddrb <= st_i[31:24]; pb_out <= st_i[167:160]; end
 end
 
 // FLAG Input
@@ -171,6 +193,7 @@ always @(posedge clk) begin
 			end
 		end
 	end
+	if (st_ld) icr[4] <= st_i[121];
 end
 
 // Port Control Output
@@ -184,8 +207,6 @@ always @(posedge clk) begin
 end
 
 // Timer A
-reg countA0, countA1, countA2, countA3, loadA1, oneShotA0;
-reg timerAff;
 wire timerAin = cra[5] ? countA1 : 1'b1;
 wire [15:0] newTimerAVal = countA3 ? (timer_a - 1'b1) : timer_a;
 wire timerAoverflow = !newTimerAVal & countA2;
@@ -251,11 +272,13 @@ always @(posedge clk) begin
         default: ;
       endcase;
   end
+  if (st_ld) begin
+    ta_lo <= st_i[39:32]; ta_hi <= st_i[47:40]; timer_a <= st_i[79:64]; cra <= st_i[103:96]; icr[0] <= st_i[117];
+    {timerAff, oneShotA0, loadA1, countA3, countA2, countA1, countA0} <= st_i[174:168];
+  end
 end
 
 // Timer B
-reg countB0, countB1, countB2, countB3, loadB1, oneShotB0;
-reg timerBff;
 wire timerBin = crb[6] ? timerAoverflow & (~crb[5] | cnt_in_r) : (~crb[5] | countB1);
 wire [15:0] newTimerBVal = countB3 ? (timer_b - 1'b1) : timer_b;
 wire timerBoverflow = !newTimerBVal & countB2;
@@ -327,6 +350,11 @@ always @(posedge clk) begin
         end
         default: ;
       endcase;
+  end
+  if (st_ld) begin
+    tb_lo <= st_i[55:48]; tb_hi <= st_i[63:56]; timer_b <= st_i[95:80]; crb <= st_i[111:104]; icr[1] <= st_i[118];
+    timer_b_int <= st_i[122];
+    {timerBff, oneShotB0, loadB1, countB3, countB2, countB1, countB0} <= st_i[181:175];
   end
 end
 
@@ -417,9 +445,13 @@ always @(posedge clk) begin
     end
     else tod_alarm_reg <= 1'b0;
   end
+  if (st_ld) begin
+    tod_10ths <= st_i[195:192]; tod_sec <= st_i[202:196]; tod_min <= st_i[209:203]; tod_hr <= st_i[215:210];
+    tod_count <= st_i[218:216]; tod_alarm <= st_i[247:224]; tod_latch <= st_i[271:248];
+    tod_run <= st_i[125]; tod_latched <= st_i[126]; tod_alarm_reg <= st_i[127]; icr[2] <= st_i[119];
+  end
 end
 
-reg    sp_out_reg;
 assign sp_out = sp_out_reg | ~cra[6];
 
 // Serial Port Input/Output
@@ -474,11 +506,14 @@ always @(posedge clk) begin
       end
     end
   end
+  if (st_ld) begin
+    sp_shiftreg = st_i[151:144]; sp_out_reg = st_i[185];
+    sdr <= st_i[143:136]; sp_pending <= st_i[182]; sp_transmit <= st_i[183]; icr3 <= st_i[184]; icr[3] <= st_i[120];
+  end
 end
 
 // CNT Input/Output
 always @(posedge clk) begin
-  reg cra6_prev;
   if (!res_n) begin
     cnt_in_r     <= 1'b1;
     cnt_in_prev  <= 1'b1;
@@ -499,14 +534,16 @@ always @(posedge clk) begin
     if (!cra[6]) cnt_out_r <= 1'b1;
     else if (timerAoverflow) cnt_out_r <= ~(sp_transmit & cnt_out_r);
   end
+  if (st_ld) begin
+    cnt_in_r <= st_i[186]; cnt_in_prev <= st_i[187]; cnt_out_r <= st_i[188]; cnt_out <= st_i[189];
+    cra6_prev <= st_i[190]; cnt_pulsecnt <= st_i[221:219];
+  end
 end
 
 wire [4:0] icr_adj = {icr[4:2], timer_b_int, icr[0]};
 
 // Interrupt Control
 always @(posedge clk) begin
-  reg [7:0] imr_reg;
-
   if (!res_n) begin
     imr       <= 5'h00;
     imr_reg   <= 0;
@@ -525,6 +562,9 @@ always @(posedge clk) begin
       irq_n <= 1;
 	  int_reset <= 0;
     end
+  end
+  if (st_ld) begin
+    imr <= st_i[116:112]; imr_reg <= st_i[135:128]; irq_n <= st_i[123]; int_reset <= st_i[124];
   end
 end
 
