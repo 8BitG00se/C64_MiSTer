@@ -337,7 +337,7 @@ always @(posedge clk) begin
 			if (!trim_rd) trim_rd <= 1;                // (st_q is the oldest frame's size)
 			else begin
 				trim_rd <= 0;
-				depth   <= depth - {{(AW-19){1'b0}}, st_q} + (enq ? 1'd1 : 1'd0);
+				depth   <= depth - st_q + (enq ? 1'd1 : 1'd0);
 				st_tail <= st_tail + 1'd1;
 				frames  <= frames - 1'd1;
 			end
