@@ -66,7 +66,7 @@ module octovic
 // show and check which core is running: $D6B8-$D6BF the build's tag (8 ASCII letters, padded with
 // spaces), $D6B4-$D6B6 its build date (BCD: day, month, year - 20xx). The build stamps CORE_DATE
 // (.github/workflows/build.yml); CORE_TAG is set by hand for each core build.
-localparam [63:0] CORE_TAG  = "CORE11  ";
+localparam [63:0] CORE_TAG  = "8SID    ";
 localparam [23:0] CORE_DATE = 24'h261101;      // BCD yymmdd
 localparam [28:0] VBASE = 29'h06400000;        // byte $32000000
 localparam RW = 396;                           // pixels drawn a line: raster X 0-395 (x -32..363)

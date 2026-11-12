@@ -84,7 +84,7 @@ assign HDMI_BOB_DEINT = 0;
 
 `include "build_id.v"
 localparam CONF_STR = {
-	"C64;UART9600:2400;",
+	"C64_8SID;UART9600:2400;",   // STANDALONE: its own name - its own settings file (defaults), no boot ROMs from games/C64
 	"H7S0,D64G64T64D81,Mount #8;",
 	"O[76],Mount Write Protected,Off,On;",
 	"-;",
@@ -161,7 +161,7 @@ localparam CONF_STR = {
 	"P2FC9,ROM,System ROM C1581     ;",
 	"P2FC5,CRT,Boot Cartridge       ;",
 	"P2-;",
-	"P2O[15:14],System ROM,Octophonic 64 V1.1,Standard C64,Weaver KERNAL 2,Japanese;",
+	"P2O[15:14],System ROM,Standard C64,Octophonic 64 V1.1,Weaver KERNAL 2,Japanese;",
 
 	"P3,Drives;",
 	"P3O[58:57],Enable Drive #8,If Mounted,Always,Never;",
@@ -394,6 +394,9 @@ wire load_reu   = ioctl_index == 'h81;
 wire load_tap   = ioctl_index == 'hC1;
 wire load_flt   = ioctl_index == 7;
 wire load_rom   = ioctl_index == 8;
+// STANDALONE (stock Main, no Octophonic OS): the menu's first System ROM is the stock C64's - the
+// first two swapped: menu 0 Standard (bios 01), menu 1 Octophonic 64 V1.1 (bios 00), 2 and 3 as they are
+wire [1:0] sys_rom = {status[15], status[14] ^ ~status[15]};
 wire load_c1581 = ioctl_index == 9;
 wire load_chl   = ioctl_index == 2;    // OCTOPHONIC: a chip personality (.CHP) for the left SIDs
 wire load_chr   = ioctl_index == 3;    //   ...for the right SIDs
@@ -976,7 +979,7 @@ fpga64_sid_iec fpga64
 	.reset_n(reset_n),
 	.pause(freeze),
 	.pause_out(c64_pause),
-	.bios(status[15:14]),
+	.bios(sys_rom),
 	
 	.turbo_mode({(status[47:46] == 2'd2) & ~disk_access, status[47:46] == 2'd0}),   // OCTOPHONIC V1.1: C128 (a program turns turbo on at $D030) the default
 	.turbo_speed(status[49:48]),
@@ -1227,7 +1230,7 @@ iec_drive #(.DRIVES(1)) iec_drive
 	.rom_addr(load_rom ? (ioctl_addr[15:0] - 16'h4000) : {1'b1,ioctl_addr[14:0]}),
 	.rom_data(ioctl_data),
 	.rom_wr(((load_rom && ioctl_addr[16:14]) || load_c1581) && ioctl_download && ioctl_wr),
-	.rom_std(status[14]),
+	.rom_std(sys_rom[0]),
 
 	.DDRAM_BUSY(drv_ddram_busy),
 	.DDRAM_BURSTCNT(drv_ddram_burstcnt),

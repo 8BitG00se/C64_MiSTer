@@ -99,10 +99,10 @@ jobs:
           echo "${{ steps.compile.outcome }} $(git rev-parse --short HEAD) $(date -u +%Y-%m-%dT%H:%MZ)" > /tmp/reports/result.txt
           cd /tmp/reports
           git init -q
-          git checkout -q -b HEAD:build-reports-core11
+          git checkout -q -b HEAD:build-reports-standalone8
           git add -A
           git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Reports: $(cat result.txt)"
-          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" HEAD:build-reports-core11
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" HEAD:build-reports-standalone8
 
       - name: Fail if Quartus failed
         if: steps.compile.outcome != 'success'
