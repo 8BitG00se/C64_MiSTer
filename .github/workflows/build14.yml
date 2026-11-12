@@ -1,0 +1,75 @@
+# Build 14: the RGB companion core (Octophonic64RGB) - recolour, rewind and the Level 2 remaster unit - fitted with several
+# seeds at once. Each seed keeps its core and its fit and timing reports on the branch
+# build-reports-<branch>-s<seed>. Runs on every push to a build14* branch that touches the core, or by hand.
+name: Build 14 core (seeds)
+
+on:
+  push:
+    branches: [ 'build14*' ]
+    paths: [ 'rtl/**', 'c64.sv', 'files.qip', 'C64.qsf', 'c64.sdc', 'sys/**', '.github/workflows/build14.yml' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [ 3, 8, 13, 21, 34 ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make room for Quartus
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: The project (C64.qsf plus the RGB256 macro and this seed)
+        run: |
+          sed -i "s/localparam \[23:0\] CORE_DATE = 24'h[0-9]*;/localparam [23:0] CORE_DATE = 24'h$(date -u +%y%m%d);/" rtl/octovic/octovic.sv
+          grep -v "^set_global_assignment -name SEED " C64.qsf > C64RGB256.qsf
+          echo 'set_global_assignment -name VERILOG_MACRO "RGB256=1"' >> C64RGB256.qsf
+          echo 'set_global_assignment -name SEED ${{ matrix.seed }}' >> C64RGB256.qsf
+          printf 'QUARTUS_VERSION = "17.0"\nDATE = "00:00:00  January 01, 2026"\n\nPROJECT_REVISION = "C64RGB256"\n' > C64RGB256.qpf
+
+      - name: Compile with Quartus 17.0 Lite
+        continue-on-error: true
+        id: compile
+        run: |
+          docker run --rm -v "$PWD":/build -w /build raetro/quartus:17.0 \
+            quartus_sh --flow compile C64RGB256.qpf
+
+      - name: Gather the core and the reports
+        if: always()
+        run: |
+          REV=C64RGB256
+          sudo chown -R "$(id -u):$(id -g)" output_files 2>/dev/null || true
+          mkdir -p /tmp/reports && cd /tmp/reports
+          W=$GITHUB_WORKSPACE
+          cp $W/output_files/*.summary . 2>/dev/null || true
+          [ -f $W/output_files/$REV.rbf ] && cp $W/output_files/$REV.rbf "Octophonic64RGB_$(date -u +%Y%m%d).rbf"
+          grep -h -iE "^error|critical warning" $W/output_files/*.rpt 2>/dev/null | head -200 > errors.txt || true
+          grep -h -E "uninferred|Inferred .*RAM|ram_block|altsyncram" $W/output_files/$REV.map.rpt 2>/dev/null | head -150 > rams.txt || true
+          awk '/; Fitter RAM Summary/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' $W/output_files/$REV.fit.rpt 2>/dev/null | cut -c1-700 > fit_rams.txt || true
+          awk '/; Fitter Resource Utilization by Entity/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' $W/output_files/$REV.fit.rpt 2>/dev/null | cut -c1-400 > fit_entities.txt || true
+          grep -E "Slack|TNS|Worst-case|; clk|pll" $W/output_files/$REV.sta.summary 2>/dev/null | head -80 > sta_short.txt || true
+          echo "${{ steps.compile.outcome }} seed ${{ matrix.seed }} $(git -C $W rev-parse --short HEAD) $(date -u +%Y-%m-%dT%H:%MZ)" > result.txt
+          cat result.txt; cat $W/output_files/$REV.fit.summary 2>/dev/null || true; head -40 errors.txt
+          git init -q
+          B="build-reports-${GITHUB_REF_NAME}-s${{ matrix.seed }}"
+          git checkout -q -b "$B"
+          git add -A
+          git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Build 14 reports: $(cat result.txt)"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "$B"
+
+      - name: Fail if Quartus failed
+        if: steps.compile.outcome != 'success'
+        run: exit 1
