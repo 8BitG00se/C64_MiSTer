@@ -93,6 +93,8 @@ localparam CONF_STR = {
 	// Octophonic64RGB (Fix 60, Build 12): the recolour pack (docs/RGB256.md) and which of its palettes - WIN+F3 cycles them
 	"FC4,RGB,Load Recolour Pack;",
 	"O[108:105],Recolour,Palette 1,Palette 2,Palette 3,Palette 4,Palette 5,Palette 6,Palette 7,Palette 8,Off;",
+	// REWIND (Fix 61, Build 13): hold WIN+F2 (or the pad button set as Rewind) and the game runs backwards
+	"O[109],Rewind,On,Off;",
 `endif
 	"hAdBR[61],Save cartridge;",
 	"hAO[62],Autosave,Off,On;",
@@ -189,9 +191,15 @@ localparam CONF_STR = {
 	"-;",
 	"R[0],Reset;",
 	"R[17],Reset & Detach Cartridge;",
+`ifdef RGB256
+	"J,Fire 1,Fire 2,Fire 3,Paddle Btn,Mod1,Mod2,Rewind;",
+	"jn,A,B,Y,X|P,R,L,Select;",
+	"jp,A,B,Y,X|P,R,L,Select;",
+`else
 	"J,Fire 1,Fire 2,Fire 3,Paddle Btn,Mod1,Mod2;",
 	"jn,A,B,Y,X|P,R,L;",
 	"jp,A,B,Y,X|P,R,L;",
+`endif
 	"V,v",`BUILD_DATE
 };
 
@@ -252,6 +260,7 @@ reg         rgb_status_set = 0;
 reg   [1:0] rgb_evt = 0;                     // Build 12: the last remaster key for Main (1 grading, 2 gradient, 3 save)
 reg   [2:0] rgb_evt_n = 0;                   // Build 12: counts the remaster keys - Main acts when it changes
 wire        rk_home, rk_pal, rk_grade, rk_grad, rk_save;   // Build 12: WIN+F1/F3/F5/F7/F8 (rtl/rgbkeys.sv)
+wire        rk_rew;                          // Build 13: WIN+F2 held - rewind
 wire [10:0] rk_key;                          // Build 12: the keyboard without the held-back WIN+F keys
 `endif
 reg ntsc_prev = 0;
@@ -841,7 +850,7 @@ hotkey_break hotkey_break (.clk(clk_sys), .start(hk_brk), .busy(hkb_busy), .stb(
 `ifdef RGB256
 // Build 12: the remaster keys (WIN+F1/F3/F5/F7/F8) - held back from the C64, so no game ever sees them
 rgbkeys rgbkeys (.clk(clk_sys), .ps2_key(ps2_key), .key_out(rk_key),
-                 .home(rk_home), .pal(rk_pal), .grade(rk_grade), .grad(rk_grad), .save(rk_save));
+                 .home(rk_home), .pal(rk_pal), .grade(rk_grade), .grad(rk_grad), .save(rk_save), .rew(rk_rew));
 wire [10:0] c64_ps2 = rk_key;
 `else
 wire [10:0] c64_ps2 = ps2_key;
@@ -941,7 +950,20 @@ end
 
 assign SDRAM_CKE  = 1;
 
-wire [7:0] sdram_data;
+// REWIND (Build 13): the C64's own 64K is read from the rewind unit's copy (m_sel), everything else
+// from the SDRAM as before
+wire [24:0] sd_addr = io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : ext_cycle ? reu_ram_addr : cart_addr;
+wire        sd_ce   = io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : ext_cycle ? reu_ram_ce   : cart_ce;
+wire        sd_we   = io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : ext_cycle ? reu_ram_we   : cart_we;
+wire  [7:0] sd_din  = io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : ext_cycle ? reu_ram_dout : cart_wrdata;
+wire  [7:0] sd_dout;
+`ifdef RGB256
+wire  [7:0] rw_mq;
+wire        rw_msel;
+wire  [7:0] sdram_data = rw_msel ? rw_mq : sd_dout;
+`else
+wire  [7:0] sdram_data = sd_dout;
+`endif
 sdram sdram
 (
 	.sd_addr(SDRAM_A),
@@ -957,11 +979,11 @@ sdram sdram
 	.clk(clk64),
 	.init(~pll_locked),
 	.refresh(refresh),
-	.addr( io_cycle ? (cart_mem_req ? cart_addr   : io_cycle_addr ) : ext_cycle ? reu_ram_addr : cart_addr   ),
-	.ce  ( io_cycle ? (cart_mem_req ? cart_ce     : io_cycle_ce   ) : ext_cycle ? reu_ram_ce   : cart_ce     ),
-	.we  ( io_cycle ? (cart_mem_req ? cart_we     : io_cycle_we   ) : ext_cycle ? reu_ram_we   : cart_we     ),
-	.din ( io_cycle ? (cart_mem_req ? cart_wrdata : io_cycle_data ) : ext_cycle ? reu_ram_dout : cart_wrdata ),
-	.dout( sdram_data )
+	.addr(sd_addr),
+	.ce  (sd_ce),
+	.we  (sd_we),
+	.din (sd_din),
+	.dout(sd_dout)
 );
 
 wire  [7:0] c64_data_out;
@@ -1072,7 +1094,76 @@ pll_mode pll_mode
 );
 always @(posedge CLK_50M) close_osd <= close_osd_pll;
 
+`ifdef RGB256
+// ------------------------------------------------------------------ REWIND (Fix 61, Build 13: rtl/rewind.sv)
+wire         rw_tick, rw_freeze, rw_ld, rw_io_wr, rw_vic_we, rw_sid_we, rw_col_we;
+wire   [8:0] rw_ry;
+wire [175:0] rw_cpu_o, rw_cpu_i;
+wire [319:0] rw_cia1_o, rw_cia2_o, rw_cia1_i, rw_cia2_i;
+wire   [3:0] rw_io_sel, rw_col_old, rw_col_data;
+wire   [9:0] rw_io_addr, rw_col_addr;
+wire   [7:0] rw_io_data, rw_vic_data, rw_sid_data;
+wire   [5:0] rw_vic_addr;
+wire   [4:0] rw_sid_addr;
+wire   [1:0] rw_sid_cs;
+wire         rw_active, rw_err;
+wire  [11:0] rw_frames;
+// no rewind (and no history kept) across a reset, a file loading or the disk drive at work
+// (the drive's own side of the serial bus, not the C64's: a game is free to wiggle its CIA 2 port)
+reg          rw_drv_busy = 0;
+always @(posedge clk_sys) begin
+	reg        clk_d, data_d;
+	reg [23:0] to = 0;
+	clk_d  <= drive_iec_clk_o;
+	data_d <= drive_iec_data_o;
+	if ((clk_d != drive_iec_clk_o) || (data_d != drive_iec_data_o) || drive_led[0]) to <= 24'd16000000;   // 0.5 s
+	else if (to != 0) to <= to - 1'd1;
+	rw_drv_busy <= (to != 0);
+end
+wire         rw_block = ~reset_n | ioctl_download | erasing | inj_meminit | reset_wait | rw_drv_busy | c64_pause;
+reg          rw_hold = 0;
+always @(posedge clk_sys) rw_hold <= rk_rew | joy[10];
+
+rewind rewind
+(
+	.clk(clk_sys),
+	.reset(~pll_locked),
+	.enable(~status[109]),
+	.hold(rw_hold),
+	.block(rw_block),
+	.busy_dma(dma_req),
+
+	.tick(rw_tick), .ry(rw_ry), .freeze(rw_freeze),
+	.cpu_o(rw_cpu_o), .cia1_o(rw_cia1_o), .cia2_o(rw_cia2_o),
+	.cpu_i(rw_cpu_i), .cia1_i(rw_cia1_i), .cia2_i(rw_cia2_i), .ld(rw_ld),
+	.io_wr(rw_io_wr), .io_sel(rw_io_sel), .io_addr(rw_io_addr), .io_data(rw_io_data), .col_old(rw_col_old),
+	.vic_we(rw_vic_we), .vic_addr(rw_vic_addr), .vic_data(rw_vic_data),
+	.sid_we(rw_sid_we), .sid_cs(rw_sid_cs), .sid_addr(rw_sid_addr), .sid_data(rw_sid_data),
+	.col_we(rw_col_we), .col_addr(rw_col_addr), .col_data(rw_col_data),
+
+	.m_addr(sd_addr), .m_ce(sd_ce), .m_we(sd_we), .m_din(sd_din), .m_main(~io_cycle & ~ext_cycle),
+	.m_q(rw_mq), .m_sel(rw_msel),
+
+	.ddr_addr(ogx_ddram_addr), .ddr_burstcnt(ogx_ddram_burstcnt), .ddr_rd(ogx_ddram_rd), .ddr_we(ogx_ddram_we),
+	.ddr_din(ogx_ddram_din), .ddr_be(ogx_ddram_be), .ddr_busy(ogx_ddram_busy), .ddr_dout(DDRAM_DOUT),
+	.ddr_ready(ogx_ddram_ready),
+
+	.active(rw_active), .frames(rw_frames), .err(rw_err)
+);
+
+wire [2:0] rw_ovl_color;
+rewind_osd rewind_osd
+(
+	.clk(clk_sys), .ce(ce_sys), .hblank(hblank), .vblank(vblank),
+	.on(rw_active), .err(rw_err), .frames(rw_frames), .pixel_color(rw_ovl_color)
+);
+
+fpga64_sid_iec #(.REWIND(1)) fpga64
+`else
+wire [2:0] rw_ovl_color = 3'd0;
+wire       rw_active = 1'b0;
 fpga64_sid_iec fpga64
+`endif
 (
 	.clk32(clk_sys),
 	.reset_n(reset_n),
@@ -1180,6 +1271,15 @@ fpga64_sid_iec fpga64
 	.os_ext_act(os_ext_act),
 	.os_ext_dout(os_ext_dout),
 
+`ifdef RGB256
+	.rw_tick(rw_tick), .rw_ry(rw_ry), .rw_freeze(rw_freeze),
+	.rw_cpu_o(rw_cpu_o), .rw_cia1_o(rw_cia1_o), .rw_cia2_o(rw_cia2_o),
+	.rw_cpu_i(rw_cpu_i), .rw_cia1_i(rw_cia1_i), .rw_cia2_i(rw_cia2_i), .rw_ld(rw_ld),
+	.rw_io_wr(rw_io_wr), .rw_io_sel(rw_io_sel), .rw_io_addr(rw_io_addr), .rw_io_data(rw_io_data), .rw_col_old(rw_col_old),
+	.rw_vic_we(rw_vic_we), .rw_vic_addr(rw_vic_addr), .rw_vic_data(rw_vic_data),
+	.rw_sid_we(rw_sid_we), .rw_sid_cs(rw_sid_cs), .rw_sid_addr(rw_sid_addr), .rw_sid_data(rw_sid_data),
+	.rw_col_we(rw_col_we), .rw_col_addr(rw_col_addr), .rw_col_data(rw_col_data),
+`else
 	.ogx_ddr_addr(ogx_ddram_addr),
 	.ogx_ddr_burstcnt(ogx_ddram_burstcnt),
 	.ogx_ddr_rd(ogx_ddram_rd),
@@ -1189,6 +1289,7 @@ fpga64_sid_iec fpga64
 	.ogx_ddr_busy(ogx_ddram_busy),
 	.ogx_ddr_dout(DDRAM_DOUT),
 	.ogx_ddr_dout_ready(ogx_ddram_ready),    // and with 8 (the default): $D480, $D4A0, $D580, $D5A0
+`endif
 	.audio_l(audio_l),
 	.audio_r(audio_r),
 
@@ -1653,7 +1754,7 @@ drv_overlay drv_ovl (
 );
 
 reg [2:0] ovl_color;
-always @(posedge CLK_VIDEO) ovl_color <= tape_ovl_color | drv_ovl_color;
+always @(posedge CLK_VIDEO) ovl_color <= tape_ovl_color | drv_ovl_color | rw_ovl_color;
 
 video_mixer_split #(.GAMMA(1)) video_mixer
 (
@@ -1809,8 +1910,9 @@ always @(posedge clk_sys) begin
 	cin  <= opl_out - {{3{opl_out[15]}},opl_out[15:3]};
 	cout <= compr(cin);
 
-	alm <= {cout[15],cout} + {audio_l[17],audio_l[17:2]} + {2'b0,dac_l,6'd0} + {cass_snd, 9'd0};
-	arm <= {cout[15],cout} + {audio_r[17],audio_r[17:2]} + {2'b0,dac_r,6'd0} + {cass_snd, 9'd0};
+	// (REWIND: the SIDs at half volume while the game runs backwards)
+	alm <= {cout[15],cout} + (rw_active ? {{2{audio_l[17]}},audio_l[17:3]} : {audio_l[17],audio_l[17:2]}) + {2'b0,dac_l,6'd0} + {cass_snd, 9'd0};
+	arm <= {cout[15],cout} + (rw_active ? {{2{audio_r[17]}},audio_r[17:3]} : {audio_r[17],audio_r[17:2]}) + {2'b0,dac_r,6'd0} + {cass_snd, 9'd0};
 	alo <= ^alm[16:15] ? {alm[16], {15{alm[15]}}} : alm[15:0];
 	aro <= ^arm[16:15] ? {arm[16], {15{arm[15]}}} : arm[15:0];
 end
