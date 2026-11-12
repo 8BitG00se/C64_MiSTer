@@ -1,0 +1,87 @@
+INFO A: played 120 frames: game frame 119, 120 save states, CIA1 irqs $59, NMIs $C4
+OK   step 1 (held 460 us, to line 263, 119 left, 50 SID writes): frame of 118: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0924 FRAME=0076
+OK   step 2 (held 454 us, to line 263, 118 left, 50 SID writes): frame of 117: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0927 FRAME=0075
+OK   step 3 (held 454 us, to line 263, 117 left, 50 SID writes): frame of 116: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=092C FRAME=0074
+OK   step 4 (held 454 us, to line 263, 116 left, 50 SID writes): frame of 115: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0924 FRAME=0073
+OK   step 5 (held 454 us, to line 263, 115 left, 50 SID writes): frame of 114: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0934 FRAME=0072
+OK   step 6 (held 449 us, to line 263, 114 left, 50 SID writes): frame of 113: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0924 FRAME=0071
+OK   step 7 (held 454 us, to line 263, 113 left, 50 SID writes): frame of 112: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0939 FRAME=0070
+OK   step 8 (held 454 us, to line 263, 112 left, 50 SID writes): frame of 111: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0918 FRAME=006F
+OK   step 9 (held 454 us, to line 263, 111 left, 50 SID writes): frame of 110: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0938 FRAME=006E
+OK   step 10 (held 454 us, to line 263, 110 left, 50 SID writes): frame of 109: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0939 FRAME=006D
+OK   step 11 (held 454 us, to line 263, 109 left, 50 SID writes): frame of 108: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0924 FRAME=006C
+OK   step 12 (held 449 us, to line 263, 108 left, 50 SID writes): frame of 107: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0929 FRAME=006B
+OK   step 13 (held 454 us, to line 263, 107 left, 50 SID writes): frame of 106: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=091B FRAME=006A
+OK   step 14 (held 454 us, to line 263, 106 left, 50 SID writes): frame of 105: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0922 FRAME=0069
+OK   step 15 (held 454 us, to line 263, 105 left, 50 SID writes): frame of 104: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0939 FRAME=0068
+OK   step 16 (held 454 us, to line 263, 104 left, 50 SID writes): frame of 103: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0918 FRAME=0067
+OK   step 17 (held 454 us, to line 263, 103 left, 50 SID writes): frame of 102: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=092A FRAME=0066
+OK   step 18 (held 454 us, to line 263, 102 left, 50 SID writes): frame of 101: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=E017 FRAME=0065
+OK   step 19 (held 454 us, to line 263, 101 left, 50 SID writes): frame of 100: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0935 FRAME=0064
+OK   step 20 (held 454 us, to line 263, 100 left, 50 SID writes): frame of 99: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0924 FRAME=0063
+OK   step 21 (held 454 us, to line 263, 99 left, 50 SID writes): frame of 98: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=EA84 FRAME=0062
+OK   step 22 (held 454 us, to line 263, 98 left, 50 SID writes): frame of 97: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0922 FRAME=0061
+OK   step 23 (held 454 us, to line 263, 97 left, 50 SID writes): frame of 96: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0936 FRAME=0060
+OK   step 24 (held 454 us, to line 263, 96 left, 50 SID writes): frame of 95: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0930 FRAME=005F
+OK   step 25 (held 454 us, to line 263, 95 left, 50 SID writes): frame of 94: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0935 FRAME=005E
+OK   step 26 (held 454 us, to line 263, 94 left, 50 SID writes): frame of 93: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=093F FRAME=005D
+OK   step 27 (held 454 us, to line 263, 93 left, 50 SID writes): frame of 92: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0930 FRAME=005C
+OK   step 28 (held 454 us, to line 263, 92 left, 50 SID writes): frame of 91: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=092B FRAME=005B
+OK   step 29 (held 454 us, to line 263, 91 left, 50 SID writes): frame of 90: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0937 FRAME=005A
+OK   step 30 (held 454 us, to line 263, 90 left, 50 SID writes): frame of 89: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0930 FRAME=0059
+OK   step 31 (held 454 us, to line 263, 89 left, 50 SID writes): frame of 88: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=092A FRAME=0058
+OK   step 32 (held 454 us, to line 263, 88 left, 50 SID writes): frame of 87: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0938 FRAME=0057
+OK   step 33 (held 454 us, to line 263, 87 left, 50 SID writes): frame of 86: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=091A FRAME=0056
+OK   step 34 (held 454 us, to line 263, 86 left, 50 SID writes): frame of 85: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=092A FRAME=0055
+OK   step 35 (held 454 us, to line 263, 85 left, 50 SID writes): frame of 84: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0918 FRAME=0054
+OK   step 36 (held 454 us, to line 263, 84 left, 50 SID writes): frame of 83: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0923 FRAME=0053
+OK   step 37 (held 454 us, to line 263, 83 left, 50 SID writes): frame of 82: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=092B FRAME=0052
+OK   step 38 (held 449 us, to line 263, 82 left, 50 SID writes): frame of 81: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0939 FRAME=0051
+OK   step 39 (held 449 us, to line 263, 81 left, 50 SID writes): frame of 80: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=091A FRAME=0050
+OK   step 40 (held 454 us, to line 263, 80 left, 50 SID writes): frame of 79: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0924 FRAME=004F
+OK   step 41 (held 449 us, to line 263, 79 left, 50 SID writes): frame of 78: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0936 FRAME=004E
+OK   step 42 (held 454 us, to line 263, 78 left, 50 SID writes): frame of 77: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0919 FRAME=004D
+OK   step 43 (held 449 us, to line 263, 77 left, 50 SID writes): frame of 76: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=091B FRAME=004C
+OK   step 44 (held 454 us, to line 263, 76 left, 50 SID writes): frame of 75: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0932 FRAME=004B
+OK   step 45 (held 454 us, to line 263, 75 left, 50 SID writes): frame of 74: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0932 FRAME=004A
+OK   step 46 (held 454 us, to line 263, 74 left, 50 SID writes): frame of 73: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0930 FRAME=0049
+OK   step 47 (held 454 us, to line 263, 73 left, 50 SID writes): frame of 72: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0936 FRAME=0048
+OK   step 48 (held 454 us, to line 263, 72 left, 50 SID writes): frame of 71: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0938 FRAME=0047
+OK   step 49 (held 454 us, to line 263, 71 left, 50 SID writes): frame of 70: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0937 FRAME=0046
+OK   step 50 (held 454 us, to line 263, 70 left, 50 SID writes): frame of 69: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0944 FRAME=0045
+OK   step 51 (held 454 us, to line 263, 69 left, 50 SID writes): frame of 68: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0922 FRAME=0044
+OK   step 52 (held 454 us, to line 263, 68 left, 50 SID writes): frame of 67: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0929 FRAME=0043
+OK   step 53 (held 449 us, to line 263, 67 left, 50 SID writes): frame of 66: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=EA86 FRAME=0042
+OK   step 54 (held 449 us, to line 263, 66 left, 50 SID writes): frame of 65: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0938 FRAME=0041
+OK   step 55 (held 454 us, to line 263, 65 left, 50 SID writes): frame of 64: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0929 FRAME=0040
+OK   step 56 (held 454 us, to line 263, 64 left, 50 SID writes): frame of 63: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=EA86 FRAME=003F
+OK   step 57 (held 449 us, to line 263, 63 left, 50 SID writes): frame of 62: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=092C FRAME=003E
+OK   step 58 (held 449 us, to line 263, 62 left, 50 SID writes): frame of 61: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0938 FRAME=003D
+OK   step 59 (held 449 us, to line 263, 61 left, 50 SID writes): frame of 60: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=092A FRAME=003C
+OK   step 60 (held 454 us, to line 263, 60 left, 50 SID writes): frame of 59: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=091B FRAME=003B
+OK   B: 60 frames of rewind with 120 save states held: game frame 119 -> 59
+INFO B: 60 steps, the 6510 held 449 / 453 / 460 us (least / mean / most), back on by raster line 263, FIFO at most 22 of 256
+OK   C: played on 40 frames: game frame 59 -> 99, the main loop ran 7534 times
+OK   C: the timers keep their pace after the rewind: CIA1 interrupts +33 (before: +33), CIA2 NMIs +244 (before: +244; 243-244 expected), mod 256
+OK   D: rewound to the oldest save state: 1 left, game frame 0
+OK   step 100 (held 239 us, to line 259, 1 left, 50 SID writes): frame of 0: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0871 FRAME=0000
+OK   step 101 (held 243 us, to line 259, 1 left, 50 SID writes): frame of 0: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0871 FRAME=0000
+OK   step 102 (held 243 us, to line 259, 1 left, 50 SID writes): frame of 0: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0871 FRAME=0000
+OK   step 103 (held 243 us, to line 259, 1 left, 50 SID writes): frame of 0: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0871 FRAME=0000
+OK   step 104 (held 243 us, to line 259, 1 left, 50 SID writes): frame of 0: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0871 FRAME=0000
+OK   step 105 (held 243 us, to line 259, 1 left, 50 SID writes): frame of 0: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0871 FRAME=0000
+OK   step 106 (held 243 us, to line 259, 1 left, 50 SID writes): frame of 0: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0871 FRAME=0000
+OK   step 107 (held 243 us, to line 259, 1 left, 50 SID writes): frame of 0: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0871 FRAME=0000
+OK   D: held there 8 more frames: game frame 0 (stands still)
+INFO D: 107 steps, the 6510 held 239 / 437 / 460 us (least / mean / most), back on by raster line 263, FIFO at most 22 of 256
+OK   E: played on 25 frames: game frame 0 -> 25, 26 save states
+OK   F: history dropped while blocked (0 save states: yes), no freeze with the key held: yes
+OK   step 1 (held 460 us, to line 263, 11 left, 50 SID writes): frame of 365: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=092A FRAME=0027
+OK   step 2 (held 454 us, to line 263, 10 left, 50 SID writes): frame of 364: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=092A FRAME=0026
+OK   step 3 (held 454 us, to line 263, 9 left, 50 SID writes): frame of 363: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0924 FRAME=0025
+OK   step 4 (held 454 us, to line 263, 8 left, 50 SID writes): frame of 362: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0928 FRAME=0024
+OK   step 5 (held 454 us, to line 263, 7 left, 50 SID writes): frame of 361: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=092B FRAME=0023
+OK   step 6 (held 449 us, to line 263, 6 left, 50 SID writes): frame of 360: RAM 0 differ, colour RAM 0, SID regs 0, 6510 bits 0, CIA1 bits 0, CIA2 bits 0  PC=0936 FRAME=0022
+OK   F: recording again afterwards: 6 save states, rewind 40 -> 34
+INFO F: 6 steps, the 6510 held 449 / 454 / 460 us (least / mean / most), back on by raster line 263, FIFO at most 22 of 256
+REWIND_SIM_OK: 181 checks, 0 failed, 240879427 clocks, 383 frames

@@ -1,0 +1,94 @@
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:938:1:warning: instance "fx" of component "sid_fx" is not bound [-Wbinding]
+fx : sid_fx
+^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:255:14:warning: (in default configuration of fpga64_sid_iec(rtl))
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:969:1:warning: instance "mbox" of component "octo_os" is not bound [-Wbinding]
+mbox: octo_os
+^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:255:14:warning: (in default configuration of fpga64_sid_iec(rtl))
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:986:1:warning: instance "octo" of component "octovic" is not bound [-Wbinding]
+octo: octovic
+^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:255:14:warning: (in default configuration of fpga64_sid_iec(rtl))
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:1223:1:warning: instance "sid" of component "sid_top" is not bound [-Wbinding]
+sid : sid_top
+^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:255:14:warning: (in default configuration of fpga64_sid_iec(rtl))
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:1267:1:warning: instance "sid2" of component "sid_top" is not bound [-Wbinding]
+sid2 : sid_top
+^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:255:14:warning: (in default configuration of fpga64_sid_iec(rtl))
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:1309:1:warning: instance "sid3" of component "sid_top" is not bound [-Wbinding]
+sid3 : sid_top
+^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:255:14:warning: (in default configuration of fpga64_sid_iec(rtl))
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:1352:1:warning: instance "sid4" of component "sid_top" is not bound [-Wbinding]
+sid4 : sid_top
+^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:255:14:warning: (in default configuration of fpga64_sid_iec(rtl))
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:1405:1:warning: instance "chips" of component "chip_bank" is not bound [-Wbinding]
+chips : chip_bank
+^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:255:14:warning: (in default configuration of fpga64_sid_iec(rtl))
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:1422:1:warning: instance "cia1" of component "mos6526" is not bound [-Wbinding]
+cia1: mos6526
+^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:255:14:warning: (in default configuration of fpga64_sid_iec(rtl))
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:1455:1:warning: instance "cia2" of component "mos6526" is not bound [-Wbinding]
+cia2: mos6526
+^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/fpga64_sid_iec.vhd:255:14:warning: (in default configuration of fpga64_sid_iec(rtl))
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/spram.vhd:30:25:note: found RAM "ram", width: 4 bits, depth: 1024
+        shared variable ram : memory_t;
+                        ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/dprom.vhd:40:19:warning: unhandled attribute "ram_init_file" [-Wunhandled-attribute]
+        attribute ram_init_file of ram : variable is INIT_FILE;
+                  ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/dprom.vhd:37:25:note: found RAM "ram", width: 8 bits, depth: 4096
+        shared variable ram : memory_t;
+                        ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/dprom.vhd:40:19:warning: unhandled attribute "ram_init_file" [-Wunhandled-attribute]
+        attribute ram_init_file of ram : variable is INIT_FILE;
+                  ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/dprom.vhd:37:25:note: found RAM "ram", width: 8 bits, depth: 4096
+        shared variable ram : memory_t;
+                        ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/dprom.vhd:40:19:warning: unhandled attribute "ram_init_file" [-Wunhandled-attribute]
+        attribute ram_init_file of ram : variable is INIT_FILE;
+                  ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/dprom.vhd:37:25:note: found RAM "ram", width: 8 bits, depth: 16384
+        shared variable ram : memory_t;
+                        ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/dprom.vhd:40:19:warning: unhandled attribute "ram_init_file" [-Wunhandled-attribute]
+        attribute ram_init_file of ram : variable is INIT_FILE;
+                  ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/dprom.vhd:37:25:note: found RAM "ram", width: 8 bits, depth: 16384
+        shared variable ram : memory_t;
+                        ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/dprom.vhd:40:19:warning: unhandled attribute "ram_init_file" [-Wunhandled-attribute]
+        attribute ram_init_file of ram : variable is INIT_FILE;
+                  ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/dprom.vhd:37:25:note: found RAM "ram", width: 8 bits, depth: 16384
+        shared variable ram : memory_t;
+                        ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/dprom.vhd:40:19:warning: unhandled attribute "ram_init_file" [-Wunhandled-attribute]
+        attribute ram_init_file of ram : variable is INIT_FILE;
+                  ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/dprom.vhd:37:25:note: found RAM "ram", width: 8 bits, depth: 16384
+        shared variable ram : memory_t;
+                        ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/t65/T65.vhd:174:10:warning: no assignment for offsets 8:15 of signal "ABC"
+  signal ABC, X, Y          : std_logic_vector(15 downto 0);
+         ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/t65/T65.vhd:174:15:warning: no assignment for offsets 8:15 of signal "X"
+  signal ABC, X, Y          : std_logic_vector(15 downto 0);
+              ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/t65/T65.vhd:174:18:warning: no assignment for offsets 8:15 of signal "Y"
+  signal ABC, X, Y          : std_logic_vector(15 downto 0);
+                 ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/t65/T65_ALU.vhd:231:54:warning: comparing non-numeric vector is unexpected
+          if (BusA(3 downto 0) and BusB(3 downto 0)) > "0100" then
+                                                     ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/rtl/t65/T65_ALU.vhd:234:54:warning: comparing non-numeric vector is unexpected
+          if (BusA(7 downto 4) and BusB(7 downto 4)) > "0100" then
+                                                     ^

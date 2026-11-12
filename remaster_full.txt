@@ -1,0 +1,14 @@
+INFO remaster: frames 70-72 written to p1.l2f / .rgb; learned 0; 47214484 clocks
+REMASTER_FULL_RUN_DONE
+3 frames from the real VIC-II: 24000 cell rows, 0 not the glyph of their code in the charset; 3000 cells, 0 not the screen matrix's code; 5635 sprite pixels, 0 not a set bit of the sprite data at the unit's column and row
+pack: 31 blocks, 8 sprite frames
+REMASTER_VIC_OK
+INFO pack full.rgb: 178752 bytes, Level 2 found
+INFO remaster: frames 70-72 written to p2.l2f / .rgb; learned 0; 47214484 clocks
+REMASTER_FULL_RUN_DONE
+the frames of both runs are the same
+337392 pixels, 0 differ from the model
+REMASTER_SIM_OK
+INFO the remaster unit ran beside: Level 2 on, 29 keys learned
+REWIND_SIM_OK: 181 checks, 0 failed, 240879427 clocks, 383 frames
+REMASTER_FULL_OK
