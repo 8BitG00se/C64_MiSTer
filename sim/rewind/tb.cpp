@@ -5,6 +5,9 @@
 //                           with a copy taken when that frame's save state was made: all 64K of RAM,
 //                           the colour RAM, every flip-flop of the 6510 and both CIAs, the SID registers.
 //   tb boot  <frames.bin>   the Octophonic KERNAL to READY. without OctoVIC, then a rewind on the BASIC screen
+//   tb cart  <frames.bin> <stall %> <game.crt> [frames to play] [frames to rewind]
+//                           a real game from its cartridge file (your own - none is kept in the repo):
+//                           played with a scripted joystick, rewound, played on; every step compared
 //
 // The picture (the VIC's colour index and the on-screen REWIND, every pixel of the raster) goes to
 // frames.bin, 512 x 320 bytes a frame, for mkclip.py.
@@ -42,6 +45,7 @@ static std::deque<Snap> gold;
 #define RAMCOPY (ROOT->tb_top__DOT__rw__DOT__ram__DOT__m)
 #define COLRAM  (ROOT->tb_top__DOT__c64__DOT__colorram__DOT__ram)
 #define SIDREGS (ROOT->tb_top__DOT__c64__DOT__sid__DOT__regs)
+#define SDRAM   (ROOT->tb_top__DOT__sdram)
 
 static void snap(Snap &s) {
 	s.ram.resize(65536);
@@ -145,7 +149,17 @@ static void tick() {
 	}
 }
 
-static void run_frames(int n) { int e = vframe + n; while (vframe < e) tick(); }
+static bool joy_script = false;
+static void joy() {     // fire now and then, a direction that changes: enough to get a game going and moving
+	if (!joy_script) return;
+	int f = vframe;
+	int v = 0;
+	if ((f % 50) < 6) v |= 0x10;                       // fire
+	static const int dirs[8] = {0, 8, 8, 1, 4, 4, 2, 0};   // (bits: 0 up, 1 down, 2 left, 3 right, 4 fire)
+	if (f > 300) v |= dirs[(f / 25) & 7];
+	top->joyA = v; top->joyB = v;
+}
+static void run_frames(int n) { int e = vframe + n; while (vframe < e) { joy(); tick(); } }
 static void run_clocks(uint64_t n) { while (n--) tick(); }
 
 static int peek16(int a) { return RAMCOPY[a] | (RAMCOPY[a + 1] << 8); }
@@ -162,9 +176,32 @@ int main(int argc, char **argv) {
 	if (argc > 2) fvid = fopen(argv[2], "wb");
 	if (argc > 3) stall_pct = atoi(argv[3]);
 	top = new Vtb_top;
-	top->enable = 1; top->hold = 0; top->block = 0; top->joyA = 0; top->bios = 0; top->ddr_lat = 60;
+	top->enable = 1; top->hold = 0; top->block = 0; top->joyA = 0; top->joyB = 0; top->bios = 0; top->ddr_lat = 60;
+	top->cart_on = 0; top->cart_loading = 0; top->cart_bank_wr = 0;
 	top->reset_n = 0;
-	run_clocks(4000);
+	run_clocks(2000);
+	if (mode == "cart" && argc > 4) {
+		// the .CRT as c64.sv loads it: the header's type and lines, each CHIP packet's bank, its data into the SDRAM from $200000
+		FILE *f = fopen(argv[4], "rb");
+		if (!f) { printf("FAIL no cartridge file %s\n", argv[4]); return 2; }
+		std::vector<uint8_t> d(1 << 21);
+		size_t n = fread(d.data(), 1, d.size(), f); fclose(f);
+		top->cart_id = d[0x17]; top->cart_exrom = d[0x18] & 1; top->cart_game = d[0x19] & 1;
+		top->cart_loading = 1; run_clocks(8);
+		size_t o = 0x40; uint32_t at = 0x200000; int chips = 0;
+		while (o + 16 <= n) {
+			uint32_t len = (d[o + 4] << 24) | (d[o + 5] << 16) | (d[o + 6] << 8) | d[o + 7];
+			uint32_t size = (d[o + 14] << 8) | d[o + 15];
+			top->cart_bank_num = d[o + 11]; top->cart_bank_hi = d[o + 12] > 0x80; top->cart_bank_16k = d[o + 14] > 0x20;
+			top->cart_bank_addr = (at >> 13) & 255;
+			top->cart_bank_wr = 1; run_clocks(1); top->cart_bank_wr = 0; run_clocks(2);
+			for (uint32_t i = 0; i < size && o + 16 + i < n; i++) SDRAM[at + i] = d[o + 16 + i];
+			at += size; o += len; chips++;
+		}
+		top->cart_loading = 0; top->cart_on = 1;
+		printf("INFO cartridge: type %d, %d CHIP packets, %u bytes\n", (int)top->cart_id, chips, at - 0x200000);
+		run_clocks(2000);
+	}
 	top->reset_n = 1;
 
 	if (mode == "boot") {
@@ -192,6 +229,27 @@ int main(int argc, char **argv) {
 		checks++; if (!(j2 > j1 + 20)) fails++;
 		stats("boot");
 	}
+	else if (mode == "cart") {
+		int play = argc > 5 ? atoi(argv[5]) : 700, back = argc > 6 ? atoi(argv[6]) : 150;
+		joy_script = true; quiet_steps = true;
+		// the last 150 frames of play, the rewind and the play after it go to the clip
+		run_frames(play - 150);
+		vid_on = true;
+		run_frames(150);
+		printf("INFO played %d frames: %d save states (history since frame %d)\n", vframe, (int)top->frames, vframe - (int)top->frames);
+		int had = top->frames;
+		top->hold = 1; run_frames(back); top->hold = 0;
+		while (top->freeze) tick();
+		bool okb = steps >= (had < back ? had - 2 : back - 2);
+		printf("%s rewound for %d frames: %d steps, %d save states left\n", okb ? "OK  " : "FAIL", back, steps, (int)top->frames);
+		checks++; if (!okb) fails++;
+		stats("the game");
+		uint32_t a0 = 0; for (int i = 0; i < 65536; i++) a0 = a0 * 31 + RAMCOPY[i];
+		run_frames(200);
+		uint32_t a1 = 0; for (int i = 0; i < 65536; i++) a1 = a1 * 31 + RAMCOPY[i];
+		printf("%s played on 200 frames: %d save states again, the game's memory keeps changing: %s, 6510 at $%04X\n", (a0 != a1 && top->frames > 150) ? "OK  " : "FAIL", (int)top->frames, a0 != a1 ? "yes" : "NO", (unsigned)(top->cpu_o[0] & 0xFFFF));
+		checks++; if (!(a0 != a1 && top->frames > 150)) fails++;
+	}
 	else {
 		vid_on = true;
 		// A: play
@@ -201,12 +259,14 @@ int main(int argc, char **argv) {
 		int nmis_a = (RAMCOPY[0xFB] - na) & 255, cias_a = (RAMCOPY[0xFC] - ca) & 255;
 		int f_a = peek16(2);
 		printf("INFO A: played 120 frames: game frame %d, %d save states, CIA1 irqs $%02X, NMIs $%02X\n", f_a, (int)top->frames, RAMCOPY[0xFC], RAMCOPY[0xFB]);
-		// B: rewind 60 frames
+		// B: rewind 60 frames (or as far as the save states held go, with a small stack)
+		int had = top->frames, want = had > 60 ? 60 : had - 1;
 		top->hold = 1; run_frames(60); top->hold = 0;
 		while (top->freeze) tick();
 		int f_b = peek16(2);
-		printf("%s B: 60 frames of rewind: game frame %d -> %d\n", (f_a - f_b >= 58 && f_a - f_b <= 61) ? "OK  " : "FAIL", f_a, f_b);
-		checks++; if (!(f_a - f_b >= 58 && f_a - f_b <= 61)) fails++;
+		bool okb = f_a - f_b >= want - 1 && f_a - f_b <= want + 1;
+		printf("%s B: 60 frames of rewind with %d save states held: game frame %d -> %d\n", okb ? "OK  " : "FAIL", had, f_a, f_b);
+		checks++; if (!okb) fails++;
 		stats("B");
 		// C: play on
 		uint32_t cnt0 = RAMCOPY[0xF8] | (RAMCOPY[0xF9] << 8) | (RAMCOPY[0xFA] << 16);

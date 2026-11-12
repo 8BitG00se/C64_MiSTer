@@ -600,7 +600,7 @@ wire  [6:0] ones7 = secs - {tens, 3'd0} - {2'd0, tens, 1'd0};
 wire  [3:0] ones = ones7[3:0];
 
 // the box: 2x2 pixels a dot; the word at X0,Y0 - 9 characters of 6 dots; under it the bar, 54 dots
-localparam X0 = 10'd40, Y0 = 10'd44;
+localparam X0 = 10'd40, Y0 = 10'd24;
 wire [9:0] dx = x - X0, dy = y - Y0;
 wire       in_txt = (x >= X0) && (dx < 10'd108) && (y >= Y0) && (dy < 10'd14);
 wire       in_bar = (x >= X0) && (dx < 10'd108) && (y >= Y0 + 10'd18) && (dy < 10'd24);

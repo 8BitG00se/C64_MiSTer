@@ -1,7 +1,7 @@
 `verilator_config
 public_flat_rd -module "ovram" -var "m"
 public_flat_rd -module "spram_4_10" -var "ram"
-public_flat_rd -module "tb_top" -var "sdram"
+public_flat_rw -module "tb_top" -var "sdram"
 lint_off -rule WIDTH
 lint_off -rule UNUSED
 lint_off -rule UNOPTFLAT

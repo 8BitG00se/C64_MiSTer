@@ -1120,7 +1120,19 @@ always @(posedge clk_sys) begin
 	else if (to != 0) to <= to - 1'd1;
 	rw_drv_busy <= (to != 0);
 end
-wire         rw_block = ~reset_n | ioctl_download | erasing | inj_meminit | reset_wait | rw_drv_busy | c64_pause;
+// A bank-switching cartridge's banks are not saved: each access to its registers ($DExx/$DFxx) drops the
+// history, and it starts again half a second after the last one. So a game that copies itself out of
+// its cartridge and switches it off (Magic Desk, Ocean ...) rewinds once it is running; one that keeps
+// using its banks while it plays does not. A plain 8K or 16K cartridge has no banks. The REU's registers
+// are not saved either: no rewind across an REU transfer.
+reg          rw_cart_busy = 0;
+always @(posedge clk_sys) begin
+	reg [23:0] to = 0;
+	if (cart_attached && cart_id != 8'd0 && (IOE | IOF)) to <= 24'd16000000;
+	else if (to != 0) to <= to - 1'd1;
+	rw_cart_busy <= (to != 0);
+end
+wire         rw_block = ~reset_n | ioctl_download | erasing | inj_meminit | reset_wait | rw_drv_busy | c64_pause | rw_cart_busy | dma_req;
 reg          rw_hold = 0;
 always @(posedge clk_sys) rw_hold <= rk_rew | joy[10];
 

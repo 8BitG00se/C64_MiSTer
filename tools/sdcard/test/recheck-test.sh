@@ -4,7 +4,8 @@
 #   2 same package again       -> nothing changes
 #   3 a newer package          -> core, Main, SHELL.PRG update once (old core kept in _Octophonic/old cores)
 #   4 the newer package again  -> nothing changes
-#   5 the OLDER package again  -> nothing changes (no downgrade, Main/SHELL stay with the newer core)
+#   5 the OLDER package again  -> nothing changes (no downgrade, Main/SHELL stay with the newer core; six steps
+#                                 say so - step 034, the companion core with rewind, is one of them)
 #   sh tools/sdcard/test/recheck-test.sh [scratch folder]      prints RECHECK_TEST_OK at the end
 set -u
 R=$(cd "$(dirname "$0")/../../.." && pwd)
@@ -30,7 +31,7 @@ run() {   # run <payload> <name> <updated wanted> <older-kept wanted>
     echo "$2 ($1 package): exit $RC, $U updated, $O kept as older, $(tail -1 "$T/$2.log")"
     [ "$RC" = 0 ] && [ "$U" = "$3" ] && [ "$O" = "$4" ] || { echo "   ^ NOT AS EXPECTED (wanted $3 updated, $4 older)"; FAIL=1; }
 }
-run old run1 0 0; run old run2 0 0; run new run3 4 0; run new run4 0 0; run old run5 0 5
+run old run1 0 0; run old run2 0 0; run new run3 4 0; run new run4 0 0; run old run5 0 6
 same() { [ "$(md5sum < "$1")" = "$(md5sum < "$2")" ] && echo "   ok  $3" || { echo "   BAD $3"; FAIL=1; }; }
 same card/MiSTer new/MiSTer "Main is the newer one"
 same card/octophonic/SHELL.PRG new/SHELL.PRG "SHELL.PRG is the newer one"

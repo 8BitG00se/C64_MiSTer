@@ -9,6 +9,19 @@ module tb_top #(parameter AW = 20)
 	input          hold,
 	input          block,
 	input    [6:0] joyA,
+	input    [6:0] joyB,
+	// a cartridge (the real game run, tb cart): the .CRT's header and each of its CHIP packets, as c64.sv gives them
+	input          cart_on,
+	input    [7:0] cart_id,
+	input          cart_exrom,
+	input          cart_game,
+	input          cart_bank_hi,
+	input          cart_bank_16k,
+	input    [7:0] cart_bank_num,
+	input    [7:0] cart_bank_addr,
+	input          cart_bank_wr,
+	input          cart_loading,
+	output         blocked,
 	input    [1:0] bios,
 	input    [7:0] ddr_lat,
 	input          ddr_stall,
@@ -38,17 +51,40 @@ wire  [7:0] c64_data_out;
 wire        ram_ce;
 wire        io_cycle, ext_cycle, refresh;
 
-// ---- the SDRAM, as c64.sv's sdram sees it (no cartridge, no REU, no file loading)
-reg   [7:0] sdram [0:65535];
+// ---- the cartridge port and the SDRAM (4 MB of it: the C64's 64K, a cartridge from $200000), as in c64.sv
+wire        game, exrom, io_rom, cart_oe, cart_ce, cart_we, cart_mem_req, nmi, nmi_ack;
+wire        romL, romH, UMAXromH, IOE, IOF;
+wire  [7:0] cart_data, cart_wrdata, c64_data_in;
+wire [24:0] cart_addr;
+wire  [7:0] sdram_data;
+cartridge cartridge
+(
+	.clk32(clk), .reset_n(reset_n),
+	.cart_loading(cart_loading), .cart_id(cart_on ? cart_id : 8'd255), .cart_exrom(cart_exrom), .cart_game(cart_game),
+	.cart_bank_hi(cart_bank_hi), .cart_bank_16k(cart_bank_16k), .cart_bank_num(cart_bank_num),
+	.cart_bank_addr(cart_bank_addr), .cart_bank_wr(cart_bank_wr), .cart_boot(1'b1),
+	.exrom(exrom), .game(game),
+	.romL(romL), .romH(romH), .UMAXromH(UMAXromH), .IOE(IOE), .IOF(IOF),
+	.mem_write(ram_we), .mem_ce(ram_ce), .mem_ce_out(cart_ce), .mem_write_out(cart_we),
+	.mem_in(sdram_data), .mem_out(cart_wrdata), .mem_addr(cart_addr), .mem_req(cart_mem_req), .mem_cycle(io_cycle),
+	.IO_rom(io_rom), .IO_rd(cart_oe), .IO_data(cart_data),
+	.addr_in(c64_addr), .data_in(c64_data_out), .data_out(c64_data_in),
+	.freeze_key(1'b0), .mod_key(1'b0), .nmi(nmi), .nmi_ack(nmi_ack)
+);
+wire [24:0] sd_addr = cart_addr;
+wire        sd_ce   = io_cycle ? (cart_mem_req & cart_ce) : ext_cycle ? 1'b0 : cart_ce;
+wire        sd_we   = cart_we;
+wire  [7:0] sd_din  = cart_wrdata;
+reg   [7:0] sdram [0:(1 << 22) - 1];
 reg   [7:0] sd_dout = 0;
 reg         ce_d = 0;
 reg   [1:0] sd_cnt = 0;
-reg  [15:0] sd_a;
+reg  [21:0] sd_a;
 always @(posedge clk) begin
-	ce_d <= ram_ce;
-	if (ram_ce & ~ce_d) begin
-		if (ram_we) sdram[c64_addr] <= c64_data_out;
-		sd_a   <= c64_addr;
+	ce_d <= sd_ce;
+	if (sd_ce & ~ce_d) begin
+		if (sd_we) sdram[sd_addr[21:0]] <= sd_din;
+		sd_a   <= sd_addr[21:0];
 		sd_cnt <= 2'd3;
 	end
 	if (sd_cnt != 0) begin
@@ -58,7 +94,18 @@ always @(posedge clk) begin
 end
 wire  [7:0] rw_mq;
 wire        rw_msel;
-wire  [7:0] c64_data_in = rw_msel ? rw_mq : sd_dout;
+assign      sdram_data = rw_msel ? rw_mq : sd_dout;
+
+// c64.sv's rule for a bank-switching cartridge: its registers touched -> no history for half a second
+// (here: 4 frames, to keep the run short)
+reg         cart_busy = 0;
+reg  [21:0] cart_to = 0;
+always @(posedge clk) begin
+	if (cart_on && cart_id != 8'd0 && (IOE | IOF)) cart_to <= 22'd2500000;
+	else if (cart_to != 0) cart_to <= cart_to - 1'd1;
+	cart_busy <= (cart_to != 0);
+end
+assign blocked = block | ~reset_n | cart_busy;
 
 wire         rw_freeze, rw_ld, rw_io_wr, rw_vic_we, rw_sid_we, rw_col_we;
 wire [175:0] rw_cpu_i;
@@ -80,9 +127,10 @@ fpga64_sid_iec c64
 	.cia_mode(1'b0), .turbo_mode(2'b00), .turbo_speed(2'b00),
 	.vic_variant(2'b00), .ntscMode(1'b0), .sysinfo(8'd0), .exact50(1'b1), .palette(3'd0), .split(1'b0), .quarter(1'b0),
 	.hsync(hs), .vsync(vs), .rgb_index(index), .rgb_pix_en(pix_en),
-	.game(1'b1), .exrom(1'b1), .io_rom(1'b0), .io_ext(1'b0), .io_data(8'hFF), .irq_n(1'b1), .nmi_n(1'b1),
+	.game(game), .exrom(exrom), .io_rom(io_rom), .io_ext(cart_oe), .io_data(cart_data), .irq_n(1'b1), .nmi_n(~nmi), .nmi_ack(nmi_ack),
+	.romL(romL), .romH(romH), .UMAXromH(UMAXromH), .IOE(IOE), .IOF(IOF),
 	.dma_req(1'b0), .dma_addr(16'd0), .dma_dout(8'd0), .dma_we(1'b0), .irq_ext_n(1'b1),
-	.joyA(joyA), .joyB(7'd0), .pot1(8'd0), .pot2(8'd0), .pot3(8'd0), .pot4(8'd0),
+	.joyA(joyA), .joyB(joyB), .pot1(8'd0), .pot2(8'd0), .pot3(8'd0), .pot4(8'd0),
 	.sid_filter(2'b11), .sid_ver(2'b00), .sid_mode(3'd0), .sid_cfg(4'd0), .sid_fc_off_l(13'd0), .sid_fc_off_r(13'd0),
 	.sid_ld_clk(clk), .sid_ld_addr(12'd0), .sid_ld_data(16'd0), .sid_ld_wr(1'b0),
 	.chip_we(1'b0), .chip_wside(1'b0), .chip_wtbl(2'd0), .chip_widx(12'd0), .chip_wdata(8'd0), .chip_on(2'b00),
@@ -113,7 +161,7 @@ wire        b_rd, b_we, b_busy, b_ready, d_rd, d_we, d_busy, d_ready;
 
 rewind #(.AW(AW)) rw
 (
-	.clk(clk), .reset(1'b0), .enable(enable), .hold(hold), .block(block | ~reset_n), .busy_dma(1'b0),
+	.clk(clk), .reset(1'b0), .enable(enable), .hold(hold), .block(blocked), .busy_dma(1'b0),
 	.tick(tick), .ry(ry), .freeze(rw_freeze),
 	.cpu_o(cpu_o), .cia1_o(cia1_o), .cia2_o(cia2_o),
 	.cpu_i(rw_cpu_i), .cia1_i(rw_cia1_i), .cia2_i(rw_cia2_i), .ld(rw_ld),
@@ -121,7 +169,7 @@ rewind #(.AW(AW)) rw
 	.vic_we(rw_vic_we), .vic_addr(rw_vic_addr), .vic_data(rw_vic_data),
 	.sid_we(rw_sid_we), .sid_cs(rw_sid_cs), .sid_addr(rw_sid_addr), .sid_data(rw_sid_data),
 	.col_we(rw_col_we), .col_addr(rw_col_addr), .col_data(rw_col_data),
-	.m_addr({9'd0, c64_addr}), .m_ce(ram_ce), .m_we(ram_we), .m_din(c64_data_out), .m_main(~io_cycle & ~ext_cycle),
+	.m_addr(sd_addr), .m_ce(sd_ce), .m_we(sd_we), .m_din(sd_din), .m_main(~io_cycle & ~ext_cycle),
 	.m_q(rw_mq), .m_sel(rw_msel),
 	.ddr_addr(b_addr), .ddr_burstcnt(b_burstcnt), .ddr_rd(b_rd), .ddr_we(b_we), .ddr_din(b_din), .ddr_be(b_be),
 	.ddr_busy(b_busy), .ddr_dout(d_dout), .ddr_ready(b_ready),
@@ -177,7 +225,7 @@ assign sid_wr = c64.sid.wr_any;
 initial begin
 	$readmemh("rom.hex", c64.buslogic.kernel_c64.ram);
 	$readmemh("chargen.hex", c64.buslogic.chargen.ram);
-	$readmemh("ram.hex", sdram);
+	$readmemh("ram.hex", sdram, 0, 65535);
 	$readmemh("ram.hex", rw.ram.m);
 end
 
