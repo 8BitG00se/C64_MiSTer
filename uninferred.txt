@@ -1,0 +1,11 @@
+Warning (276020): Inferred RAM node "emu:emu|fpga64_sid_iec:fpga64|octovic:octo|altsyncram:entb[0].m[0][15]__10" from synchronous design logic.  Pass-through logic has been added to match the read-during-write behavior of the original design.
+Warning (276020): Inferred RAM node "emu:emu|fpga64_sid_iec:fpga64|octovic:octo|altsyncram:entb[1].m[0][15]__11" from synchronous design logic.  Pass-through logic has been added to match the read-during-write behavior of the original design.
+Warning (276020): Inferred RAM node "emu:emu|fpga64_sid_iec:fpga64|octovic:octo|altsyncram:entb[2].m[0][15]__12" from synchronous design logic.  Pass-through logic has been added to match the read-during-write behavior of the original design.
+Warning (276020): Inferred RAM node "emu:emu|fpga64_sid_iec:fpga64|octovic:octo|altsyncram:entb[3].m[0][15]__13" from synchronous design logic.  Pass-through logic has been added to match the read-during-write behavior of the original design.
+Warning (276020): Inferred RAM node "emu:emu|fpga64_sid_iec:fpga64|octovic:octo|rqf_w_rtl_0" from synchronous design logic.  Pass-through logic has been added to match the read-during-write behavior of the original design.
+Warning (276020): Inferred RAM node "emu:emu|fpga64_sid_iec:fpga64|octovic:octo|rqf_t_rtl_0" from synchronous design logic.  Pass-through logic has been added to match the read-during-write behavior of the original design.
+Info (276014): Found 4 instances of uninferred RAM logic
+    Info (276004): RAM logic "emu:emu|drv_overlay:drv_ovl|snoop_data" is uninferred due to inappropriate RAM size File: /build/rtl/drv_overlay.sv Line: 53
+    Info (276004): RAM logic "emu:emu|drv_overlay:drv_ovl|wr_snoop_data" is uninferred due to inappropriate RAM size File: /build/rtl/drv_overlay.sv Line: 57
+    Info (276004): RAM logic "emu:emu|fpga64_sid_iec:fpga64|octovic:octo|cdl" is uninferred due to inappropriate RAM size File: /build/rtl/octovic/octovic.sv Line: 631
+    Info (276004): RAM logic "emu:emu|fpga64_sid_iec:fpga64|octovic:octo|kdl" is uninferred due to inappropriate RAM size File: /build/rtl/octovic/octovic.sv Line: 632
