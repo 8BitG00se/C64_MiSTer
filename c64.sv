@@ -1527,7 +1527,7 @@ drv_overlay drv_ovl (
 	.hblank(hblank),
 	.vblank(vblank),
 
-	.drive_osd_mode(status[86:85]),
+	.drive_osd_mode((status[86:85] == 2'd2) ? 2'd3 : status[86:85]),   // SPACE AUDIT: the Debug page off (reads as Off)
 	.ntsc(ntsc),
 	.drive_led(drive_led),
 	.drive_mounted(drive_mounted),
@@ -1535,10 +1535,10 @@ drv_overlay drv_ovl (
 	.drive_track_1(drive_track[1]),
 	.drive_we(drive_we),
 
-	.valid(dbg_valid),
+	.valid(1'b0),        // SPACE AUDIT: no DDRAM history for the Debug page
 	.addr(dbg_out_addr),
 	.data(dbg_ddram_data),
-	.wr_valid(dbg_wr_valid),
+	.wr_valid(1'b0),
 	.wr_addr(dbg_wr_addr),
 	.wr_data(dbg_wr_data),
 	.base_addr(dbg_base_addr),
