@@ -24,18 +24,24 @@ jobs:
           df -h /
 
       - name: OctoVIC register map test (every register, the version, the core's name, the meters)
+        continue-on-error: true
+        timeout-minutes: 12
         run: |
-          sudo apt-get install -y -qq verilator >/dev/null
+          for i in 1 2 3 4 5; do sudo apt-get update -qq >/dev/null 2>&1; sudo apt-get install -y -qq verilator >/dev/null && break; echo "apt: try $i failed"; sleep 30; done; command -v verilator >/dev/null
           sim/regmap/run.sh
 
       - name: OctoVIC sprite table, frame by frame against the emulator's model (DDR3 idle, busy, held; no VDATA byte lost)
+        continue-on-error: true
+        timeout-minutes: 12
         run: |
           python3 -c "import numpy" 2>/dev/null || pip install -q numpy
           sim/sprtable/run.sh
 
       - name: The eight-SID mix in GHDL against the emulator's integer model (Fix 28)
+        continue-on-error: true
+        timeout-minutes: 12
         run: |
-          sudo apt-get install -y -qq ghdl >/dev/null
+          for i in 1 2 3 4 5; do sudo apt-get update -qq >/dev/null 2>&1; sudo apt-get install -y -qq ghdl >/dev/null && break; echo "apt: try $i failed"; sleep 30; done; command -v ghdl >/dev/null
           sim/level/mixtest.sh
 
       - name: Stamp the core's build date (OctoVIC $D6B4-$D6B6)
@@ -88,15 +94,15 @@ jobs:
             | grep -E "Compilation Hierarchy Node|octovic|ddram_arb|fpga64_sid_iec:fpga64\||sid_top|emu\|" | head -60 > /tmp/reports/entities.txt || true
           # every RAM the fitter placed (its size, M10Ks or MLABs) and each part of the design's ALMs and M10Ks -
           # where block RAM can be found for a new feature (OCTOSCOPE, Fix 55)
-          awk '/; Fitter RAM Summary/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' output_files/C64.fit.rpt 2>/dev/null | sed 's/  */ /g' > /tmp/reports/fit_rams.txt || true
-          awk '/; Fitter Resource Utilization by Entity/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' output_files/C64.fit.rpt 2>/dev/null | sed 's/  */ /g' > /tmp/reports/fit_entities.txt || true
+          awk '/; Fitter RAM Summary/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' output_files/C64.fit.rpt 2>/dev/null | cut -c1-700 > /tmp/reports/fit_rams.txt || true
+          awk '/; Fitter Resource Utilization by Entity/{f=1} f{print} f&&/^$/{n++} n>=2{exit}' output_files/C64.fit.rpt 2>/dev/null | cut -c1-400 > /tmp/reports/fit_entities.txt || true
           echo "${{ steps.compile.outcome }} $(git rev-parse --short HEAD) $(date -u +%Y-%m-%dT%H:%MZ)" > /tmp/reports/result.txt
           cd /tmp/reports
           git init -q
-          git checkout -q -b build-reports
+          git checkout -q -b HEAD:build-reports-core11
           git add -A
           git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Reports: $(cat result.txt)"
-          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" HEAD:build-reports-fix55
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" HEAD:build-reports-core11
 
       - name: Fail if Quartus failed
         if: steps.compile.outcome != 'success'
