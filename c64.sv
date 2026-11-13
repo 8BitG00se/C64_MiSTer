@@ -866,7 +866,6 @@ always @(posedge clk_sys) begin
 end
 
 // Fix 58: hold SHIFT+F1 (KERNAL), F2 (RUN/STOP+RESTORE), F4 (wipe and restart)
-hotkeys hotkeys (.clk(clk_sys), .ps2_key(ps2_key), .kernal(hk_kernal), .brk(hk_brk), .wipe(hk_wipe), .spare(hk_spare));
 wire       hkb_busy, hkb_stb;
 wire [9:0] hkb_code;
 hotkey_break hotkey_break (.clk(clk_sys), .start(hk_brk), .busy(hkb_busy), .stb(hkb_stb), .code(hkb_code));
@@ -875,10 +874,15 @@ hotkey_break hotkey_break (.clk(clk_sys), .start(hk_brk), .busy(hkb_busy), .stb(
 // Build 12: the remaster keys (WIN+F1/F3/F5/F7/F8) - held back from the C64, so no game ever sees them
 rgbkeys rgbkeys (.clk(clk_sys), .ps2_key(ps2_key), .key_out(rk_key),
                  .home(rk_home), .pal(rk_pal), .grade(rk_grade), .grad(rk_grad), .save(rk_save), .rew(rk_rew), .l2(rk_l2), .learn(rk_learn));
-wire [10:0] c64_ps2 = rk_key;
+wire [10:0] kb_in = rk_key;
 `else
-wire [10:0] c64_ps2 = ps2_key;
+wire [10:0] kb_in = ps2_key;
 `endif
+
+// Fix 74: the SHIFT+F1-F4 hot keys sit in the keyboard stream to the C64 - a held one never reaches the game,
+// a tap is sent on as a short real key press (rtl/hotkeys.sv)
+wire [10:0] c64_ps2;
+hotkeys hotkeys (.clk(clk_sys), .ps2_key(kb_in), .key_out(c64_ps2), .kernal(hk_kernal), .brk(hk_brk), .wipe(hk_wipe), .spare(hk_spare));
 
 reg        start_strk = 0;
 reg        reset_keys = 0;
