@@ -210,6 +210,127 @@ static OB1_UNUSED int ob1_ini_set(const char *ini, const char *const *keys, cons
 	return changed;
 }
 
+// A file on a .d64, by NAME (ASCII; letters match either case): its bytes into BUF (at most MAX).
+// Returns the length, -1 not on the disk (or not a .d64 we can read).
+OB1_UNUSED static long ob1_d64_read(const char *path, const char *want, unsigned char *buf, long max)
+{
+	FILE *f = fopen(path, "rb");
+	if (!f) return -1;
+	unsigned char sec[256];
+	int t = 18, s = 1, guard = 0, ft = 0, fs = 0;
+	while (t && guard++ < 40 && !ft)
+	{
+		long o = ob1_d64_off(t, s);
+		if (o < 0 || fseek(f, o, SEEK_SET) || fread(sec, 1, 256, f) != 256) break;
+		for (int e = 0; e < 8 && !ft; e++)
+		{
+			const unsigned char *d = sec + e * 32;
+			if (!(d[2] & 0x80) || (d[2] & 7) == 0) continue;     // closed, not DEL
+			int l = 0;
+			for (; l < 16 && d[5 + l] != 0xA0; l++) ;
+			if ((int)strlen(want) != l) continue;
+			int same = 1;
+			for (int i = 0; i < l && same; i++)
+			{
+				int a = d[5 + i], b = (unsigned char)want[i];
+				if (a >= 0xC1 && a <= 0xDA) a -= 0x80;              // shifted letters as plain ones
+				if (b >= 'a' && b <= 'z') b -= 0x20;
+				if (a >= 'a' && a <= 'z') a -= 0x20;
+				same = a == b;
+			}
+			if (same) { ft = d[3]; fs = d[4]; }
+		}
+		if (!ft) { t = sec[0]; s = sec[1]; }
+	}
+	long n = 0;
+	guard = 0;
+	while (ft && guard++ < 800)
+	{
+		long o = ob1_d64_off(ft, fs);
+		if (o < 0 || fseek(f, o, SEEK_SET) || fread(sec, 1, 256, f) != 256) break;
+		int last = sec[0] ? 255 : sec[1];
+		for (int i = 2; i <= last && n < max; i++) buf[n++] = sec[i];
+		ft = sec[0]; fs = sec[1];
+	}
+	fclose(f);
+	return guard ? n : -1;
+}
+
+// PETSCII text (as OCTOCODE saves it: lines end with RETURN) to ASCII, the same table as COMPILE's
+OB1_UNUSED static int ob1_p2a(unsigned char c)
+{
+	if (c == 0x0D) return '\n';
+	if (c >= 0x41 && c <= 0x5A) return c + 0x20;
+	if (c >= 0xC1 && c <= 0xDA) return c - 0x80;
+	if (c >= 0x61 && c <= 0x7A) return c - 0x20;
+	if (c >= 0x20 && c <= 0x40) return c;
+	switch (c) { case 0x5B: return '['; case 0x5D: return ']'; case 0x5C: return '\\'; case 0x5E: return '^';
+	             case 0x5F: case 0xA4: return '_'; case 0xDB: return '{'; case 0xDD: return '}';
+	             case 0xDC: return '|'; case 0xDE: return '~'; case 0xA0: return ' '; }
+	return '?';
+}
+
+// Fix 57 (the file-only part): a big project in several files. Before ACME runs on DIR/MAIN, every
+//   !source "name"   (or !src)  and   !binary "name"   (or !bin)
+// line whose file is not in DIR yet is taken off the disk in drive 8 (D64): source files from PETSCII
+// to ASCII (and searched for their own !source lines in turn), binary files as they are. SAY gets one
+// line per file joined (and per file not found). Returns how many were joined.
+OB1_UNUSED static int ob1_join_sources(const char *dir, const char *main_asm, const char *d64, void (*say)(const char *))
+{
+	char queue[24][64];
+	int nq = 0, joined = 0;
+	snprintf(queue[nq++], 64, "%s", main_asm);
+	unsigned char *buf = (unsigned char *)malloc(65536);
+	if (!buf) return 0;
+	for (int qi = 0; qi < nq; qi++)
+	{
+		char path[1200];
+		snprintf(path, sizeof(path), "%s/%s", dir, queue[qi]);
+		FILE *f = fopen(path, "rb");
+		if (!f) continue;
+		char line[512];
+		while (fgets(line, sizeof(line), f))
+		{
+			char *p = line;
+			while (*p == ' ' || *p == '\t') p++;
+			int bin = 0;
+			if (!strncasecmp(p, "!source", 7) || !strncasecmp(p, "!src", 4)) bin = 0;
+			else if (!strncasecmp(p, "!binary", 7) || !strncasecmp(p, "!bin", 4)) bin = 1;
+			else continue;
+			char *q1 = strchr(p, '"');
+			if (!q1) continue;
+			char *q2 = strchr(q1 + 1, '"');
+			if (!q2 || q2 - q1 - 1 <= 0 || q2 - q1 - 1 > 16) continue;
+			char nm[20];
+			memcpy(nm, q1 + 1, q2 - q1 - 1);
+			nm[q2 - q1 - 1] = 0;
+			if (strchr(nm, '/') || strchr(nm, '\\') || strstr(nm, "..")) continue;
+			char out[1200];
+			snprintf(out, sizeof(out), "%s/%s", dir, nm);
+			FILE *t = fopen(out, "rb");
+			if (t) { fclose(t); continue; }                      // there already: ACME uses that one
+			char msg[96];
+			long n = d64 && d64[0] ? ob1_d64_read(d64, nm, buf, 65536) : -1;
+			if (n < 0) { snprintf(msg, sizeof(msg), "%s: not on the disk", nm); if (say) say(msg); continue; }
+			FILE *w = fopen(out, "wb");
+			if (!w) continue;
+			for (long i = 0; i < n; i++)
+			{
+				if (bin) fputc(buf[i], w);
+				else if (buf[i] != 0x0A) fputc(ob1_p2a(buf[i]), w);
+			}
+			fclose(w);
+			joined++;
+			snprintf(msg, sizeof(msg), "Joined %s from the disk", nm);
+			if (say) say(msg);
+			if (!bin && nq < 24) snprintf(queue[nq++], 64, "%s", nm);
+		}
+		fclose(f);
+	}
+	free(buf);
+	return joined;
+}
+
 // The four screen set-ups (Fix 38's VIDEO OUT, Fix 54's DUAL SCREEN set-up page) and what each
 // writes to MiSTer.ini. vsync_adjust=2 stays in all four (Fix 43: HDMI follows the core's 50 Hz).
 // Neal's own JVC CRT (VGA to 5 BNC, 15 kHz) + HDMI is "HDMI + CRT 15K" - the same two lines his

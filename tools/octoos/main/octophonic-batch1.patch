@@ -1,5 +1,5 @@
 diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
-index e0510ef..afa239d 100644
+index e0510ef..05d22f9 100644
 --- a/support/octo/octo.cpp
 +++ b/support/octo/octo.cpp
 @@ -43,6 +43,17 @@
@@ -252,7 +252,25 @@ index e0510ef..afa239d 100644
  // ------------------------------------------------------- CTRL+F12: out of a demo, to the start
  
  // a demo doesn't listen to the mailbox and often blocks RUN/STOP+RESTORE, so Main does it: the
-@@ -2405,6 +2564,9 @@ void octo_poll()
+@@ -2148,6 +2307,8 @@ static void comp_line(char *s)               // (comp_mx held) one line of ACME'
+ 	comp_add(s);
+ }
+ 
++static void comp_join_say(const char *m) { comp_add(m); }   // batch 1: (comp_mx held by cmd_compile)
++
+ static void comp_thread()                    // ACME, its output line by line into the log
+ {
+ 	std::string prg = comp_dir + "/" + comp_base + ".prg";
+@@ -2211,6 +2372,8 @@ static void cmd_compile(const char *name, int len, int arg)
+ 	fwrite(txt.data(), 1, txt.size(), f); fclose(f);
+ 	char buf[96];
+ 	snprintf(buf, sizeof(buf), "Saved %s.asm, %d lines", base.c_str(), lines); comp_add(buf);
++	// batch 1 (Fix 57): a project in several files - !source / !binary files not in the folder yet come off the disk
++	if (ends_with(disk8.c_str(), ".d64")) ob1_join_sources(dir.c_str(), (base + ".asm").c_str(), disk8.c_str(), comp_join_say);
+ 	comp_add("ACME " + base + ".asm");
+ 	std::thread(comp_thread).detach();
+ 	mb_reply(ST_DONE, 0, (int)comp_log.size(), 0);
+@@ -2405,6 +2568,9 @@ void octo_poll()
  	case 0x12: cmd_menu(); break;
  	case 0x17: cmd_drive8(addr); break;
  	case 0x18: cmd_reu(name, reg[R_ARG] & 1); break;
@@ -262,7 +280,7 @@ index e0510ef..afa239d 100644
  	default:   mb_reply(E_BADCMD, 0); break;
  	}
  	if (strcmp(was, cwd)) keep_cwd();
-@@ -2412,7 +2574,7 @@ void octo_poll()
+@@ -2412,7 +2578,7 @@ void octo_poll()
  	// was the answer taken? (the 6502 may have given up and asked something else meanwhile)
  	// (not after RUN, OPEN or a preset: the core may already be restarting)
  	int taken = 1;
