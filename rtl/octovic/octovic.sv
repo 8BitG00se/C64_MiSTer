@@ -201,8 +201,9 @@ endfunction
 // (16 deep it was 15 us - and a lost byte shifts every byte after it in the upload: in a sprite table
 // the sprites from there on land in the wrong places). A byte that still finds it full is counted
 // in LOST ($D6B2), so a real machine can show whether that ever happens.
-(* ramstyle = "MLAB, no_rw_check" *) reg  [31:0] wf[64];
+// SPACE AUDIT: the FIFO in an MLAB (ovlab, ovram.sv) - as a reg array Quartus built it from 2,048 registers
 reg   [5:0] wf_r, wf_w;
+wire [31:0] wf_q;
 wire  [5:0] wf_cnt = wf_w - wf_r;
 reg   [7:0] vlost;             // VDATA writes lost (the FIFO full) since reset or the last write to $D6B2
 wire        ren_urgent;        // the renderer's line is due next (set by the renderer, below)
@@ -225,6 +226,9 @@ wire        rw_en = cpu_w | cop_w;
 wire  [7:0] rw_a  = cpu_w ? addr : cop_wa;
 wire  [7:0] rw_d  = cpu_w ? din  : cop_wd;
 wire        rw_cpu = cpu_w;
+// SPACE AUDIT: the VDATA write (register $04, from the CPU, FIFO not full) - as the case below does it
+wire        wf_we = !reset && rw_en && rw_a == 8'h04 && rw_cpu && !wf_full;
+ovlab #(.AW(6), .DW(32)) wfm (.clk(clk), .we(wf_we), .wa(wf_w), .wd({vaddr, rw_d}), .ra(wf_r), .q(wf_q));
 
 always @(posedge clk) begin
 	pal_we <= 0;
@@ -280,7 +284,7 @@ always @(posedge clk) begin
 				8'h02: if (rw_cpu) begin vaddr[23:16] <= rw_d; pf_req <= 1; end
 				8'h03: if (rw_cpu) vinc <= rw_d;
 				8'h04: if (rw_cpu & ~wf_full) begin
-						wf[wf_w] <= {vaddr, rw_d}; wf_w <= wf_w + 6'd1;
+						wf_w <= wf_w + 6'd1;   // (the word: wf_we below)
 						vaddr <= vaddr + {16'd0, vinc}; pf_req <= 1;
 					end
 					else if (rw_cpu && vlost != 8'hFF) vlost <= vlost + 8'd1;
@@ -480,9 +484,9 @@ always @(posedge clk) begin
 				rqf_rp   <= rqf_rp + 3'd1;
 			end
 			else if (!wf_empty) begin
-				ddr_addr <= VBASE + {8'd0, wf[wf_r][31:11]};
-				ddr_din  <= {8{wf[wf_r][7:0]}};
-				ddr_be   <= 8'd1 << wf[wf_r][10:8];
+				ddr_addr <= VBASE + {8'd0, wf_q[31:11]};
+				ddr_din  <= {8{wf_q[7:0]}};
+				ddr_be   <= 8'd1 << wf_q[10:8];
 				ddr_we   <= 1;
 				wf_r     <= wf_r + 6'd1;
 			end
@@ -567,16 +571,19 @@ always @(posedge clk) begin
 end
 
 // the answers: into a FIFO with their tags
-(* ramstyle = "MLAB, no_rw_check" *) reg  [63:0]   df_d[32];
-(* ramstyle = "MLAB, no_rw_check" *) reg [TW-1:0]  df_t[32];
+// SPACE AUDIT: the answers FIFO in MLABs (ovlab, ovram.sv) - as reg arrays Quartus built them from 3,584 registers
 reg   [4:0]   df_r, df_w;
+wire  [63:0]  df_dq;
+wire [TW-1:0] df_tq;
+ovlab #(.AW(5), .DW(64)) df_dm (.clk(clk), .we(!reset && ddr_dout_ready), .wa(df_w), .wd(ddr_dout), .ra(df_r), .q(df_dq));
+ovlab #(.AW(5), .DW(TW)) df_tm (.clk(clk), .we(!reset && ddr_dout_ready), .wa(df_w), .wd(tf[tf_r]), .ra(df_r), .q(df_tq));
 wire          df_pop;
 // MEMORY BUILD: the renderer's own reads not yet used (asked for and on their way, or back and
 // waiting) - a line is done when its own are in, not when the port is empty (the blitter's and the
 // VDATA port's reads kept it from ever being empty, so a line waited thousands of clocks at its end)
 reg  [6:0] ren_out;
 wire       ren_kind_acc = cmd_tag[2:0] != K_VRD && cmd_tag[2:0] != K_BLT;
-wire       ren_kind_pop = df_t[df_r][2:0] != K_VRD && df_t[df_r][2:0] != K_BLT;
+wire       ren_kind_pop = df_tq[2:0] != K_VRD && df_tq[2:0] != K_BLT;
 always @(posedge clk) begin
 	if (reset) ren_out <= 0;
 	else ren_out <= ren_out + ((accepted_rd && ren_kind_acc) ? 7'd1 : 7'd0) - ((df_pop && ren_kind_pop) ? 7'd1 : 7'd0);
@@ -590,8 +597,7 @@ always @(posedge clk) begin
 		outstanding <= outstanding + (accepted_rd ? 6'd1 : 6'd0) - (ddr_dout_ready ? 6'd1 : 6'd0);
 		df_count    <= df_count + (ddr_dout_ready ? 6'd1 : 6'd0) - (df_pop ? 6'd1 : 6'd0);
 		if (ddr_dout_ready) begin
-			df_d[df_w] <= ddr_dout; df_t[df_w] <= tf[tf_r];
-			df_w <= df_w + 5'd1; tf_r <= tf_r + 5'd1;
+						df_w <= df_w + 5'd1; tf_r <= tf_r + 5'd1;
 		end
 	end
 end
@@ -963,31 +969,31 @@ always @(posedge clk) begin
 			end
 		end
 		else if (df_pop) begin
-			c_d <= df_d[df_r]; c_t <= df_t[df_r]; df_r <= df_r + 5'd1;
-			case (df_t[df_r][2:0])
+			c_d <= df_dq; c_t <= df_tq; df_r <= df_r + 5'd1;
+			case (df_tq[2:0])
 				K_MAP: begin
 					for (k = 0; k < 4; k = k + 1)
-						if (k >= df_t[df_r][10:9]) begin
+						if (k >= df_tq[10:9]) begin
 							reg [5:0] ei;
-							ei = df_t[df_r][8:3] + k[5:0] - {4'd0, df_t[df_r][10:9]};
-							ent_we[ei[1:0]] <= 1; ent_wa[ei[1:0]] <= ei[5:2]; ent_wd[ei[1:0]] <= df_d[df_r][k*16 +: 16];
+							ei = df_tq[8:3] + k[5:0] - {4'd0, df_tq[10:9]};
+							ent_we[ei[1:0]] <= 1; ent_wa[ei[1:0]] <= ei[5:2]; ent_wd[ei[1:0]] <= df_dq[k*16 +: 16];
 						end
 					map_done <= map_done + 8'd1;
 `ifdef OCTO_DEBUG
-					if (L == 9'd200 && df_t[df_r][8:3] < 6'd8) $display("  MAP i0 %0d lane %0d data %h", df_t[df_r][8:3], df_t[df_r][10:9], df_d[df_r]);
+					if (L == 9'd200 && df_tq[8:3] < 6'd8) $display("  MAP i0 %0d lane %0d data %h", df_tq[8:3], df_tq[10:9], df_dq);
 `endif
 				end
-				K_TILE: begin c_busy <= 1; c_g <= 0; c_ng <= df_t[df_r][20] ? 2'd0 : 2'd1; end
+				K_TILE: begin c_busy <= 1; c_g <= 0; c_ng <= df_tq[20] ? 2'd0 : 2'd1; end
 				K_SPR: begin
 					c_busy <= 1; c_g <= 0;
 					// a word holds 8 pixels of 256 colours, 16 of 16 colours, or 8 (a half) of an 8-wide 16-colour sprite
-					c_ng <= (df_t[df_r][27] || df_t[df_r][20:19] == 2'd0) ? 2'd1 : 2'd3;
+					c_ng <= (df_tq[27] || df_tq[20:19] == 2'd0) ? 2'd1 : 2'd3;
 				end
-				K_SAT: begin sat_we <= 1; sat_wa <= df_t[df_r][9:3]; sat_wd <= df_d[df_r]; end
-				K_LS:  if (!df_t[df_r][5]) begin ls_val <= df_d[df_r][df_t[df_r][4:3]*16 +: 16]; ls_got <= 1; end   // (b5: a scope word, below)
-				K_COP: begin cq_d[cop_arr[2:0]] <= df_d[df_r]; cop_arr <= cop_arr + 8'd1; end
-				K_VRD: vrd_data <= df_d[df_r][df_t[df_r][5:3]*8 +: 8];
-				K_BLT: begin blt_rdata <= df_d[df_r]; blt_got <= 1; end
+				K_SAT: begin sat_we <= 1; sat_wa <= df_tq[9:3]; sat_wd <= df_dq; end
+				K_LS:  if (!df_tq[5]) begin ls_val <= df_dq[df_tq[4:3]*16 +: 16]; ls_got <= 1; end   // (b5: a scope word, below)
+				K_COP: begin cq_d[cop_arr[2:0]] <= df_dq; cop_arr <= cop_arr + 8'd1; end
+				K_VRD: vrd_data <= df_dq[df_tq[5:3]*8 +: 8];
+				K_BLT: begin blt_rdata <= df_dq; blt_got <= 1; end
 				default: ;
 			endcase
 		end
@@ -1497,7 +1503,7 @@ octoscope scope
 wire [63:0] scq;
 ovram #(.AW(6), .DW(64)) scache
 (
-	.clk(clk), .we(df_pop && df_t[df_r][2:0] == K_LS && df_t[df_r][5]), .wa(df_t[df_r][11:6]), .wd(df_d[df_r]),
+	.clk(clk), .we(df_pop && df_tq[2:0] == K_LS && df_tq[5]), .wa(df_tq[11:6]), .wd(df_dq),
 	.ra(sc_w[8:3]), .q(scq)
 );
 
