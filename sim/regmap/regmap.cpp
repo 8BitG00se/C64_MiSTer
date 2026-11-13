@@ -61,6 +61,10 @@ int main (int argc, char **argv) {
     t->quarter = 1; if ((rd (0x08) & 0x30) != 0x10) { printf ("FAIL STATUS b4/b5 with quarter pixels on: $%02X\n", rd (0x08)); fails++; }
     t->quarter = 0; if ((rd (0x08) & 0x30) != 0x00) { printf ("FAIL STATUS b4/b5 with quarter pixels off: $%02X\n", rd (0x08)); fails++; }
     if (ver < 4) { printf ("FAIL VERSION $D61F = %d, want 4 or more (FINE SCROLL)\n", ver); fails++; }
+    // OCTOSCOPE (Fix 55): VERSION 5; its registers $C4-$CB take writes (sim/octoscope draws with them) and, like every
+    // register not listed, read $FF
+    if (ver < 5) { printf ("FAIL VERSION $D61F = %d, want 5 or more (OCTOSCOPE)\n", ver); fails++; }
+    for (int a = 0xC4; a <= 0xCB; a++) { wr (a, 0x12); want ("OCTOSCOPE reg (reads $FF)", a, rd (a), 0xFF); wr (a, 0); }
     printf (fails ? "REGMAP: %d FAILED\n" : "REGMAP: all registers right\n", fails);
     delete t; return fails ? 1 : 0;
 }

@@ -2,10 +2,13 @@ OCTOPHONIC FUSION build @BUILD@ - one card, flashed once from the PC
 =====================================================================
 
 What it is: a whole MiSTer on one SD card image (MiSTer @REL@, set up by MiSTer's own Mr. Fusion
-@MRF@) with Octophonic 64 already in: Core 9, Octophonic Main, the browser, the front screen, and
+@MRF@) with Octophonic 64 already in: Core 10, Octophonic Main, the browser, the front screen, and
 OCTOCODE (edit, compile and run) in games/C64/Tools. Power on and it goes straight into Octophonic 64.
 
 NEW IN THIS BUILD
+ - Core 10: OCTOSCOPE (OctoVIC version 5) - a real oscilloscope of every SID voice (all 24, and each
+   SID's whole output), phase-locked so a note stands still, drawn by OctoVIC as a layer. OctoPlay
+   build 4 (from the website) shows it. Everything from Core 9 is in too:
  - Core 9: EXACT 50 Hz on by default (50.000 frames a second, so captures have no hitches; the
    original PAL 50.12 Hz is an option), OctoVIC FINE SCROLL (quarter-pixel layer scrolling), and
    games/C64/Apps is now games/C64/Tools (your files are moved over).
@@ -13,11 +16,14 @@ NEW IN THIS BUILD
    updated by itself the first time the card starts - no batch file to click. The screen goes dark
    for about 4 minutes while it updates (the MiSTer keeps running); octophonic/update.log says so.
  - MiSTer.ini: vsync_adjust=2, so HDMI follows the core's 50 Hz (smooth on the CRT and HDMI).
- - HOT KEYS (Core 9): from anything running, HOLD for about a second -
+ - HOT KEYS (Core 9 on): from anything running, HOLD for about a second -
      SHIFT+F1  back to the KERNAL start screen     SHIFT+F2  RUN/STOP+RESTORE
      SHIFT+F4  wipe memory and restart              (SHIFT+F3 is spare; the MiSTer menu is F12)
    A quick tap still does what it always did.
  - Tools/SPEC.PRG: what this machine has - core, OctoVIC, SIDs, SDRAM size, REU, PAL/NTSC.
+ - My Chips: your own measured SID chips (6581 5084, 6581 3184, 8580 3591, 8580 4687) for the core menu's
+   Load My Chip lines and OctoPlay's F3/F5.
+ - Tools/TESTCARD.PRG: a test card (crosshatch and circles) for setting up a CRT or checking HDMI.
 The other folders are empty, ready for your own files: demos, tools and games come from the
 website (GitHub).
 

@@ -14,7 +14,7 @@ lines may fall more than three behind.
 
 | memory | used by | notes |
 |---|---|---|
-| DDR3 (the DE10-Nano's 1 GB, shared with the ARM) | Linux and Main on the ARM; the MiSTer scaler (ascal) - every HDMI frame is written to and read from DDR3, even with HDMI unplugged; the core: OctoVIC's 16 MB VRAM at $32000000, and the drives' track buffers at $30000000 | the core reaches it through one 64-bit port at 31.5 MHz; ddram_arb2 gives it to the drives or OctoVIC in turn |
+| DDR3 (the DE10-Nano's 1 GB, shared with the ARM) | Linux and Main on the ARM; the MiSTer scaler (ascal) - every HDMI frame is written to and read from DDR3, even with HDMI unplugged; the core: OctoVIC's 16 MB VRAM at $32000000, OCTOSCOPE's captures at $33000000 (29,184 bytes, version 5), and the drives' track buffers at $30000000 | the core reaches it through one 64-bit port at 31.5 MHz; ddram_arb2 gives it to the drives or OctoVIC in turn |
 | SDRAM board (32 MB) | the C64's RAM, cartridges, and the 16 MB REU at $1000000 | an 8-bit controller locked to the C64's bus (one byte per C64 half-cycle). Full, and far too slow for OctoVIC - not an option for VRAM |
 | FPGA block RAM | line buffer (4 lines x 512 pixels), sprite table, palettes, the SID chip tables | 550 of 553 blocks used: no room for more buffering |
 
@@ -154,3 +154,25 @@ and requests are what runs out.
 OctoBench (a 6502 program) steps through those 13 tests on the real MiSTer, ~1 s each, and prints
 LATE, WORST, LEAD, LATMAX, STALL and REPEAT+BLANK for each - green within the limit, red over it.
 That table is the machine's real limits; the replay numbers above are only a model of its DDR3.
+
+## OCTOSCOPE (Fix 55): its memory
+
+Neal's decision (11 Nov 2026): the scope must work fully, and the MiSTer side stays as it is (the framework in
+sys/, the Sound Expander) - so OCTOSCOPE keeps its captures in the DDR3, not in block RAM.
+
+**The memory map.** DDR3 byte $33000000 - $33007200 (29,184 bytes, just above the 16 MB of VRAM at $32000000):
+96 slots of 304 bytes, slot (channel x 3 + n) at $33000000 + slot x 304; 38 64-bit words a slot. Nothing else uses
+it; programs cannot reach it (VADDR is 24 bits: the VRAM only).
+
+**The traffic.** Writes: each channel gathers its samples into one 8-byte word on chip and queues the word when the
+next sample is for another word or the capture completes - at most one word a channel a microsecond; a 440 Hz note
+is a word every ~120 us. The queue is 256 words (128 us at the worst possible rate) in block RAM; its words go to
+the port after the renderer's reads (and before them only when it is over half full), after the VRAM writes, before
+the blitter. Reads: a scope line reads its channel's 38 words into a line cache only when the channel or the frame
+changes - at most one bitmap line's worth on a band's first line.
+
+**On chip (block RAM, about 8 M10Ks):** each channel's capture state and its word being gathered (140 bits), the
+slots' rules (96 x 34 bits), the write queue (256 x 84 bits), the line cache (38 x 64 bits).
+
+The first version kept all three slots in block RAM (32 M10Ks); with 5 free that only fitted with the Sound
+Expander taken out (a measurement build, branch fix55-trial-noopl: 543/553 M10Ks, 98% of the logic) - not an option.

@@ -23,7 +23,19 @@ module sid_voice
 	output        osc_msb_out,
 	output [21:0] voice_out,
 	output [ 7:0] osc_out,
-	output [ 7:0] env_out
+	output [ 7:0] env_out,
+
+	// OCTOPHONIC OCTOSCOPE (Fix 55): what the scope takes from this voice each microsecond - all registered at
+	// ce_1m, so they hold the values as this microsecond's edge left them (the emulator's octovic_scope_tick runs
+	// right after coresid_clock): the DAC value less its DC (dac_out), the envelope after its DAC, the oscillator's
+	// top 16 bits, whether it wrapped at this edge (new < old: an overflow, or set to 0 by test/sync/reset from
+	// anything but 0 - the scope works that out from these and the last microsecond's), and FREQ >= 839 (the
+	// phase-locked capture)
+	output [12:0] sc_dac,
+	output [ 7:0] sc_env,
+	output [15:0] sc_acc,
+	output        sc_lonz,      // oscillator[7:0] != 0
+	output        sc_lock
 );
 
 localparam        [12:0] WAVEFORM_DC_6581 = 13'h380;         // OSC3 = 'h38 at 5.94V.
@@ -63,15 +75,19 @@ sid_envelope adsr
 // Phase Accumulating Oscillator
 reg  [23:0] oscillator;
 reg         osc_msb_in_prv;
+reg         test_delay;
+reg         sc_lock_r;
 always @(posedge clock) begin
-	reg test_delay;
-
 	if(ce_1m) begin
 		osc_msb_in_prv <= osc_msb_in;
 		test_delay <= mode & test_ctrl;
 		oscillator <= (reset || test_ctrl || test_delay || (sync_ctrl && ~osc_msb_in && osc_msb_in_prv)) ? 24'd0 : (oscillator + freq);
+		sc_lock_r  <= freq >= 16'd839;                                    // OCTOSCOPE: FREQ as this edge saw it
 	end
 end
+assign sc_acc  = oscillator[23:8];
+assign sc_lonz = |oscillator[7:0];
+assign sc_lock = sc_lock_r;
 
 assign acc_t = {oscillator[23], oscillator[22:12] ^ {11{~control[5] & ((ringmod_ctrl & ~osc_msb_in) ^ oscillator[23])}}};
 
@@ -176,10 +192,12 @@ always @(posedge clock) if(ce_1m) wave_out <= norm[11:4] | comb;
 
 // DAC with floating input simulation
 reg signed [21:0] dca_out;
+reg signed  [8:0] env_dac;
+reg signed [12:0] dac_out;
+assign sc_dac = dac_out;
+assign sc_env = env_dac[7:0];
 always @(posedge clock) begin
 	reg        [23:0] keep_cnt;
-	reg signed  [8:0] env_dac;
-	reg signed [12:0] dac_out;
 
 	if(ce_1m) begin
 		if(control[7:4]) begin

@@ -417,6 +417,10 @@ signal sid3_aud_l   : std_logic_vector(17 downto 0);
 signal sid3_aud_r   : std_logic_vector(17 downto 0);
 signal sid4_aud_l   : std_logic_vector(17 downto 0);
 signal sid4_aud_r   : std_logic_vector(17 downto 0);
+-- OCTOSCOPE (Fix 55): the voice OctoVIC's scope asks the four SID pairs for, their answers, their whole outputs
+signal sc_sel       : std_logic_vector(2 downto 0);
+signal sc_rec1, sc_rec2, sc_rec3, sc_rec4 : std_logic_vector(39 downto 0);
+signal sc_aud1, sc_aud2, sc_aud3, sc_aud4 : std_logic_vector(15 downto 0);
 signal pot_x1       : std_logic_vector(7 downto 0);
 signal pot_y1       : std_logic_vector(7 downto 0);
 signal pot_x2       : std_logic_vector(7 downto 0);
@@ -475,7 +479,10 @@ component sid_top
 		chip_ql       : in  std_logic_vector(31 downto 0);
 		chip_qr       : in  std_logic_vector(31 downto 0);
 		chip_on       : in  std_logic_vector(1 downto 0);
-		eq_any        : in  std_logic := '0'
+		eq_any        : in  std_logic := '0';
+		sc_sel        : in  std_logic_vector(2 downto 0) := "000";
+		sc_rec        : out std_logic_vector(39 downto 0);
+		sc_aud        : out std_logic_vector(15 downto 0)
   );
 end component;
 
@@ -563,7 +570,11 @@ port (
 	ddr_dout       : in  std_logic_vector(63 downto 0);
 	ddr_dout_ready : in  std_logic;
 	irq            : out std_logic;
-	sysinfo        : in  std_logic_vector(7 downto 0)
+	sysinfo        : in  std_logic_vector(7 downto 0);
+	sid_ce         : in  std_logic;
+	sc_sel         : out std_logic_vector(2 downto 0);
+	sc_rec0, sc_rec1, sc_rec2, sc_rec3 : in std_logic_vector(39 downto 0);
+	sc_aud0, sc_aud1, sc_aud2, sc_aud3 : in std_logic_vector(15 downto 0)
 );
 end component;
 
@@ -1012,7 +1023,17 @@ port map (
 	ddr_dout       => ogx_ddr_dout,
 	ddr_dout_ready => ogx_ddr_dout_ready,
 	irq            => octo_irq,
-	sysinfo        => sysinfo
+	sysinfo        => sysinfo,
+	sid_ce         => enableSid,
+	sc_sel         => sc_sel,
+	sc_rec0        => sc_rec1,
+	sc_rec1        => sc_rec2,
+	sc_rec2        => sc_rec3,
+	sc_rec3        => sc_rec4,
+	sc_aud0        => sc_aud1,
+	sc_aud1        => sc_aud2,
+	sc_aud2        => sc_aud3,
+	sc_aud3        => sc_aud4
 );
 end generate;
 
@@ -1258,7 +1279,10 @@ port map (
 	chip_ql => cql1,
 	chip_qr => cqr1,
 	chip_on => chip_on,
-	eq_any  => eq_any
+	eq_any  => eq_any,
+	sc_sel  => sc_sel,
+	sc_rec  => sc_rec1,
+	sc_aud  => sc_aud1
 );
 
 g_sids: if REWIND = 0 generate
@@ -1302,7 +1326,10 @@ port map (
 	chip_ql => cql2,
 	chip_qr => cqr2,
 	chip_on => chip_on,
-	eq_any  => eq_any
+	eq_any  => eq_any,
+	sc_sel  => sc_sel,
+	sc_rec  => sc_rec2,
+	sc_aud  => sc_aud2
 );
 
 -- OCTOPHONIC: SIDs 5 and 6 ($D480, $D4A0)
@@ -1345,7 +1372,10 @@ port map (
 	chip_ql => cql3,
 	chip_qr => cqr3,
 	chip_on => chip_on,
-	eq_any  => eq_any
+	eq_any  => eq_any,
+	sc_sel  => sc_sel,
+	sc_rec  => sc_rec3,
+	sc_aud  => sc_aud3
 );
 
 -- OCTOPHONIC: SIDs 7 and 8 ($D580, $D5A0)
@@ -1388,7 +1418,10 @@ port map (
 	chip_ql => cql4,
 	chip_qr => cqr4,
 	chip_on => chip_on,
-	eq_any  => eq_any
+	eq_any  => eq_any,
+	sc_sel  => sc_sel,
+	sc_rec  => sc_rec4,
+	sc_aud  => sc_aud4
 );
 end generate;
 

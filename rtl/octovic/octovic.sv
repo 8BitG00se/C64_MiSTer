@@ -53,7 +53,13 @@ module octovic
 	input             ddr_dout_ready,
 
 	output            irq,         // version 2: the interrupt, high while any enabled flag is set
-	input       [7:0] sysinfo      // Fix 59: read at $D6B3 - b7 SDRAM size known, b1-0 SDRAM (0 none, 1 32MB, 2 64MB, 3 128MB), b5-4 REU (0 off, 1 512K, 2 2MB, 3 16MB)
+	input       [7:0] sysinfo,     // Fix 59: read at $D6B3 - b7 SDRAM size known, b1-0 SDRAM (0 none, 1 32MB, 2 64MB, 3 128MB), b5-4 REU (0 off, 1 512K, 2 2MB, 3 16MB)
+
+	// version 5, OCTOSCOPE (Fix 55): the SIDs' microsecond, and what the scope takes from them (octoscope.sv)
+	input             sid_ce,
+	output      [2:0] sc_sel,
+	input      [39:0] sc_rec0, sc_rec1, sc_rec2, sc_rec3,
+	input      [15:0] sc_aud0, sc_aud1, sc_aud2, sc_aud3
 );
 
 // THE CORE'S NAME, readable by the 6502 so the start screen, the settings page and the demos can
@@ -61,9 +67,9 @@ module octovic
 // spaces), $D6B4-$D6B6 its build date (BCD: day, month, year - 20xx). The build stamps CORE_DATE
 // (.github/workflows/build.yml); CORE_TAG is set by hand for each core build.
 `ifdef RGB256
-localparam [63:0] CORE_TAG  = "OCTRGB12";      // Octophonic64RGB build 12 (Fix 60): the same source, the recolour core
+localparam [63:0] CORE_TAG  = "OCTRGB14";      // Octophonic64RGB build 14 (Fix 60): the same source, the recolour core
 `else
-localparam [63:0] CORE_TAG  = "CORE9   ";
+localparam [63:0] CORE_TAG  = "CORE13  ";      // Core 13: the merged release line (OctoScope + RGB/Rewind line, no Sound Expander)
 `endif
 localparam [23:0] CORE_DATE = 24'h261101;      // BCD yymmdd
 localparam [28:0] VBASE = 29'h06400000;        // byte $32000000
@@ -108,6 +114,34 @@ reg   [1:0] lfine[2];
 reg   [1:0] sprfine;
 reg  [23:0] vpal[16];
 reg  [23:0] backdrop;
+// version 5, OCTOSCOPE: the channel shown (b5: SID b2-0's whole output, else voice 0-23), the centre line, half
+// the height, the gain, the colour (the glow SCC + 1), the x of the first sample, b0 the glow
+reg   [7:0] scv, sch, scg, scc, scx0, scf;
+reg   [8:0] scy;
+// the scope as the renderer draws a line of it (latched from the registers at the scope pass's start)
+reg   [4:0] sc_ch;
+reg   [9:0] sc_dy;                  // the line less SCY (signed; within +-SCH when drawn)
+reg   [1:0] sc_lm;
+reg   [2:0] sc_pass, sc_cnt;
+reg   [8:0] sc_w;                   // the sample being drawn (0-303), or the word being fetched (0-37)
+reg         sc_lreq;                // a frame begins: latch the captures
+wire        sc_rok;                 // the shown captures may be read
+wire        sc_gen;                 // flips at each latch
+wire  [6:0] sc_slot;
+wire [11:0] sc_word;                // its first word in the DDR3 area
+wire [33:0] sc_desc;
+wire        sc_zero;
+reg         sc_cv, sc_cg;           // the line cache: holds a slot, of which latch
+reg   [4:0] sc_ct;                  //   ... of this channel
+reg         sc_inj;                 // a scope pixel for the consumer this clock
+reg         sc_pv;
+reg   [8:0] sc_px;
+reg   [7:0] sc_pc;
+wire        sq_valid, sq_full;      // the scope's write queue to the DDR3
+wire [11:0] sq_addr;
+wire [63:0] sq_data;
+wire  [7:0] sq_be;
+wire        sq_take;
 reg   [7:0] frame;
 reg   [7:0] vrd_data;
 // version 2 -------------------------------------------------------------------------
@@ -208,6 +242,7 @@ always @(posedge clk) begin
 		mula <= 0; mulb <= 0; mathctl <= 0; divn <= 0; divd <= 0; divq <= 0; divr <= 0; div_busy <= 0;
 		bsrc <= 0; bdst <= 0; bw <= 0; bh <= 0; bss <= 0; bds <= 0; bfill <= 0; bop <= 0; blt_go <= 0;
 		lx0 <= 0; ly0 <= 0; lx1 <= 0; ly1 <= 0;
+		scv <= 0; scy <= 0; sch <= 0; scg <= 0; scc <= 0; scx0 <= 0; scf <= 0;
 		irqline <= 0; irqen <= 0; irqst <= 0; irq_prev_y <= 0; collidx <= 0;
 	end
 	else begin
@@ -317,6 +352,14 @@ always @(posedge clk) begin
 				8'h82: irqen <= rw_d[3:0];
 				8'h83: irqst <= irqst & ~rw_d[3:0];
 				8'h84: collidx <= rw_d[3:0];
+				// version 5: OCTOSCOPE (the CPU or the copper; not read back - those read $FF)
+				8'hC4: scv <= rw_d;
+				8'hC5: scy[7:0] <= rw_d;  8'hC6: scy[8] <= rw_d[0];
+				8'hC7: sch <= rw_d;
+				8'hC8: scg <= rw_d;
+				8'hC9: scc <= rw_d;
+				8'hCA: scx0 <= rw_d;
+				8'hCB: scf <= rw_d;
 				8'h88: af_u0[7:0]   <= rw_d;  8'h89: af_u0[15:8]   <= rw_d;  8'h8A: af_u0[23:16]   <= rw_d;  8'h8B: af_u0[31:24]   <= rw_d;
 				8'h8C: af_v0[7:0]   <= rw_d;  8'h8D: af_v0[15:8]   <= rw_d;  8'h8E: af_v0[23:16]   <= rw_d;  8'h8F: af_v0[31:24]   <= rw_d;
 				8'h90: af_dux[7:0]  <= rw_d;  8'h91: af_dux[15:8]  <= rw_d;  8'h92: af_dux[23:16]  <= rw_d;  8'h93: af_dux[31:24]  <= rw_d;
@@ -340,7 +383,7 @@ always @(*) begin
 		8'h09: dout = vic_y[7:0];   8'h0A: dout = {7'd0, vic_y[8]};  8'h0B: dout = frame;
 		8'h0C: dout = xadj;         8'h0D: dout = yadj;          8'h0E: dout = {7'd0, copen};
 		8'h0F: dout = sprcount;     8'h19: dout = {6'd0, palsel}; 8'h1A: dout = palidx;
-		8'h1E: dout = 8'h8C;        8'h1F: dout = 8'h04;   // VERSION 4: FINE SCROLL ($07, $27, $37; STATUS b4). 3: the memory work (line-end wait, copper read-ahead, late-line repeat, meters $A8-$B1)
+		8'h1E: dout = 8'h8C;        8'h1F: dout = 8'h05;   // VERSION 5: OCTOSCOPE ($C4-$CB, LMODE b4). 4: FINE SCROLL ($07, $27, $37; STATUS b4). 3: the memory work (line-end wait, copper read-ahead, late-line repeat, meters $A8-$B1)
 		8'hA0: dout = h_late;       8'hA1: dout = h_late0;       8'hA2: dout = h_late1;      8'hA3: dout = h_lateo;
 		8'hA4: dout = h_first[7:0]; 8'hA5: dout = {7'd0, h_first[8]};
 		8'hA6: dout = h_total[7:0]; 8'hA7: dout = h_total[15:8];
@@ -391,7 +434,7 @@ localparam K_MAP = 3'd0, K_TILE = 3'd1, K_SPR = 3'd2, K_SAT = 3'd3, K_LS = 3'd4,
 localparam TW = 48;
 
 // the renderer's requests: a little FIFO, so it can ask once a clock
-reg    [20:0] rqf_w[4];
+reg    [21:0] rqf_w[4];             // (version 5: 22 bits - the scope's captures are above the VRAM)
 reg  [TW-1:0] rqf_t[4];
 reg     [2:0] rqf_wp, rqf_rp;
 wire          rqf_empty = rqf_wp == rqf_rp;
@@ -415,6 +458,11 @@ wire          room = (outstanding + df_count) < 6'd30;
 
 wire accepted_rd = ddr_rd & ~ddr_busy;
 wire port_free   = ~(ddr_rd | ddr_we) | ~ddr_busy;
+// version 5: the scope's write queue gets the port after the renderer's reads (before any not yet due when it is
+// over half full), after the VDATA writes, before the blitter
+assign sq_take = !reset && port_free && sq_valid && wf_empty
+               && !(ren_urgent && !rqf_empty && room && wf_cnt < 6'd10)
+               && (sq_full || !((pf_req && !pf_clr && room) || (!rqf_empty && room)));
 
 always @(posedge clk) begin
 	pf_clr <= 0;
@@ -426,7 +474,7 @@ always @(posedge clk) begin
 		if (port_free) begin
 			ddr_rd <= 0; ddr_we <= 0;
 			if (ren_urgent && !rqf_empty && room && wf_cnt < 6'd10) begin   // the line is due: its reads go first
-				ddr_addr <= VBASE + {8'd0, rqf_w[rqf_rp[1:0]]};
+				ddr_addr <= VBASE + {7'd0, rqf_w[rqf_rp[1:0]]};
 				cmd_tag  <= rqf_t[rqf_rp[1:0]];
 				ddr_rd   <= 1;
 				rqf_rp   <= rqf_rp + 3'd1;
@@ -438,6 +486,12 @@ always @(posedge clk) begin
 				ddr_we   <= 1;
 				wf_r     <= wf_r + 6'd1;
 			end
+			else if (sq_take) begin                         // version 5: OCTOSCOPE's captures (byte $33000000 on)
+				ddr_addr <= VBASE + 29'h00200000 + {17'd0, sq_addr};
+				ddr_din  <= sq_data;
+				ddr_be   <= sq_be;
+				ddr_we   <= 1;
+			end
 			else if (pf_req && !pf_clr && room) begin
 				ddr_addr <= VBASE + {8'd0, vaddr[23:3]};
 				cmd_tag  <= {{(TW-6){1'b0}}, vaddr[2:0], K_VRD};
@@ -445,7 +499,7 @@ always @(posedge clk) begin
 				pf_clr   <= 1;
 			end
 			else if (!rqf_empty && room) begin
-				ddr_addr <= VBASE + {8'd0, rqf_w[rqf_rp[1:0]]};
+				ddr_addr <= VBASE + {7'd0, rqf_w[rqf_rp[1:0]]};
 				cmd_tag  <= rqf_t[rqf_rp[1:0]];
 				ddr_rd   <= 1;
 				rqf_rp   <= rqf_rp + 3'd1;
@@ -770,7 +824,7 @@ always @(*) begin
 	for (k = 0; k < 4; k = k + 1) own_ra[p_b[k]] = p_a[k];
 end
 
-assign df_pop = (df_count != 0) && !c_busy;
+assign df_pop = (df_count != 0) && !c_busy && !sc_inj;   // (OCTOSCOPE: not while the scope's pixels go in)
 
 wire [2:0] c_kind = c_t[2:0];
 
@@ -812,6 +866,7 @@ always @(*) begin
 			w7       = 7'd8 << c_t[20:19];
 			c_x[k]   = $signed({c_t[18], c_t[18:3]}) + $signed({10'd0, c_t[21] ? (w7 - 7'd1 - {1'b0, spx}) : {1'b0, spx}});
 		end
+		if (sc_inj && k == 0) c_idx[k] = sc_pc;      // version 5: the scope's pixel (its colour, SCC or SCC + 1)
 	end
 end
 
@@ -895,6 +950,18 @@ always @(posedge clk) begin
 			c_g <= c_g + 2'd1;
 			if (c_g == c_ng) c_busy <= 0;
 		end
+		else if (sc_inj) begin                      // version 5: OCTOSCOPE - the scope's pixel, as a layer's
+			for (k = 0; k < 4; k = k + 1) begin      // (lanes 1-3 copy 0, unwritten: the owner buffer reads by lane)
+				p_v[k]   <= (k == 0) && sc_pv;
+				p_a[k]   <= slot_base + {2'd0, sc_px[8:2]};
+				p_b[k]   <= sc_px[1:0];
+				p_spr[k] <= 1'b0;
+				p_id[k]  <= 7'd0;
+				p_m[k]   <= sc_lm;
+				p_z[k]   <= sc_pass;
+				p_d[k]   <= 2'd0;                    // (FINE does not move the scope)
+			end
+		end
 		else if (df_pop) begin
 			c_d <= df_d[df_r]; c_t <= df_t[df_r]; df_r <= df_r + 5'd1;
 			case (df_t[df_r][2:0])
@@ -917,7 +984,7 @@ always @(posedge clk) begin
 					c_ng <= (df_t[df_r][27] || df_t[df_r][20:19] == 2'd0) ? 2'd1 : 2'd3;
 				end
 				K_SAT: begin sat_we <= 1; sat_wa <= df_t[df_r][9:3]; sat_wd <= df_d[df_r]; end
-				K_LS:  begin ls_val <= df_d[df_r][df_t[df_r][4:3]*16 +: 16]; ls_got <= 1; end
+				K_LS:  if (!df_t[df_r][5]) begin ls_val <= df_d[df_r][df_t[df_r][4:3]*16 +: 16]; ls_got <= 1; end   // (b5: a scope word, below)
 				K_COP: begin cq_d[cop_arr[2:0]] <= df_d[df_r]; cop_arr <= cop_arr + 8'd1; end
 				K_VRD: vrd_data <= df_d[df_r][df_t[df_r][5:3]*8 +: 8];
 				K_BLT: begin blt_rdata <= df_d[df_r]; blt_got <= 1; end
@@ -935,7 +1002,7 @@ end
 localparam S_WAIT = 0, S_COP = 1, S_COPW = 2, S_COPA = 3, S_SAT = 4, S_PASS = 5,
            S_LAY0 = 6, S_LSW = 7, S_LAY1 = 8, S_MAP = 9, S_MAPW = 10, S_TILE = 11,
            S_SCAN = 12, S_SCAN2 = 13, S_DRAW = 14, S_DRAW1 = 15, S_DRAW2 = 16, S_DRAW3 = 18, S_END = 17, S_CLR = 19,
-           S_AFF0 = 20, S_AFF = 21;
+           S_AFF0 = 20, S_AFF = 21, S_SCO0 = 22, S_SCO1 = 23, S_SCO2 = 24, S_SCO3 = 25, S_SCL = 26, S_SCLW = 27;
 // version 2: a turned and sized layer - each pixel's place in the picture, (u, v), 16.16: at the
 // line's left (U0, V0) + (DUY, DVY) x the line, then + (DUX, DVX) a pixel along. Up to 4 pixels
 // that fall in the same 8 bytes go as one read.
@@ -1004,13 +1071,14 @@ reg  [8:0] fw_wl, h_wl;
 reg  [1:0] fw_lead, h_lead;
 reg  [8:0] lt_first;
 
-task push(input [20:0] w, input [TW-1:0] t);
+task push(input [21:0] w, input [TW-1:0] t);
 	begin rqf_w[rqf_wp[1:0]] <= w; rqf_t[rqf_wp[1:0]] <= t; rqf_wp <= rqf_wp + 3'd1; end
 endtask
 
 always @(posedge clk) begin
 	ls_clr  <= 0;
 	coll_latch <= 0;
+	sc_lreq <= 0;
 	cop_clr <= 0;
 	if (cop_take) cop_w <= 0;
 	if (reset) begin
@@ -1018,6 +1086,7 @@ always @(posedge clk) begin
 		h_late <= 0; h_late0 <= 0; h_late1 <= 0; h_lateo <= 0; h_first <= 9'h1FF;
 		clk_n <= 0; ln_t0 <= 0; fw_worst <= 0; fw_wl <= 0; fw_lead <= 2'd3; h_worst <= 0; h_wl <= 0; h_lead <= 2'd3;
 		doneline[0] <= 9'h1FF; doneline[1] <= 9'h1FF; doneline[2] <= 9'h1FF; doneline[3] <= 9'h1FF;
+		sc_cv <= 0;
 		st <= S_WAIT; L <= 0; nl <= 9'd312; prev_y <= 0; cop_w <= 0; frame <= 0; rqf_wp <= 0; map_issued <= 0; clr_we <= 0; cop_armed <= 0;
 		cop_off <= 0; sat_off <= 0; cop_k <= 0; sat_k <= 0; cop_d <= 0; sat_d <= 0;
 		cop_iss <= 0; cop_use <= 0; cop_skip <= 0; cop_win <= 1;
@@ -1072,7 +1141,7 @@ always @(posedge clk) begin
 				scanned <= 0;
 				ln_t0 <= clk_n;
 				clr_a <= {L[1:0], 7'd0}; clr_we <= 1;
-				if (L == 0) coll_latch <= 1;
+				if (L == 0) begin coll_latch <= 1; sc_lreq <= 1; end      // (version 5: the scope's captures latched too)
 				st <= S_CLR;
 				sat_i <= 0;
 			end
@@ -1128,7 +1197,8 @@ always @(posedge clk) begin
 		S_PASS: begin
 			if (L < FIRST || L > LAST || !ENABLE || pass == 5) st <= S_END;
 			else if (pass[0]) begin
-				if (lctrl[lay][0]) st <= S_LAY0; else pass <= pass + 3'd1;
+				if (lctrl[lay][0]) st <= lmode[lay][4] ? S_SCO0 : S_LAY0;     // version 5: LMODE b4 - the layer is the scope
+				else pass <= pass + 3'd1;
 			end
 			else if (sprcount == 0) pass <= pass + 3'd1;
 			else if (!scanned) begin st <= S_SCAN; sj <= 0; p1_v <= 0; p2_v <= 0; nh <= 0; end
@@ -1328,6 +1398,41 @@ always @(posedge clk) begin
 			end
 		end
 
+		// version 5, OCTOSCOPE: once what is drawn before it is in (the scope's pixels go straight in, the layers'
+		// and sprites' come back from the DDR3), the registers as the copper left them for this line
+		S_SCO0: if (drained && !cop_w && sc_rok) begin
+			reg signed [10:0] d;
+			d = $signed({2'd0, L}) - $signed({2'd0, scy});
+			sc_ch   <= scv[5] ? {2'b11, scv[2:0]} : (scv[4:0] >= 5'd24 ? scv[4:0] - 5'd24 : scv[4:0]);
+			sc_dy   <= d[9:0];
+			sc_lm   <= lmode[lay][1:0];
+			sc_pass <= pass;
+			sc_cnt  <= 3'd3;
+			if (d > $signed({3'd0, sch}) || d < -$signed({3'd0, sch})) begin pass <= pass + 3'd1; st <= S_PASS; end
+			else st <= S_SCO1;
+		end
+		S_SCO1: if (sc_cnt != 0) sc_cnt <= sc_cnt - 3'd1;                  // its slot and rules (2 clocks)
+		        else begin
+		        	sc_w <= 0;
+		        	st   <= (sc_cv && sc_ct == sc_ch && sc_cg == sc_gen) ? S_SCO2 : S_SCL;
+		        end
+		// the shown capture of this channel into the line cache: 38 words from the DDR3 (only when the band's
+		// channel changes, or a new frame's captures are shown)
+		S_SCL: if (!rqf_full) begin
+			reg [11:0] a;
+			a = sc_word + {6'd0, sc_w[5:0]};
+			push({10'h200, a}, {{(TW-12){1'b0}}, sc_w[5:0], 1'b1, 2'd0, K_LS});
+			sc_cv <= 0;
+			if (sc_w == 9'd37) st <= S_SCLW;
+			sc_w <= sc_w + 9'd1;
+		end
+		S_SCLW: if (drained) begin sc_cv <= 1; sc_ct <= sc_ch; sc_cg <= sc_gen; sc_w <= 0; st <= S_SCO2; end
+		S_SCO2: begin                                // a sample a clock
+			if (sc_w == 9'd303) begin sc_cnt <= 3'd5; st <= S_SCO3; end
+			sc_w <= sc_w + 9'd1;
+		end
+		S_SCO3: if (sc_cnt == 0) begin pass <= pass + 3'd1; st <= S_PASS; end else sc_cnt <= sc_cnt - 3'd1;
+
 		S_END: if (drained && !cop_w) begin
 			bdl[L[1:0]] <= backdrop;
 			cdl[L[1:0]] <= ctrl[4:0];
@@ -1369,6 +1474,63 @@ always @(posedge clk) begin
 		// the copper switched on, or moved: it waits for the next raster line 0
 		if (cop_disarm) cop_armed <= 0;
 	end
+end
+
+// ---------------------------------------------------------------------------------
+//  OCTOSCOPE (version 5, Fix 55): the captures (octoscope.sv) and a line of the trace, 4 pixels a clock.
+//  For sample i (x = SCX0 + i, raster X + 32): y(i) = -(sample x SCG) / 128 (rounded towards 0, as C does);
+//  lit in SCC where the line is between y(i-1) and y(i) (y(-1) = y(0)), each end held to +-SCH - an unbroken
+//  trace; with the glow, a line further each way in SCC + 1. Exactly the emulator's scope_line.
+// ---------------------------------------------------------------------------------
+wire        sc_latched;
+octoscope scope
+(
+	.clk(clk), .reset(reset), .ce_1m(sid_ce),
+	.sc_sel(sc_sel), .rec0(sc_rec0), .rec1(sc_rec1), .rec2(sc_rec2), .rec3(sc_rec3),
+	.aud0(sc_aud0), .aud1(sc_aud1), .aud2(sc_aud2), .aud3(sc_aud3),
+	.latch_req(sc_lreq), .latch_now(sc_latched), .tick_done(), .gen(sc_gen), .r_ok(sc_rok),
+	.wq_valid(sq_valid), .wq_addr(sq_addr), .wq_data(sq_data), .wq_be(sq_be), .wq_full(sq_full), .wq_pop(sq_take),
+	.r_ch(sc_ch), .r_slot(sc_slot), .r_word(sc_word), .r_desc(sc_desc), .r_zero(sc_zero)
+);
+
+// the line cache: the shown capture of one channel, 38 words (written by the consumer as they come back)
+wire [63:0] scq;
+ovram #(.AW(6), .DW(64)) scache
+(
+	.clk(clk), .we(df_pop && df_t[df_r][2:0] == K_LS && df_t[df_r][5]), .wa(df_t[df_r][11:6]), .wd(df_d[df_r]),
+	.ra(sc_w[8:3]), .q(scq)
+);
+
+// a line of the trace, a pixel a clock. With d(i) = (line - SCY) - y(i): the pixel at sample i is lit where
+// d(i) and d(i-1) are not both > 0 and not both < 0 (the line lies between y(i-1) and y(i)), and with the glow
+// where they are not both > 1 and not both < -1 - exactly scope_line's min/max test (its +-SCH clip changes
+// nothing on the lines drawn, which are all within SCH). Each sample's flags (octoscope_px) serve two pixels.
+// The registers are read as they are (the copper's writes for the line are all in before this pass starts).
+reg         sp1_v, sp2_v;
+reg   [8:0] sp1_w, sp2_w;
+reg   [3:0] sp_last;                // the flags of the sample before
+wire  [3:0] sp_f;
+octoscope_px scpx
+(
+	.clk(clk), .i(sp1_w), .b(scq[sp1_w[2:0]*8 +: 8]), .desc(sc_desc), .zero(sc_zero), .g(scg), .dy(sc_dy), .f(sp_f)
+);
+always @(posedge clk) begin
+	reg [3:0] a;
+	reg [9:0] x;
+	reg       lit, gl;
+	sp1_v <= (st == S_SCO2);
+	sp1_w <= sc_w;
+	sp2_v <= sp1_v;
+	sp2_w <= sp1_w;
+	a   = (sp2_w == 0) ? sp_f : sp_last;
+	lit = (a[3] | sp_f[3]) & (a[2] | sp_f[2]);
+	gl  = scf[0] & (a[1] | sp_f[1]) & (a[0] | sp_f[0]);
+	x   = {2'd0, scx0} + 10'd32 + {1'b0, sp2_w};
+	if (sp2_v) sp_last <= sp_f;
+	sc_inj <= sp2_v;
+	sc_pv  <= sp2_v && (lit || gl) && x < 10'(RW);
+	sc_px  <= x[8:0];
+	sc_pc  <= lit ? scc : scc + 8'd1;
 end
 
 // ---------------------------------------------------------------------------------

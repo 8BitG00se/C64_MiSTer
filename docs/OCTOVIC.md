@@ -25,7 +25,8 @@ affected. Write $4F then $38 to $D03F (an unused VIC register) and $D600-$D6FF b
 registers; write anything else to $D03F and they are SID mirrors again. Reading $D61E then
 gives $8C (the ID) and $D61F the version: 2 = the first OctoVIC (core builds up to 6), 3 = with the
 memory work (line-end wait, copper read-ahead, late-line repeat, the meters at $D6A8-$D6B1) - core
-memory build 3 on, 4 = with FINE SCROLL (quarter pixels, Fix 42). A demo that needs the memory work checks for 3 or more and says so if it isn't there.
+memory build 3 on, 4 = with FINE SCROLL (quarter pixels, Fix 42), 5 = with OCTOSCOPE (an oscilloscope of every SID voice,
+Fix 55). A demo that needs the memory work checks for 3 or more and says so if it isn't there.
 
 ## Coordinates
 
@@ -57,7 +58,7 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | 1A | PALIDX | the palette entry to write |
 | 1B-1D | PALR, PALG, PALB | its red, green, blue; writing PALB stores the entry and moves PALIDX on |
 | 1E | ID (r) | $8C |
-| 1F | VERSION (r) | 2; 3 with the memory work (core build 7 on); 4 with FINE SCROLL |
+| 1F | VERSION (r) | 2; 3 with the memory work (core build 7 on); 4 with FINE SCROLL; 5 with OCTOSCOPE |
 | 20-2F | LAYER 0 | see below |
 | 30-3F | LAYER 1 | |
 | 40-42 | COPSTEP | the animation: added to the copper list's address each step |
@@ -112,6 +113,13 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | B4-B6 | BUILD DATE (r) | version 3: the core's build date, BCD: day, month, year (20xx) |
 | B8-BF | CORE NAME (r) | version 3: the core's name, 8 ASCII letters padded with spaces (e.g. CORE7) - shown on the start screen and the F8 settings |
 | C0 | SIDFX | OctoSID FX: b0 chorus, b1 echo (see below); also in the core's menu |
+| C4 | SCV | version 5, OCTOSCOPE: what the scope shows - b0-4 a voice 0-23 (SID s, voice v: 3s + v; 24-31 count from 0 again), or with b5 set SID b0-2's whole output (after its filter and volume) |
+| C5-C6 | SCY | the scope's centre raster line (9 bits) |
+| C7 | SCH | half its height, in lines (it is drawn on lines SCY - SCH to SCY + SCH) |
+| C8 | SCG | its gain: a sample s (-127..127) is drawn s x SCG / 128 lines above the centre |
+| C9 | SCC | its colour (a palette entry); the glow is SCC + 1 |
+| CA | SCX0 | the x of its first sample (x 0 is the 40-column window's left edge); 304 samples, a pixel each |
+| CB | SCF | b0 the glow (a line more each way, in SCC + 1) |
 
 ### A layer (20 + 16*k)
 
@@ -124,7 +132,7 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | A-B | SCROLLY | |
 | C-E | LSBASE | the line scroll table: a signed 16-bit X offset per raster line (line n at LSBASE + 2n) |
 | 7 | FINE | version 4: b1-0 the layer 0-3 quarter pixels further left (on from SCROLLX; see FINE SCROLL) |
-| F | LMODE | version 2: b0-1 how the layer's pixels mix with what is under them (see SEE-THROUGH COLOURS), b2 TURNED AND SIZED (a bitmap layer), b3 with b2: nothing drawn outside the picture (else it repeats) |
+| F | LMODE | version 2: b0-1 how the layer's pixels mix with what is under them (see SEE-THROUGH COLOURS), b2 TURNED AND SIZED (a bitmap layer), b3 with b2: nothing drawn outside the picture (else it repeats); version 5: b4 the layer is the OCTOSCOPE (see below) instead of tiles or a bitmap |
 
 A map entry is 16 bits: bits 0-9 the tile, 10 flip across, 11 flip up-down, 12-15 the palette
 bank (16 colours: palette entry = bank*16 + pixel; 256 colours: bits 12-15 are the tile number's
@@ -230,6 +238,64 @@ sprites to read).
 the raster line reaches IRQLINE, when last frame had a collision, when the blitter finishes. IRQST
 says which (write 1s to clear them); IRQEN says which interrupt. Nothing interrupts until IRQEN is
 set, so no old program is affected.
+
+## OCTOSCOPE (version 5, Fix 55)
+
+A real oscilloscope of every SID voice, drawn by OctoVIC: a trace that stands still like a triggered scope and
+always shows two whole cycles, whatever the note.
+
+**What it captures.** Every microsecond, from every one of the 8 SIDs: each voice's waveform centred on its own
+middle (the voice's 12-bit DAC value - 2048, whatever the chip's DC) times its envelope (0-255), >> 12 - a sample
+from -127 to 127; and each SID's whole output (after its filter and volume) >> 10. That is 32 channels: SCV 0-23
+the voices, SCV $20-$27 the SIDs' outputs.
+
+- A voice playing a note (FREQ 839 or more, about 50 Hz and up) is captured **in step with its own oscillator**: a
+  capture starts when the oscillator wraps round, and takes 152 samples a cycle - sample n is taken at the moment
+  the oscillator has gone n / 152 of the way round - for two cycles: 304 samples. If the waveform changes during it
+  (a hard sync, the test bit, a note change) the capture follows the oscillator; a wrap that comes early ends the
+  cycle there (the rest of it is that moment's sample).
+- Below 50 Hz, or a voice whose oscillator has stopped (the test bit held, FREQ 0), or a capture not complete
+  40 ms after it started, it is captured **by time**: a sample every 66 us (304 = a frame across).
+- The whole outputs are always captured by time.
+
+A capture is shown only when it is complete. At the start of each frame (as OctoVIC starts raster line 0) the
+newest complete capture of every channel is taken for that frame: a frame never shows two halves of different
+captures.
+
+**Showing it.** A layer with LMODE b4 set is drawn as the scope instead of tiles or a bitmap (LCTRL b0 must be on;
+its map, tiles and scroll are not used). On each raster line L within SCH of SCY, for sample i = 0..303 at x =
+SCX0 + i: y(i) = -(sample(i) x SCG) / 128 (rounded towards 0). The pixel is lit in colour SCC where
+L - SCY is between y(i - 1) and y(i) (y(-1) = y(0)), each held to +-SCH - so the trace never breaks, however
+steep. With SCF b0 (the glow), the pixels a line beyond that each way are drawn in SCC + 1. Everything else is
+see-through. The scope's pixels mix (LMODE b0-1) and collide like any layer pixel; palette entry 0 is drawn, not
+see-through. FINE does not move it. The 304 samples are drawn from SCX0 on and cut off at the right of OctoVIC's
+picture (x 363).
+
+**With the copper.** The copper can change SCV, SCY, SCH, SCG, SCC, SCX0, SCF and LMODE on any line - a band of
+the screen for each voice (OctoPlay draws up to 24 bands, each with a palette change of its own). A line is drawn
+with the registers as the copper leaves them for it, like CTRL (written by the 6510, they show up to three lines
+early).
+
+**What it costs.** The captures are in the DDR3, above the VRAM (byte $33000000, 29 KB - see
+docs/OCTOVIC_MEMORY.md), so nothing of the 16 MB VRAM is used. Writing them is light: each channel gathers 8
+samples into one word before it is written - a note of a few hundred Hz is a word every few hundred microseconds,
+24 voices at the very top of the range under 2 words a microsecond - and those writes wait for the renderer's
+reads. Drawing a scope line takes about 160 clocks (2 pixels a clock) after the pixels drawn before it on the line
+are in; when a line shows a different channel from the line before (a new band) or a new frame's captures, its
+304 samples are first fetched into a line cache: 38 reads, like a line of a bitmap layer.
+
+**How the hardware does it (rtl/octovic/octoscope.sv).** One clock per channel: 32 clocks are one microsecond, so the
+32 channels are taken one after the other, the voices' values held from the microsecond's edge (sid_voice, through
+a record each SID pair hands over on request). Each channel has three slots of 304 samples in the DDR3 - the one
+being captured, the newest complete one, the one shown - and only the slot numbers change (no copying): a complete
+capture becomes the newest, the free slot is the next one captured into, and the frame's latch (at the end of a
+whole microsecond) makes the newest the shown one; each channel takes that up as the engine next passes it, and the
+renderer reads a frame's slots only once that is done and every word queued before the latch is in the DDR3 - so a
+frame never shows a half-written capture. The two places where a capture would write many samples at once (the
+jump to cycle 2 after a sync or test-bit wrap, and the rest of an early-ended cycle) are kept as a rule of the slot
+(a range with one value) that the renderer applies when it reads. The renderer draws 2 pixels a clock into the same
+pipeline as the layers' pixels. The emulator's code for all this (sc_store, scope_line) is the reference;
+sim/octoscope checks the hardware against it sample for sample and pixel for pixel, with the DDR3 busy and held.
 
 ## Animation
 
