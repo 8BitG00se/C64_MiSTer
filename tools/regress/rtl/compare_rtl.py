@@ -56,6 +56,9 @@ def main():
         sid = [k for k in common if fa[k][1] != fb[k][1]]
         if len(fb) < len(fa) - 1:
             P('%-16s CRASHED     the new core stopped after %d of %d frames' % (n, len(fb), len(fa))); bad.append(n); continue
+        boot = load(B, 'boot')
+        if n != 'boot' and boot and all(boot.get(k) == fb[k] for k in fb if k >= 220):
+            P('%-16s DID NOT RUN the pictures after frame 220 are the KERNAL\'s alone: the program never started' % n); bad.append(n); continue
         if not pic and not sid and len(fa) == len(fb):
             P('%-16s IDENTICAL   %d frames: every picture and the SID registers at every frame end the same' % (n, len(fa))); continue
         bad.append(n)

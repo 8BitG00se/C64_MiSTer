@@ -8,7 +8,8 @@
 #
 #   run_rtl.sh TREE OUT [FRAMES]       needs ghdl 4, verilator 5, python3, acme (for the programs)
 #   RTL_KERNAL_POKE=ADDR:VAL           (proof runs only) change one byte of TREE's BASIC+KERNAL image, e.g.
-#                                      3BCA:0E = the start-screen border colour LDA #$06 -> #$0E
+#                                      3981:0E = the start screen's background colour (LDA #$06 / STA $D021
+#                                      at $F980) -> #$0E
 #
 # What runs (stock VIC only: this sim has no OctoVIC, no SID sound and no REU):
 #   boot           the Octophonic KERNAL from power-on to READY. and on
@@ -28,7 +29,7 @@ else
 [ -x "$TREE/sim/rewind/vhdl2v.sh" ] || { echo "RTL_SIDE_UNBUILDABLE: $TREE has no sim/rewind/vhdl2v.sh (the whole-C64 sim came in with build 13)"; exit 3; }
 "$TREE/sim/rewind/vhdl2v.sh" "$OUT/net" > "$OUT/vhdl2v.txt" 2>&1 || { tail -20 "$OUT/vhdl2v.txt"; echo "RTL_SIDE_UNBUILDABLE: GHDL"; exit 3; }
 cd "$OUT"; ln -sf net/fpga64_synth.v fpga64_synth.v05
-SRC="$S/public.vlt $S/tb_top.sv fpga64_synth.v05 $R/rtl/mos6526.v $R/rtl/cartridge.v $R/rtl/am29f040.sv $R/rtl/rewind.sv $R/rtl/remaster.sv $R/rtl/rgb256.sv $R/rtl/octovic/ovram.sv $R/rtl/octovic/ddram_arb2.sv $R/rtl/octovic/sid_fx.sv $R/rtl/octovic/octo_os.sv"
+SRC="$H/tools/regress/rtl/public.vlt $S/tb_top.sv fpga64_synth.v05 $R/rtl/mos6526.v $R/rtl/cartridge.v $R/rtl/am29f040.sv $R/rtl/rewind.sv $R/rtl/remaster.sv $R/rtl/rgb256.sv $R/rtl/octovic/ovram.sv $R/rtl/octovic/ddram_arb2.sv $R/rtl/octovic/sid_fx.sv $R/rtl/octovic/octo_os.sv"
 for f in $SRC; do [ -f "$f" ] || { echo "RTL_SIDE_UNBUILDABLE: $f is missing in this tree"; exit 3; }; done
 verilator --cc --exe --build -j 2 -O3 --x-assign fast --x-initial fast -Wno-fatal --top-module tb_top -GAW=20 \
   +1364-2005ext+v05 $SRC $H/tools/regress/rtl/tb_regress.cpp \

@@ -1,0 +1,22 @@
+`verilator_config
+// (c) 2026 Mong00se - the regression test: as sim/rewind/public.vlt, with the rewind unit's RAM copy writable (programs are put in both copies)
+public_flat_rw -module "ovram" -var "m"
+public_flat_rd -module "spram_4_10" -var "ram"
+public_flat_rw -module "tb_top" -var "sdram"
+public_flat_rw -module "tb_top" -var "ddrp"
+public_flat_rw -module "tb_top" -var "ddrl"
+lint_off -rule WIDTH
+lint_off -rule UNUSED
+lint_off -rule UNOPTFLAT
+lint_off -rule CASEINCOMPLETE
+lint_off -rule PINMISSING
+lint_off -rule DECLFILENAME
+lint_off -rule MULTIDRIVEN
+lint_off -rule BLKANDNBLK
+lint_off -rule COMBDLY
+lint_off -rule INITIALDLY
+lint_off -rule LATCH
+lint_off -rule SELRANGE
+lint_off -rule CMPCONST
+lint_off -rule UNSIGNED
+lint_off -rule VARHIDDEN

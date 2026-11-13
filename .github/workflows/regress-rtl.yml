@@ -67,11 +67,11 @@ jobs:
         id: gate
         continue-on-error: true
         run: python3 new/tools/regress/rtl/compare_rtl.py /tmp/rr/last /tmp/rr/new /tmp/rr/report
-      - name: Proof - a one-byte KERNAL change (border colour, $FBCA 06 -> 0E) must be caught
+      - name: Proof - a one-byte KERNAL change (start-screen background colour, $F981 06 -> 0E) must be caught
         if: env.PROOF == 'true'
         run: |
           [ -x /tmp/rr/new/obj/tb_regress ] || { echo "PROOF_NOT_RUN: the new core's testbench did not build"; exit 1; }
-          RTL_REUSE_TB=/tmp/rr/new/obj/tb_regress RTL_KERNAL_POKE=3BCA:0E new/tools/regress/rtl/run_rtl.sh new /tmp/rr/proof $FRAMES
+          RTL_REUSE_TB=/tmp/rr/new/obj/tb_regress RTL_KERNAL_POKE=3981:0E new/tools/regress/rtl/run_rtl.sh new /tmp/rr/proof $FRAMES
           if python3 new/tools/regress/rtl/compare_rtl.py /tmp/rr/new /tmp/rr/proof /tmp/rr/report-proof; then
             echo "PROOF_FAILED: the deliberate change was NOT caught"; exit 1
           else

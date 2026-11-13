@@ -32,6 +32,7 @@ static uint64_t sid_clocks = 0;
 #define ROOT    (top->rootp)
 #define SDRAM   (ROOT->tb_top__DOT__sdram)
 #define SIDREGS (ROOT->tb_top__DOT__c64__DOT__sid__DOT__regs)
+#define RAMCOPY (ROOT->tb_top__DOT__rw__DOT__ram__DOT__m)   // the rewind unit's copy: the 6510 reads from it too
 
 static uint32_t crc_tab[256];
 static void crc_init() { for (uint32_t i = 0; i < 256; i++) { uint32_t c = i; for (int k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320u ^ (c >> 1) : c >> 1; crc_tab[i] = c; } }
@@ -59,7 +60,7 @@ static void tick() {
 }
 static void run_frames(int n) { int e = vframe + n; while (vframe < e) tick(); }
 
-static void poke(int a, int v) { SDRAM[a & 0xFFFF] = v & 0xFF; }
+static void poke(int a, int v) { SDRAM[a & 0xFFFF] = v & 0xFF; RAMCOPY[a & 0xFFFF] = v & 0xFF; }
 static void type(const char *s) { int n = 0; for (; s[n]; n++) poke(0x0277 + n, s[n]); poke(0xC6, n); }
 
 int main(int argc, char **argv) {
