@@ -1,0 +1,3 @@
+INFO frame 180: 453 bytes put at $0801-$09C5, RUN typed
+INFO 320 frames; READY. on the screen: yes; the 6510 at $08BB
+RTL_REGRESS_RUN_DONE

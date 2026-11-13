@@ -1,0 +1,22 @@
+== RTL regression side: core tree /home/runner/work/C64_MiSTer/C64_MiSTer/last (67905c1), harness /home/runner/work/C64_MiSTer/C64_MiSTer/new
+c83b92c86d9bdfbc9687b943ee124c99  rom.hex
+cd61ba3e3766fdff27236becedd4cdd4  chargen.hex
+Writing output file "/tmp/rr/last/prg/code-stock.prg".
+Writing output file "/tmp/rr/last/prg/disk-starfield.prg".
+Writing output file "/tmp/rr/last/prg/disk-logo.prg".
+-- boot: rc 0
+INFO 320 frames; READY. on the screen: yes; the 6510 at $E5CD
+RTL_REGRESS_RUN_DONE
+-- code-stock: rc 0
+INFO frame 180: 453 bytes put at $0801-$09C5, RUN typed
+INFO 320 frames; READY. on the screen: yes; the 6510 at $08BB
+RTL_REGRESS_RUN_DONE
+-- disk-logo: rc 0
+INFO frame 180: 316 bytes put at $0801-$093C, RUN typed
+INFO 320 frames; READY. on the screen: no; the 6510 at $089F
+RTL_REGRESS_RUN_DONE
+-- disk-starfield: rc 0
+INFO frame 180: 320 bytes put at $0801-$0940, RUN typed
+INFO 320 frames; READY. on the screen: no; the 6510 at $08B5
+RTL_REGRESS_RUN_DONE
+RTL_SIDE_DONE
