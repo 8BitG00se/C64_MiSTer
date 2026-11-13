@@ -1,0 +1,80 @@
+Type  : Setup 'pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk'
+Slack : 0.382
+TNS   : 0.000
+Type  : Setup 'emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk'
+Slack : 1.646
+TNS   : 0.000
+Type  : Setup 'emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk'
+Slack : 2.481
+TNS   : 0.000
+Slack : 4.606
+TNS   : 0.000
+Slack : 5.110
+TNS   : 0.000
+Slack : 5.201
+TNS   : 0.000
+Slack : 7.765
+TNS   : 0.000
+Type  : Setup 'pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk'
+Slack : 15.061
+TNS   : 0.000
+Type  : Hold 'emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk'
+Slack : 0.231
+TNS   : 0.000
+Type  : Hold 'emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk'
+Slack : 0.253
+TNS   : 0.000
+Type  : Hold 'pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk'
+Slack : 0.253
+TNS   : 0.000
+Slack : 0.268
+TNS   : 0.000
+Slack : 0.303
+TNS   : 0.000
+Type  : Hold 'pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk'
+Slack : 0.340
+TNS   : 0.000
+Slack : 0.412
+TNS   : 0.000
+Slack : 0.454
+TNS   : 0.000
+Type  : Recovery 'pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk'
+Slack : 3.836
+TNS   : 0.000
+Slack : 7.031
+TNS   : 0.000
+Type  : Recovery 'emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk'
+Slack : 13.257
+TNS   : 0.000
+Slack : 16.765
+TNS   : 0.000
+Slack : 17.582
+TNS   : 0.000
+Type  : Recovery 'emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk'
+Slack : 26.718
+TNS   : 0.000
+Type  : Removal 'emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[2].output_counter|divclk'
+Slack : 0.637
+TNS   : 0.000
+Type  : Removal 'pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk'
+Slack : 1.042
+TNS   : 0.000
+Slack : 1.074
+TNS   : 0.000
+Slack : 1.105
+TNS   : 0.000
+Slack : 1.278
+TNS   : 0.000
+Type  : Removal 'emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk'
+Slack : 1.550
+TNS   : 0.000
+Type  : Minimum Pulse Width 'emu|pll|pll_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0]'
+Slack : 0.881
+TNS   : 0.000
+Type  : Minimum Pulse Width 'pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|fpll_0|fpll|vcoph[0]'
+Slack : 1.122
+TNS   : 0.000
+Type  : Minimum Pulse Width 'pll_audio|pll_audio_inst|altera_pll_i|general[0].gpll~FRACTIONAL_PLL|vcoph[0]'
+Slack : 1.196
+TNS   : 0.000
+Type  : Minimum Pulse Width 'pll_hdmi|pll_hdmi_inst|altera_pll_i|cyclonev_pll|counter[0].output_counter|divclk'
