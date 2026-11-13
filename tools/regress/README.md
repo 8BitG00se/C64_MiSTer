@@ -69,6 +69,19 @@ Not in the list, and why: the Sacred City intro build 2 folder has no .prg (only
 built by another job; Take a Screenshot writes files into the Screenshots folder; the art kit's `.reu` files are
 level data, not programs.
 
+## Proven so far (13 Nov 2026)
+
+| Test "new core" (`make_test_candidate.py`) | Result |
+|---|---|
+| `same` - an unchanged copy | **PASS**: all 58 programs IDENTICAL, 9 skipped (Neal supplies) |
+| `kernal-border` - one KERNAL byte (the load-wait raster bars' colour) | **FAIL**: the 17 disk programs CHANGED (frames 174-176, while F3 loads), side-by-side pictures; the 41 others never run that code and stay IDENTICAL |
+| `sid-8580` - the default SID chip | **FAIL** on 5 of 6 programs: the sound differs, the SID writes are the same (Code/parallax plays no sound: IDENTICAL) |
+| `jingle-note` - one jingle note | PASS - **not caught**, the emulator boots silently (see the limits) |
+
+RTL (GitHub run 43480909543, release-line 67905c1 vs this branch): **PASS**, the 4 runs IDENTICAL (320 frames
+each). Proof in the same run: one KERNAL byte (the start screen's background colour, $F981 #$06 -> #$0E) ->
+**FAIL**, all 4 runs CHANGED from frame 105, side-by-side pictures; a run compared with itself -> PASS.
+
 ## Every run is the same twice
 
 VICE picks a random seed at start-up, and with it two runs of the same program differ (seen: frames 102-103
@@ -86,6 +99,8 @@ last core's and the new core's. So:
   change made to the emulator's OctoVIC, SID, REU or mixer to follow a core change. A one-byte change is enough.
 - It **cannot catch** a core change that nobody put into the emulator. If the RTL changes and the emulator
   does not, the two emulators are the same and the test passes. That is what the RTL part is for.
+- It **cannot catch** what the headless emulator never plays: it boots **silently** (the start jingle does not
+  sound in these runs), so a change to the jingle passes. Proven: `make_test_candidate.py jingle-note` -> PASS.
 - It **cannot catch** what the emulator does not model at all (see `docs/EMULATOR_VS_MISTER.md`): the line-buffer
   bandwidth (Horizon build 4's tearing), DDR3 timing, turbo (4x on the MiSTer, 1 MHz in the emulator), RAM that is
   not zero at power-on, the HDMI/scaler/analogue output, the real keyboard and joystick.
