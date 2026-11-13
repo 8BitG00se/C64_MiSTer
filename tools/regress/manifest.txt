@@ -1,0 +1,106 @@
+# OCTOPHONIC 64 - OLD-SOFTWARE REGRESSION TEST (Fix 69): THE LIST OF EVERYTHING WE RUN
+# (c) 2026 Mong00se
+#
+# Every program here is run on the last core and on the new core (in the Octophonic 64 emulator, with
+# the current KERNAL) and the pictures and sound are compared. The new core does not ship until every
+# entry that can run comes out the same. See README.md.
+#
+# One entry a line, fields split by "|":
+#   id | where | find | run | frames | input | needs | what it is
+#
+#   where  REPO   find = the file, a path inside this repo (committed .prg/.d64)
+#          BUILT  find = the .asm source in this repo; regress.py assembles it with acme first
+#          OB     find = a path inside the octophonic-backgrounds repo (OCTO_OB_REPO)
+#          LOCAL  a finished build that lives in Neal's demo folders, not in git: find = its folder name,
+#                 looked up under the folders in OCTO_BUILDS (on this machine: the session's scratchpad;
+#                 on Neal's side: the d64 folder / C:\Octophonic\Demos copies). Missing -> skipped, said so.
+#          NEAL   a stock C64 classic. NONE of these are in the repo and none may be added or downloaded:
+#                 Neal supplies his own copies in the folder NEAL_GAMES. Missing -> skipped, said so.
+#   find/run  run = the file inside that folder that is dropped on Octophonic OS ("-" = find is the file)
+#   frames    how long it runs, in emulator frames (19656 cycles each; 1000 = about 20 seconds)
+#   input     "-" or scripted input: JOY=frame:value,... (bits 1 up 2 down 4 left 8 right 16 fire, port 2)
+#             or KEYS=frame:row:col,... (the emulator's OCTO_JOY / OCTO_KEYS)
+#   needs     what the program uses (for the reader; "rtl" = also runs in the whole-C64 Verilator sim)
+#
+# Every program is dropped on Octophonic OS at frame 150, as a user would pick it in the browser. A .d64 is only
+# mounted by that (as on the core), so for a .d64 with input "-" the runner presses F3 (LOAD) at frame 170:
+# LOAD"*",8,1 and RUN, as Neal does on the start screen.
+
+# ---------------------------------------------------------------- in this repo: committed programs
+sacred-01 | REPO | tools/sacred/d64/01 Seed Of Life.d64        | - | 2500 | - | BASIC, OctoVIC bitmap+blitter, SID 1 | Sacred Geometry 01 Seed of Life
+sacred-02 | REPO | tools/sacred/d64/02 Egg Of Life.d64         | - | 2500 | - | BASIC, OctoVIC bitmap+blitter, SID 1 | Sacred Geometry 02 Egg of Life
+sacred-03 | REPO | tools/sacred/d64/03 Flower Of Life.d64      | - | 2500 | - | BASIC, OctoVIC bitmap+blitter, SID 1 | Sacred Geometry 03 Flower of Life
+sacred-04 | REPO | tools/sacred/d64/04 Metatron Cube.d64       | - | 2500 | - | BASIC, OctoVIC bitmap+blitter, SID 1 | Sacred Geometry 04 Metatron's Cube
+sacred-05 | REPO | tools/sacred/d64/05 Vesica Piscis.d64       | - | 2500 | - | BASIC, OctoVIC bitmap+blitter, SID 1 | Sacred Geometry 05 Vesica Piscis
+sacred-06 | REPO | tools/sacred/d64/06 Tree Of Life.d64        | - | 2500 | - | BASIC, OctoVIC bitmap+blitter, SID 1 | Sacred Geometry 06 Tree of Life
+sacred-07 | REPO | tools/sacred/d64/07 Merkaba.d64             | - | 2500 | - | BASIC, OctoVIC bitmap+blitter, SID 1 | Sacred Geometry 07 Merkaba
+sacred-08 | REPO | tools/sacred/d64/08 64 Tetrahedron.d64      | - | 2500 | - | BASIC, OctoVIC bitmap+blitter, SID 1 | Sacred Geometry 08 64 Tetrahedron
+sacred-09 | REPO | tools/sacred/d64/09 Sri Yantra.d64          | - | 2500 | - | BASIC, OctoVIC bitmap+blitter, SID 1 | Sacred Geometry 09 Sri Yantra
+sacred-10 | REPO | tools/sacred/d64/10 Vector Equilibrium.d64  | - | 2500 | - | BASIC, OctoVIC bitmap+blitter, SID 1 | Sacred Geometry 10 Vector Equilibrium
+sacred-11 | REPO | tools/sacred/d64/11 Golden Ratio.d64        | - | 2500 | - | BASIC, OctoVIC bitmap+blitter, SID 1 | Sacred Geometry 11 Golden Ratio
+sacred-12 | REPO | tools/sacred/d64/12 Fibonacci.d64           | - | 2500 | - | BASIC, OctoVIC bitmap+blitter, SID 1 | Sacred Geometry 12 Fibonacci
+sacred-13 | REPO | tools/sacred/d64/13 Platonic Solids.d64     | - | 2500 | - | BASIC, OctoVIC bitmap+blitter, SID 1 | Sacred Geometry 13 Platonic Solids
+sacred-14 | REPO | tools/sacred/d64/14 Rose.d64                | - | 2500 | - | BASIC, OctoVIC bitmap+blitter, SID 1 | Sacred Geometry 14 Rose
+octocode  | REPO | tools/octoos/octocode/octocode.prg          | - | 600  | - | OctoVIC text, OS mailbox             | Tools: OCTOCODE (the code editor), as committed
+compile-test-b2 | REPO | tools/octoos/octocode/Compile Test build 2.d64 | - | 1000 | - | OCTOCODE on a disk           | OCTOCODE Compile Test build 2 disk
+
+# ---------------------------------------------------------------- in this repo: assembled from source here
+code-hello    | BUILT | tools/examples/code/hello.asm      | Hello.prg      | 800 | - | OctoVIC                 | Code example: hello
+code-stock    | BUILT | tools/examples/code/stock.asm      | Stock.prg      | 800 | - | stock VIC, SID 1, rtl   | Code example: stock C64 raster bars
+code-raster   | BUILT | tools/examples/code/raster.asm     | Raster.prg     | 800 | - | OctoVIC copper          | Code example: raster
+code-scroll   | BUILT | tools/examples/code/scroll.asm     | Scroll.prg     | 800 | - | OctoVIC                 | Code example: scroll ("EDIT ME")
+code-sprites  | BUILT | tools/examples/code/sprites.asm    | Sprites.prg    | 800 | - | OctoVIC sprites         | Code example: 64 sprites
+code-plasma   | BUILT | tools/examples/code/plasma.asm     | Plasma.prg     | 800 | - | OctoVIC                 | Code example: plasma
+code-bounce   | BUILT | tools/examples/code/bounce.asm     | Bounce.prg     | 800 | - | OctoVIC                 | Code example: bounce
+code-split    | BUILT | tools/examples/code/split.asm      | Split.prg      | 800 | - | OctoVIC copper, split   | Code example: split screens
+code-parallax | BUILT | tools/examples/code/parallax.asm   | Parallax.prg   | 800 | - | OctoVIC layers          | Code example: parallax (ocean)
+disk-starfield | BUILT | tools/examples/disks/starfield.asm | Starfield.prg | 800 | - | stock VIC, rtl          | Disks: Starfield
+disk-logo      | BUILT | tools/examples/disks/logo.asm      | Colour Logo.prg | 800 | - | stock VIC, rtl        | Disks: Colour Logo
+disk-pillar    | BUILT | tools/examples/disks/pillar.asm    | Wavy Pillar.prg | 800 | - | OctoVIC               | Disks: Wavy Pillar
+game-notebouncer | BUILT | tools/examples/game/notebouncer.asm | Note Bouncer.prg | 1000 | JOY=400:8,460:0,520:4,580:16,590:0 | OctoVIC, SIDs, joystick | Games: Note Bouncer
+picture-moonlight | BUILT | tools/examples/picture/viewer.asm | Moonlight.prg | 800 | - | OctoVIC 256 colours   | Pictures: Moonlight viewer
+tool-spec      | BUILT | tools/spec/spec.asm                 | SPEC.prg      | 600 | - | OctoVIC $D6B3 spec read | Tools: SPEC (hardware list)
+
+# ---------------------------------------------------------------- in the octophonic-backgrounds repo
+horizon-b10   | OB | emulator/rt/Games/C64/Octophonic/Octophonic Horizon build 10/Octophonic Horizon.prg   | - | 1500 | - | OctoVIC, REU, 8 SIDs | Octophonic Horizon build 10
+showcase-b1   | OB | emulator/rt/Games/C64/Octophonic/Octophonic Showcase build 1/Octophonic Showcase.prg | - | 1500 | - | OctoVIC, REU, 8 SIDs | Octophonic Showcase build 1 ("Lanterns", known good on the MiSTer)
+
+# ---------------------------------------------------------------- finished builds in Neal's demo folders (not in git)
+e115-pacific-b8   | LOCAL | Element 115 - Pacific Coast build 8       | Element 115.prg | 1500 | - | OctoVIC, REU 16M, 8 SIDs | Element 115 - Pacific Coast build 8 (attract)
+e115-frontline-b1 | LOCAL | Element 115 - Front Line build 1          | Element 115.prg | 1500 | - | OctoVIC, REU 16M, 8 SIDs | Element 115 - Front Line build 1
+e115-japan-b1     | LOCAL | Element 115 - Japan Express build 1       | Element 115.prg | 1500 | - | OctoVIC, REU 16M, 8 SIDs | Element 115 - Japan Express build 1
+e115-nightfix-b1  | LOCAL | Element 115 - Night City scroll fix build 1 | Element 115.prg | 1500 | - | OctoVIC, REU 16M, 8 SIDs | Element 115 - Night City scroll fix build 1
+e115-b1           | LOCAL | Element 115 build 1                       | Element 115.prg | 1500 | - | OctoVIC, REU 16M, 8 SIDs | Element 115 build 1
+nightcity-b3      | LOCAL | Night City build 3                        | Night City.prg  | 1500 | - | OctoVIC, REU, 8 SIDs     | Night City build 3
+monalisa-b1       | LOCAL | Mona Lisa build 1                         | Mona Lisa.prg   | 1500 | - | OctoVIC 256, REU, SIDs   | Mona Lisa build 1
+dnawave-b3        | LOCAL | DNA Wave build 3                          | DNA Wave.prg    | 1500 | - | OctoVIC, REU, SIDs       | DNA Wave build 3
+pendulumwave-b1   | LOCAL | Pendulum Wave build 1                     | Pendulum Wave.prg | 1500 | - | OctoVIC, REU, SIDs     | Pendulum Wave build 1
+abduction-b1      | LOCAL | The Abduction build 1                     | The Abduction.prg | 1500 | - | OctoVIC, REU           | The Abduction build 1
+chapel-b4         | LOCAL | Sacred City L1 Chapel build 4             | Sacred City L1 Chapel.prg | 1500 | - | OctoVIC, REU   | Sacred City L1 Chapel build 4
+sacred-city-src   | LOCAL | Sacred City (compile it yourself)         | sacred.prg      | 1500 | - | OctoVIC, REU             | Sacred City (compile it yourself)
+elements-b1       | LOCAL | Elements build 1                          | Elements.prg    | 1500 | - | OctoVIC, REU, SIDs       | Elements build 1
+doughnut-b5       | LOCAL | Dithering Doughnut build 5                | Dithering Doughnut.d64 | 1500 | - | one prg: stock VIC / OctoVIC | Dithering Doughnut build 5 (one program, two machines)
+voices-b1         | LOCAL | Voices build 1                            | Voices.prg      | 1500 | - | rasters, 8 SIDs          | Voices build 1
+rgbflicker-b1     | LOCAL | RGB Flicker build 1                       | RGB FLICKER.prg | 1000 | - | OctoVIC, REU             | RGB Flicker build 1
+wake8-b1          | LOCAL | Wake 8 SIDs build 1                       | WAKE8.prg       | 1000 | - | 8 SIDs                   | Wake 8 SIDs build 1
+octoplay-b6       | LOCAL | OctoPlay build 6 - with Tuneful Eight     | OCTOPLAY.d64    | 1500 | - | OctoVIC, 8 SIDs, scope   | OctoPlay build 6 (with The Tuneful Eight)
+captest-b1        | LOCAL | Capture Test build 1                      | Capture Test.prg | 1000 | - | timing test picture     | Capture Test build 1
+odyssey-b3        | LOCAL | Octophonic Odyssey build 3                | Octophonic Odyssey.prg | 1500 | - | one prg: stock / OctoVIC + REU | 2026: An Octophonic Odyssey build 3
+st1-front-line    | LOCAL | Octophonic Shooter Template build 1       | Front Line/Front Line.prg | 1500 | - | OctoVIC, REU      | Shooter Template build 1 - Front Line
+st1-japan-express | LOCAL | Octophonic Shooter Template build 1       | Japan Express/Japan Express.prg | 1500 | - | OctoVIC, REU | Shooter Template build 1 - Japan Express
+st1-mountains     | LOCAL | Octophonic Shooter Template build 1       | Mountains to the City/Mountains to the City.prg | 1500 | - | OctoVIC, REU | Shooter Template build 1 - Mountains to the City
+st1-open-sea      | LOCAL | Octophonic Shooter Template build 1       | Open Sea/Open Sea.prg | 1500 | - | OctoVIC, REU          | Shooter Template build 1 - Open Sea
+st1-volcano       | LOCAL | Octophonic Shooter Template build 1       | Volcano World/Volcano World.prg | 1500 | - | OctoVIC, REU | Shooter Template build 1 - Volcano World
+
+# ---------------------------------------------------------------- stock C64 classics: NEAL SUPPLIES (never in the repo)
+# Put your own copies in one folder and set NEAL_GAMES to it; the names below are the file names looked for.
+# The runner skips any that are not there and says so. Add more lines the same way.
+classic-ikplus     | NEAL | IK+.crt                    | - | 1500 | - | stock C64 cartridge | Neal supplies: IK+ (cartridge)
+classic-uridium    | NEAL | Uridium.crt                | - | 1500 | - | stock C64 cartridge | Neal supplies: Uridium (cartridge)
+classic-nebulus    | NEAL | Nebulus.crt                | - | 1500 | - | stock C64 cartridge | Neal supplies: Nebulus (cartridge)
+classic-monty      | NEAL | Monty on the Run.crt       | - | 1500 | - | stock C64 cartridge | Neal supplies: Monty on the Run (cartridge)
+classic-sabrewulf  | NEAL | Sabre Wulf Remastered.crt  | - | 1500 | - | stock C64 cartridge | Neal supplies: Sabre Wulf Remastered (cartridge)
+classic-robocop    | NEAL | RoboCop.d64                | - | 3000 | - | stock C64, disk load | Neal supplies: RoboCop (disk)
+classic-tuneful8   | NEAL | The Tuneful Eight.prg      | - | 1500 | - | 8 SIDs (scene demo)  | Neal supplies: The Tuneful Eight (scene demo)
+classic-demo-1     | NEAL | Classic demo 1.d64         | - | 3000 | - | stock C64 demo       | Neal supplies: a classic scene demo disk (his pick)
+classic-demo-2     | NEAL | Classic demo 2.d64         | - | 3000 | - | stock C64 demo       | Neal supplies: a classic scene demo disk (his pick)
