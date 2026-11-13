@@ -1,0 +1,157 @@
+Batch 1 (files-batch1), (c) 2026 Mong00se: the Octophonic 64 Emulator's model of Main gets the batch-1 commands, so
+SHELL.PRG build 9, OCTOCODE and the examples can be tested on the PC. Against the emulator source of Element 115
+(vice/src/octophonic/octoos.c, the copy with COMPILE); build with -I <c64_mister>/tools/octoos/main (octo_b1.h,
+the same helpers Main uses). Apply in vice/src/octophonic: patch -p1 < this file. Not yet in octophonic-backgrounds.
+
+--- a/octoos.c
++++ b/octoos.c
+@@ -25,6 +25,7 @@
+ #include <zlib.h>
+ 
+ #include "octoos.h"
++#include "octo_b1.h"      /* batch 1 (c) 2026 Mong00se: the same helpers Octophonic Main uses */
+ #include "octovic.h"
+ #include "autostart.h"
+ #include "attach.h"
+@@ -81,8 +82,31 @@
+     { "TURBO MODE", { "C128", "OFF", "SMART" }, 3, 1 },
+     { "TURBO SPEED", { "2X", "3X", "4X" }, 3, 0 },
+     { "SHOWCASE", { "OFF", "ON - NO DEBUG ROWS" }, 2, 0 },   /* os-fixes: NET b3, os.ini showcase= on the MiSTer */
++    { "VIDEO OUT", { "NOT SET - PICK ONE", "HDMI ONLY", "HDMI+VGA 31K", "HDMI+CRT 15K", "CRT ONLY 15K" }, 5, 0 },   /* batch 1: Fix 38/54 */
++    { "SCALING", { "FILL SCREEN", "SHARP PIXELS" }, 2, 0 },                /* batch 1: Fix 38 */
+ };
+ #define L_SHOWCASE 12
++#define L_SPLIT 9
++#define L_VIDEO 13
++#define L_SCALE 14
++static char src_pending[17];            /* batch 1 (Fix 76): the source SRCOPEN picked */
++static int ini_backed;
++/* batch 1: MiSTer.ini beside "SD card/games/C64" (the emulator's card), as Main writes /media/fat/MiSTer.ini */
++static void video_write(void)
++{
++    char ini[1100], bak[1100] = "", dir[1100];
++    snprintf(dir, sizeof dir, "%s", top_sd);
++    for (int k = 0; k < 2; k++) { char *s2 = strrchr(dir, '/'); if (s2) *s2 = 0; }
++    snprintf(ini, sizeof ini, "%s/MiSTer.ini", dir);
++    int v = lines[L_VIDEO].v ? lines[L_VIDEO].v - 1 : 0, sc = lines[L_SCALE].v;
++    const char *keys[4] = { ob1_video_ini_keys[0], ob1_video_ini_keys[1], ob1_video_ini_keys[2], "vscale_mode" };
++    const char *vals[4] = { ob1_video_ini_vals[v][0], ob1_video_ini_vals[v][1], ob1_video_ini_vals[v][2], ob1_scale_ini_val[sc] };
++    if (!ini_backed) { char b[1100]; snprintf(b, sizeof b, "%s/octophonic", dir); octo_mkdir(b); snprintf(b, sizeof b, "%s/octophonic/backups", dir); octo_mkdir(b);
++        snprintf(bak, sizeof bak, "%s/octophonic/backups/MiSTer.ini.first", dir); }
++    int n = ob1_ini_set(ini, keys, vals, 4, bak[0] ? bak : NULL);
++    if (n > 0 && bak[0]) ini_backed = 1;
++    log_message(olog, "F8: video %s, scaling %s -> %s: %d line(s) changed", lines[L_VIDEO].ch[lines[L_VIDEO].v], lines[L_SCALE].ch[sc], ini, n);
++}
+ #define NLINES ((int)(sizeof lines / sizeof lines[0]))
+ static int preset_sel, preset_boot;
+ 
+@@ -181,6 +205,7 @@
+ }
+ static uint8_t outb[65536]; static int outn;
+ static char comp_log[8192], comp_name[64], comp_dir[1024]; static int comp_state, comp_err, comp_lines;
++static void emu_join_say(const char *m) { snprintf(comp_log + strlen(comp_log), sizeof comp_log - strlen(comp_log), "%s\n", m); }   /* batch 1 */
+ static void out_put(const char *s) { for (; *s && outn < 65535; s++) outb[outn++] = *s == '\n' ? 0x0D : pet(*s); }
+ static void ramw(uint16_t a)
+ {
+@@ -449,6 +474,7 @@
+                 else {
+                     const entry_t *e = &ents[i - up()];
+                     rec[0] = (uint8_t)type_of(e);
++                    if (rec[0] == 2) { char sp[1400], sn[17]; snprintf(sp, sizeof sp, "%s/%s", cwd, e->name); if (ob1_d64_source(sp, sn)) rec[0] |= 8; }   /* batch 1 */
+                     char t[16] = "";
+                     if (!e->dir) { long long z = e->size, b = (z + 253) / 254;
+                         if (b < 1000) snprintf(t, sizeof t, "%lld", b); else if (z < 1000LL * 1024) snprintf(t, sizeof t, "%lldK", (z + 1023) / 1024); else snprintf(t, sizeof t, "%lldM", (z + 1048575) / 1048576); }
+@@ -491,6 +517,13 @@
+             int l = mb[6], st = mb[7] == 0xFF ? -1 : 1;
+             if (l >= NLINES) { reply(0x8F, 0, -1, -1); return; }
+             int n = lines[l].n;
++            if (l == L_VIDEO || l == L_SCALE) {             /* batch 1: MiSTer.ini, for the next switch-on */
++                if (l == L_VIDEO) { int v = lines[l].v; v = v == 0 ? (st > 0 ? 1 : 4) : ((v - 1 + st + 4) % 4) + 1; lines[l].v = v;
++                    if (v != 3 && lines[L_SPLIT].v == 0) { lines[L_SPLIT].v = 1; if (setting_hook) setting_hook(lines[L_SPLIT].label, lines[L_SPLIT].ch[1]); } }
++                else lines[l].v = (lines[l].v + st + n) % n;
++                video_write();
++                reply(2, 0, -1, 4); break;
++            }
+             if (l == 0) preset_sel = (preset_sel + st + n) % n;
+             else { lines[l].v = (lines[l].v + st + n) % n; if (setting_hook) setting_hook(lines[l].label, lines[l].ch[lines[l].v]); }
+             reply(2, 0, -1, -1);
+@@ -577,7 +610,10 @@
+             }
+             fclose(f);
+             comp_log[0] = 0; comp_state = 0; comp_err = 0; comp_lines = 0;
+-            snprintf(comp_log, sizeof comp_log, "Saved %s.asm\nACME %s.asm\n", base, base);
++            snprintf(comp_log, sizeof comp_log, "Saved %s.asm\n", base);
++            { char an[80]; snprintf(an, sizeof an, "%s.asm", base);             /* batch 1 (Fix 57): !source files off the disk */
++              if (dn && is_ext(dn, "d64")) ob1_join_sources(dir, an, dn, emu_join_say); }
++            snprintf(comp_log + strlen(comp_log), sizeof comp_log - strlen(comp_log), "ACME %s.asm\n", base);
+             char cmd[3200]; snprintf(cmd, sizeof cmd, "cd '%s' && acme -v1 -f cbm -o '%s.prg' -Wno-label-indent --maxerrors 10 '%s.asm' 2>&1", dir, base, base);
+             char prg[1400]; snprintf(prg, sizeof prg, "%s/%s.prg", dir, base); remove(prg);
+             FILE *pp = popen(cmd, "r"); int bad = 0;
+@@ -638,6 +674,67 @@
+             fclose(g); reply(2, i, -1, -1);
+             break;
+         }
++        case 0x19: {                                        /* batch 1 SRCOPEN (Fix 76): the disk in, OCTOCODE runs */
++            int total = nents + up();
++            if (!strcmp(cwd, "*") || len < up() || len >= total) { reply(0x81, 0, -1, -1); break; }
++            const entry_t *e = &ents[len - up()];
++            char dp[1400], oc[1400]; snprintf(dp, sizeof dp, "%s/%s", cwd, e->name);
++            if (type_of(e) != 2 || !ob1_d64_source(dp, src_pending)) { src_pending[0] = 0; reply(0x81, 0, -1, -1); break; }
++            snprintf(oc, sizeof oc, "%s/Tools/OCTOCODE.PRG", top_net[0] ? top_net : top_sd);
++            struct stat st; if (stat(oc, &st)) { src_pending[0] = 0; reply(0x81, 0, -1, -1); break; }
++            file_system_attach_disk(8, 0, dp);
++            reply(2, 0, -1, 1);
++            octoos_run_file(oc);
++            snprintf(prog_dir, sizeof prog_dir, "%s", cwd);
++            break;
++        }
++        case 0x1A: {                                        /* batch 1 SRCNAME */
++            int l = (int)strlen(src_pending);
++            for (int q = 0; q < l; q++) outb[outn++] = (uint8_t)src_pending[q];
++            outb[outn++] = 0; ramw(addr ? addr : 0xA000); reply(2, l, -1, -1);
++            src_pending[0] = 0;
++            break;
++        }
++        case 0x1C: {                                        /* batch 1 SAVEREU (Fix 56): VRAM pages into NAME.reu */
++            char n2[64]; int k2 = 0;
++            for (const char *c = nm; *c && k2 < 40; c++) if (isalnum((unsigned char)*c) || strchr(" -_.()+", *c)) n2[k2++] = *c;
++            n2[k2] = 0;
++            if (!k2) { reply(0x81, 0, -1, -1); break; }
++            if (!is_ext(n2, "reu")) strcat(n2, ".reu");
++            if (len <= 0 || addr + len > 0x10000) { reply(0x83, 0, -1, -1); break; }
++            char dir[1024]; const char *dn = file_system_get_disk_name(8, 0);
++            if (prog_dir[0]) snprintf(dir, sizeof dir, "%s", prog_dir);
++            else if (dn) { snprintf(dir, sizeof dir, "%s", dn); char *sl = strrchr(dir, '/'); if (sl) *sl = 0; }
++            else snprintf(dir, sizeof dir, "%s", cwd);
++            char pth[1400]; snprintf(pth, sizeof pth, "%s/%s", dir, n2);
++            FILE *rf = fopen(pth, (mb[6] & 1) ? "ab" : "wb");
++            size_t ln2 = (size_t)len << 8;
++            size_t wr = rf ? fwrite(octovic_vram() + ((size_t)addr << 8), 1, ln2, rf) : 0;
++            if (!rf || fclose(rf) || wr != ln2) { reply(0x84, 0, -1, -1); break; }
++            struct stat st; long long sz = stat(pth, &st) ? 0 : (long long)st.st_size;
++            log_message(olog, "SAVEREU %s: %u bytes from VRAM $%06X", pth, (unsigned)ln2, (unsigned)addr << 8);
++            reply(2, (int)((sz + 65535) >> 16), -1, -1);
++            break;
++        }
++        case 0x1B: {                                        /* batch 1 NEWDISK (Fix 46) */
++            if (!strcmp(cwd, "*") || !nm[0]) { reply(0x81, 0, -1, -1); break; }
++            char n2[20]; int k2 = 0;
++            for (const char *c = nm; *c && k2 < 16; c++) if (isalnum((unsigned char)*c) || strchr(" -_.!()+", *c)) n2[k2++] = *c;
++            while (k2 && n2[k2 - 1] == ' ') k2--;
++            n2[k2] = 0;
++            if (!k2) { reply(0x81, 0, -1, -1); break; }
++            char dp[1400], dn[17]; snprintf(dp, sizeof dp, "%s/%s.d64", cwd, n2);
++            for (int q = 0; q <= k2; q++) dn[q] = (char)(q < k2 ? pet(n2[q]) : 0);
++            int r = ob1_d64_new(dp, dn);
++            if (r == -1) { reply(0x87, 0, -1, -1); break; }
++            if (r) { reply(0x84, 0, -1, -1); break; }
++            file_system_attach_disk(8, 0, dp);
++            list_dir();
++            int at = 0xFFFF; char fn[64]; snprintf(fn, sizeof fn, "%s.d64", n2);
++            for (int i = 0; i < nents; i++) if (!strcasecmp(ents[i].name, fn)) { at = i + up(); break; }
++            reply(2, 0, at, 8);
++            break;
++        }
+         default: reply(0x8F, 0, -1, -1); break;
+     }
+ }

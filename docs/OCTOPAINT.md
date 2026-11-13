@@ -61,8 +61,8 @@ The pointer does not draw until a button is down. Clicking a swatch on the toolb
 | `TAB` (the `<-` key, or `CTRL`) | hide / show the toolbar |
 | `N` | new picture: asks `CLEAR THE PICTURE? Y/N`, clears to colour 0 |
 | `S` | save: asks the name (max 12 letters), then the disk question |
-| `O` | open: asks the name, then the disk question |
-| `I` | import a Koala picture |
+| `O` | open: the disk question, then the disk's pictures (`.OCT`) as a list - cursor up/down, RETURN opens one, N types a name, RUN/STOP goes back (build 2, Fix 31) |
+| `I` | import a Koala picture: the disk question, then the disk's programs as a list to pick from (build 2, Fix 31) |
 | `M` | mouse reading on / off |
 | `H` | help page, any key goes back |
 | `D` | debug overlay on / off (see below) |

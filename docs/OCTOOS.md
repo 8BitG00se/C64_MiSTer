@@ -87,9 +87,18 @@ LOADING... and also wait 20 s; the settings wait 3 s.
 
 ## F1: the browser
 
+**Batch 1 (SHELL.PRG build 9, Fix 76): F1 opens the DISKS page** - CHDIR `/DISKS`, the Disks folder of the
+start drive (no Disks folder: the drives, as before; F1 on the page: the drives). Row 23 always shows the keys
+`R/RETURN RUN  M MOUNT  O SOURCE  N NEW`; a key that does nothing for the entry under the bar is dimmed (dark
+grey): M only on a disk, O only on a disk with source on it (LIST b3), N not at the drives level. O puts the disk
+in drive 8 and opens its source in OCTOCODE (`19` SRCOPEN; OCTOCODE asks `1A` SRCNAME). N asks for a name on the
+status line and makes a blank disk there (`1B` NEWDISK); the bar goes on it, and it is in drive 8. F3 LOAD at
+READY is unchanged (LOAD"*",8,1 and RUN). SHELL.PRG loads at `$B000` since build 9 (its new code sits under
+BASIC's ROM at `$B000-$B9FF`, the list at `$BA00`).
+
 F1 at READY (the editor waiting for a line, direct mode) clears the screen and types `@@B`, which
 loads `SHELL.PRG` from `/media/fat/octophonic` to `$C000` and runs it; it opens at the drives
-(CHDIR `*`). F-keys and cursor keys only:
+(CHDIR `*`) - before build 9. F-keys and cursor keys only:
 
 | Key | Does |
 |---|---|
@@ -284,6 +293,35 @@ Main starts the Octophonic core only once per power-on, so the menu stays a menu
 `17` DRIVE8 (os-fixes): the name of the disk in drive 8 (as the core has it - also one put in from
 the MiSTer's menu) to ADDR, PETSCII, at most 32 characters, 0 after it; RESULT its length (0: empty).
 `18` REU (os-fixes): see "A running program asks for its .reu" below.
+
+**Batch 1 (files-batch1, `octophonic-batch1.patch` + `octo_b1.h`, (c) 2026 Mong00se):**
+
+| Cmd | Name | 6502 gives | Main does | Answer |
+|---|---|---|---|---|
+| `06` LIST | (as before) | | a disk with source - a closed SEQ file on the `.d64`, as OCTOCODE saves it, a name ending `.ASM` first - gets **b3** in its record's type byte (`2 + 8`) | the Disks page lights **O** for it (Fix 76) |
+| `19` | SRCOPEN | LEN the list entry (a disk with source) | puts the disk in drive 8, keeps the source's name, runs `games/C64/Tools/OCTOCODE.PRG` (the core resets, as for any program) | VALUE 1; `$81` no source on it, or no OCTOCODE on the card |
+| `1A` | SRCNAME | ADDR where | the name SRCOPEN kept (PETSCII, 0 after it) - once | RESULT its length (0: none: OCTOCODE starts as before) |
+| `1B` | NEWDISK | NAME (16 at most; letters, digits, space `- _ . ! ( ) +`) | a blank, formatted 35-track `NAME.d64` (disk name NAME, ID `OC`) in the browser's folder, put in drive 8 (Fix 46) | VALUE 8, LEN its list entry (the bar goes on it); `$87` a file of that name is there already |
+| `1C` | SAVEREU | ADDR the VRAM page (VRAM address / 256), LEN how many 256-byte pages, NAME the file (`.reu` added), ARG b0 add to its end | writes those VRAM bytes to `NAME.reu` in the program's own folder (as `18` looks), else beside the disk in drive 8, else the browser's folder (Fix 56). The program puts its data in VRAM first: REU -> C64 with the C64 address fixed at VDATA `$D604` | RESULT the file's size in 64 KB; `$83` past VRAM's end, `$84` can't write |
+| `13` | COMPILE | (as before) | **Fix 57:** before ACME runs, every `!source "x"` / `!src` / `!binary "x"` / `!bin` file that isn't in the folder yet is taken off the `.d64` in drive 8 (source files PETSCII -> ASCII, and searched for their own `!source` lines); the log says `Joined x from the disk` | as before |
+| `08`/`09` | SETLIST / SETSTEP | | lines **13 VIDEO OUT** (HDMI ONLY, HDMI+VGA 31K, HDMI+CRT 15K, CRT ONLY 15K; "NOT SET - PICK ONE" until chosen) and **14 SCALING** (FILL SCREEN, SHARP PIXELS) - os.ini `video=` / `scaling=`, written to MiSTer.ini (below); VIDEO OUT other than HDMI+CRT 15K turns SPLIT SCREENS off | SETSTEP on them: VALUE 4 = switch off and on to see it |
+
+What VIDEO OUT / SCALING write to `/media/fat/MiSTer.ini` (every active line of the key, any section; a missing
+key goes under `[MiSTer]`; nothing else in the file is touched). The first change after Main starts backs
+the old file up to `octophonic/backups/MiSTer.ini.<date-time>`; every change is a line in `update.log`.
+Nothing is restarted: MiSTer reads MiSTer.ini when it starts.
+
+| VIDEO OUT | vga_scaler | forced_scandoubler | vsync_adjust |
+|---|---|---|---|
+| HDMI ONLY | 0 | 0 | 2 |
+| HDMI+VGA 31K (a PC monitor; its split C64 side needs a new core - Fix 54) | 0 | 1 | 2 |
+| HDMI+CRT 15K (Neal's set-up: the same two lines his DEV step 910 sets) | 0 | 0 | 2 |
+| CRT ONLY 15K | 0 | 0 | 2 |
+
+| SCALING | vscale_mode |
+|---|---|
+| FILL SCREEN (MiSTer's default) | 0 |
+| SHARP PIXELS (integer scale: every pixel the same size, e.g. on a 4K TV) | 1 |
 OPEN on a lone `.reu` answers VALUE 2, RESULT its size in 64 KB units, LEN the list entry of its `.prg`
 ($FFFF none).
 
@@ -434,6 +472,8 @@ build in `/media/fat/octophonic/acme`, run in a thread so COMPLOG can say "still
 enabled=1
 boot=_Computer/Octophonic 64.mgl      ; or an .rbf; missing: the newest _Computer/.C64_Octophonic_*.rbf
 startin=sd                            ; net, sd or last (F8 START IN); missing: sd
+video=hdmi+crt15                      ; (batch 1) F8 VIDEO OUT / F7: hdmi, hdmi+vga31, hdmi+crt15, crt15; missing: not set
+scaling=fill                          ; (batch 1) F8 SCALING: fill or sharp
 start=/media/fat/games/00-NETWORK/C64 ; optional: the share's C64 folder, if Main can't find it
 ```
 

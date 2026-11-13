@@ -28,3 +28,7 @@ equals `owsong.py`'s file byte for byte; after a change and a load the exported 
 played by `example_demo.asm` writes exactly the same SID registers as the editor (67,140 writes of the first minute of DARK DRIVE, no difference); the player's
 cost measured as the border band over a whole song; per-SID levels with each track played alone, the whole-mix peak and the
 entrance bar of each SID.
+
+Batch 1 (Fix 31, (c) 2026 Mong00se): `L` (load) asks the disk question, then lists the disk's songs (`.OWS` SEQ files) to
+pick from - cursor up/down, RETURN loads it, RUN/STOP goes back. A disk with no songs on it loads by the song's own
+name, as before.

@@ -10,6 +10,9 @@ Original project by Mong00se - Octophonic 64 and OctoVIC by Mong00se (github.com
   cursor keys, RETURN (splits, keeps the indent), DEL (joins at a line's start), INST, HOME, CLR.
   Build 5: F3 LOAD lists the disk's source files (SEQ) to pick from - cursor up/down, RETURN loads,
   N types a name, RUN/STOP goes back; the source now starts at $2600.
+  Batch 1: at its start OCTOCODE asks Main (SRCNAME `$1A`) whether the browser's Disks page sent it to open a
+  source (its O key); if so it loads that file from drive 8 at once. F2 also joins `!source` files from the disk
+  (Main does it, Fix 57).
 - `stock.asm` - a stock C64 example: its `; target stock` line makes COMPILE warn about Octophonic-only
   addresses and run it on a stock machine (one SID, no OctoVIC, no REU).
 - `hello.asm` - the example the editor opens: OctoVIC copper bars (the VIC's colour 0 set every

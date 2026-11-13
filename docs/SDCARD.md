@@ -113,3 +113,27 @@ Steps 1-3 are what the Install .bats already do. Step 4 is new. Steps 5-6 cover 
 
 For the emulator, the same `SD card/` folder goes next to `x64sc.exe` (step 3's SHELL.PRG and step 5's
 demos; steps 1, 2 and 4 don't apply).
+
+## Batch 1 (files-batch1, 13 Nov 2026) - what it changes on the card
+
+(c) 2026 Mong00se. No new core: everything here is a file that an existing recipe step already installs and
+re-checks (OCTO-RECHECK: a newer payload replaces the card's copy, the old one is backed up, one line in
+steps-done.txt):
+
+| Step | File | What is new |
+|---|---|---|
+| 040 | `MiSTer` (Octophonic Main, `octophonic-batch1.patch`) | the Disks page's source flag, SRCOPEN/SRCNAME, NEWDISK, SAVEREU, `!source` joining, VIDEO OUT/SCALING, the front screen kept after a long REU (Fix 41) |
+| 050 | `octophonic/SHELL.PRG` build 9 | F1 opens the Disks page with its key strip, N new disk, F8 scrolls and has VIDEO OUT/SCALING, F7 is the dual-screen set-up page, the slogan row. **Loads at `$B000` now** |
+| 055 | `games/C64/Tools/OCTOCODE.PRG` | opens the source the Disks page's O asked for |
+| 088 | the front screen's firmware OCTO6 | the KERNAL-box logo bigger and centred (Fix 71) - the screen restarts itself, the MiSTer does not |
+| 015 | the example set | `Code/makereu.asm` + `.prg` (Fix 56) |
+
+New things Main writes on the card (none of them at install time - only when the user picks them):
+- `octophonic/os.ini`: `video=` and `scaling=` (F8 VIDEO OUT / SCALING, F7).
+- `MiSTer.ini`: `vga_scaler`, `forced_scandoubler`, `vsync_adjust`, `vscale_mode` (table in docs/OCTOOS.md);
+  the old file first to `octophonic/backups/MiSTer.ini.<date-time>`; a line in `octophonic/update.log`.
+  It takes effect at the next switch-on - the page says so. **Nothing restarts the MiSTer.**
+- `<folder>/<NAME>.d64`: a new blank disk (N on the Disks page), never over a file that is there.
+- `<program's folder>/<NAME>.reu`: a .reu a program saved (SAVEREU).
+- `<disk's folder>/<x>.asm`: OCTOCODE's F2 takes `!source` files off the disk beside the main one.
+
