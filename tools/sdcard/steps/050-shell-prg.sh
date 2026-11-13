@@ -25,9 +25,10 @@ cp -f "$NEW" "$CUR" || exit 1
 sync
 [ "$(octo_md5 "$CUR")" = "$(octo_md5 "$NEW")" ] || { echo "the copy does not match"; exit 1; }
 
-# a .prg must start with its load address. SHELL.PRG loads at $BE00 since build 5 (its jingle in the
-# RAM under BASIC, the browser from $C000), at $C000 before that.
+# a .prg must start with its load address. SHELL.PRG loads at $B000 since build 9 (batch 1: the Disks page's far
+# code at $B000-$B9FF and the jingle in the RAM under BASIC, the browser from $C000), at $BE00 in builds 5-8, at
+# $C000 before that.
 LOAD=$(od -A n -t x1 -N 2 "$CUR" | tr -d ' \n')
-octo_say "load address bytes: $LOAD  (00be = \$BE00, build 5 on; 00c0 = \$C000, older)"
-[ "$LOAD" = "00be" ] || [ "$LOAD" = "00c0" ] || octo_say "WARNING: that is not \$BE00 or \$C000 - is this really SHELL.PRG?"
+octo_say "load address bytes: $LOAD  (00b0 = \$B000, build 9 on; 00be = \$BE00, builds 5-8; 00c0 = \$C000, older)"
+[ "$LOAD" = "00b0" ] || [ "$LOAD" = "00be" ] || [ "$LOAD" = "00c0" ] || octo_say "WARNING: that is not \$B000, \$BE00 or \$C000 - is this really SHELL.PRG?"
 octo_mark_done "SHELL.PRG $(octo_md5 "$CUR")"
