@@ -5,7 +5,7 @@ name: Build Octophonic Main
 
 on:
   push:
-    branches: [ octophonic-v1.1, os-fixes, oled-anims, tonight, rgb256, build12, build14-everything ]
+    branches: [ octophonic-v1.1, os-fixes, oled-anims, tonight, rgb256, build12, build14-everything, files-batch1 ]
     paths: [ 'tools/octoos/main/**', '.github/workflows/octoos-main.yml' ]
   workflow_dispatch:
 
@@ -41,6 +41,10 @@ jobs:
           # Fix 60 / Build 12: Octo Remaster - a game picked in F1 gets a pack (made if missing) and starts in Octophonic64RGB
           # (Build 14: version 2 packs - Level 2 - into the DDR3, learn files)
           git apply ../tools/octoos/main/octophonic-rgb256.patch
+          # batch 1 (files-batch1): the Disks page's SRCOPEN/SRCNAME and source flag (Fix 76), NEWDISK (Fix 46),
+          # VIDEO OUT / SCALING into MiSTer.ini (Fix 38/54), the front screen kept after a long REU (Fix 41)
+          cp ../tools/octoos/main/octo_b1.h support/octo/
+          git apply ../tools/octoos/main/octophonic-batch1.patch
 
       - name: Build
         run: |

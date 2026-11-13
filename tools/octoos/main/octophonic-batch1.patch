@@ -1,0 +1,304 @@
+diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
+index e0510ef..afa239d 100644
+--- a/support/octo/octo.cpp
++++ b/support/octo/octo.cpp
+@@ -43,6 +43,17 @@
+ //               blocks while it goes in), then VALUE 2 put in now / 4 it was in already (ARG b0:
+ //               load it again anyway), RESULT its size in 64 KB; $81 not found
+ //   SETLIST's line 12 (os-fixes): SHOWCASE OFF/ON, os.ini showcase= (0/1), shown as NET b3
++//   (batch 1, (c) 2026 Mong00se - octophonic-batch1.patch, octo_b1.h)
++//   LIST    a disk with source (a SEQ file on the .d64, as OCTOCODE saves it) has b3 set in its
++//           record's type byte (2 | 8): the Disks page lights O OPEN SOURCE for it (Fix 76)
++//   19 SRCOPEN  entry LEN (a disk with source): into drive 8, then Tools/OCTOCODE.PRG runs and asks
++//               for the source with SRCNAME (Fix 76's O). VALUE 1, the core resets; $81 no source/OCTOCODE
++//   1A SRCNAME  the source SRCOPEN picked, at ADDR (PETSCII, 0 after it), RESULT its length; given
++//               once (0: none - OCTOCODE starts as before)
++//   1B NEWDISK  (Fix 46) a blank formatted NAME.d64 in the browser's folder, put in drive 8; LEN =
++//               its place in the list (for the bar); $87 a file of that name is there already
++//   SETLIST lines 13 VIDEO OUT and 14 SCALING (Fix 38, Fix 54's set-up): os.ini video= / scaling=,
++//           written to MiSTer.ini (backed up first) - VALUE 4 after SETSTEP: switch off and on to see it
+ // NET (the mailbox's $D6FF): b1-0 the network share, b3 SHOWCASE (demos leave out their debug rows),
+ // b7/b6 a screenshot, b4 always set - Main serves
+ // the OS (the start jingle asks for SHELL.PRG only then), b5 always set - this Main is on a MiSTer
+@@ -80,6 +91,7 @@
+ #include "../../scaler.h"
+ #include "../../cfg.h"
+ #include "octo.h"
++#include "octo_b1.h"
+ #include "../../menu.h"
+ 
+ #define OS_DIR      "/media/fat/octophonic"
+@@ -101,7 +113,7 @@
+ 
+ enum { R_CMD, R_STATUS, R_ADDRL, R_ADDRH, R_LENL, R_LENH, R_ARG, R_VALUE, R_NAMELEN, R_9, R_RESL, R_RESH, R_VER, R_SEQ, R_RSEQ };
+ enum { ST_IDLE = 0, ST_BUSY = 1, ST_DONE = 2,
+-       E_NOTFOUND = 0x81, E_NOTDIR = 0x82, E_TOOBIG = 0x83, E_READ = 0x84, E_CANTRUN = 0x85, E_NOTCONN = 0x86, E_BADCMD = 0x8F };
++       E_NOTFOUND = 0x81, E_NOTDIR = 0x82, E_TOOBIG = 0x83, E_READ = 0x84, E_CANTRUN = 0x85, E_NOTCONN = 0x86, E_THERE = 0x87, E_BADCMD = 0x8F };
+ 
+ static int  os_enabled = 0;
+ static char os_boot[512] = "_Computer/Octophonic 64.mgl";
+@@ -120,6 +132,9 @@ static int  os_showcase = 0;             // os.ini showcase=1: NET b3, demos lea
+ static std::string prog_dir;             // the folder the running program came from (REU, $18)
+ static int  rgb_core = 0;                // C64RGB 256 (Fix 60): the core running is the recolour core
+ static int  os_remaster = 1;             // Build 12: os.ini remaster=1 (default) - a game with no pack gets one made
++static int  os_video = -1;               // batch 1 (Fix 38/54): os.ini video= (ob1_video_key), -1 not set yet
++static int  os_scale = 0;                // batch 1 (Fix 38): os.ini scaling= fill (0) / sharp (1)
++static std::string src_pending;          // batch 1 (Fix 76): the source SRCOPEN picked, for OCTOCODE
+ static void rgb_now_read();              // Build 12 (below)
+ 
+ // ------------------------------------------------------------------------------------------ log
+@@ -155,6 +170,8 @@ static void read_ini()
+ {
+ 	os_enabled = 0;
+ 	os_remaster = 1;
++	os_video = -1;
++	os_scale = 0;
+ 	FILE *f = fopen(OS_INI, "r");
+ 	if (!f) return;
+ 	os_enabled = 1;
+@@ -176,6 +193,11 @@ static void read_ini()
+ 		else if (!strcasecmp(p, "startin")) snprintf(os_startin, sizeof(os_startin), "%s", v);
+ 		else if (!strcasecmp(p, "showcase")) os_showcase = atoi(v) != 0;
+ 		else if (!strcasecmp(p, "remaster")) os_remaster = atoi(v) != 0;    // Build 12: auto packs on/off
++		else if (!strcasecmp(p, "video"))                                    // batch 1: the screens set up
++		{
++			for (int i = 0; i < OB1_NVIDEO; i++) if (!strcasecmp(v, ob1_video_key[i])) os_video = i;
++		}
++		else if (!strcasecmp(p, "scaling")) os_scale = !strcasecmp(v, "sharp") ? 1 : 0;
+ 	}
+ 	fclose(f);
+ }
+@@ -1487,6 +1509,7 @@ static int run_path(const std::string &path, const std::vector<Entry> *folder)
+ 		reu_load(full_of(reu).c_str());
+ 	}
+ 	mb_reply(ST_DONE, 0, -1, 1);                    // the core resets now: the reply goes first
++	octo_oled_started();                            // batch 1, Fix 41: its animation stays (the REU took a while)
+ 	os_log("  load %s (index 0x%02X)", p, idx);
+ 	user_io_store_filename(p);
+ 	c64_open_file(p, idx);
+@@ -1654,6 +1677,8 @@ static void cmd_list(uint16_t addr, int first, int count)
+ 		if (!e.size.empty()) snprintf(sz, sizeof(sz), "%5s", e.size.c_str());
+ 		else size_text(e, sz);
+ 		rec[0] = (uint8_t)type_of(e);
++		char srcn[17];                           // batch 1 (Fix 76): a disk with source: b3
++		if (rec[0] == 2 && strcmp(cwd, DRIVES) && ob1_d64_source(full_of(e.name).c_str(), srcn)) rec[0] |= 8;
+ 		for (int k = 0; k < 5; k++) rec[1 + k] = to_pet(sz[k]);
+ 		std::string ext = !strcmp(cwd, DRIVES) ? "DRV" : (e.dir || e.up) ? "DIR" : ext_of(e.name);
+ 		for (int k = 0; k < 3 && k < (int)ext.size(); k++) rec[6 + k] = to_pet(ext[k]);
+@@ -1726,7 +1751,12 @@ static const Opt opts[] = {
+ #define S_CHIPR  2
+ #define S_START  3       // where the OS starts: network / SD card / last used (os.ini startin=)
+ #define S_OPT0   4
+-#define S_SHOW   (S_OPT0 + N_OPTS)   // SHOWCASE (os-fixes): os.ini showcase=, NET b3 - the last line
++#define S_SHOW   (S_OPT0 + N_OPTS)   // SHOWCASE (os-fixes): os.ini showcase=, NET b3
++#define S_VIDEO  (S_SHOW + 1)        // batch 1 (Fix 38/54): VIDEO OUT - the screens, MiSTer.ini
++#define S_SCALE  (S_SHOW + 2)        // batch 1 (Fix 38): SCALING - fill / sharp pixels, MiSTer.ini
++#define S_LAST   S_SCALE
++#define O_SPLIT  5                   // opts[]: SPLIT SCREENS
++static void video_write();           // batch 1 (below)
+ static const char *startins[3] = { "net", "sd", "last" };
+ static const char *startnames[3] = { "NETWORK", "SD CARD", "LAST USED" };
+ static int startin_now()
+@@ -1826,8 +1856,12 @@ static void cmd_setlist(uint16_t addr)
+ 	}
+ 	put_field(out, "SHOWCASE", 20);
+ 	put_field(out, os_showcase ? "ON - NO DEBUG ROWS" : "OFF", 20);
++	put_field(out, "VIDEO OUT", 20);                         // batch 1 (Fix 38/54)
++	put_field(out, os_video < 0 ? "NOT SET - PICK ONE" : ob1_video_name[os_video], 20);
++	put_field(out, "SCALING", 20);
++	put_field(out, ob1_scale_name[os_scale], 20);
+ 	ram_write(addr, out.data(), out.size());
+-	mb_reply(ST_DONE, S_SHOW + 1);
++	mb_reply(ST_DONE, S_LAST + 1);
+ }
+ 
+ static void cmd_setstep(int line, int dir)
+@@ -1865,6 +1899,29 @@ static void cmd_setstep(int line, int dir)
+ 		mb_reply(ST_DONE, 0);
+ 		return;
+ 	}
++	if (line == S_VIDEO || line == S_SCALE)                  // batch 1: MiSTer.ini, for the next start
++	{
++		if (line == S_VIDEO)
++		{
++			os_video = os_video < 0 ? (step > 0 ? 0 : OB1_NVIDEO - 1) : (os_video + step + OB1_NVIDEO) % OB1_NVIDEO;
++			write_key("video", ob1_video_key[os_video]);
++			// one screen, or a PC monitor (its split side needs the next core): SPLIT SCREENS off
++			if (os_video != 2 && user_io_status_get(opts[O_SPLIT].bits))
++			{
++				user_io_status_set(opts[O_SPLIT].bits, 0);
++				user_io_status_save(user_io_create_config_name(1));
++				os_log("  split screens off: %s", os_video == 1 ? "a 31 kHz VGA monitor's C64 side needs the next core (Fix 54)" : "one screen");
++			}
++		}
++		else
++		{
++			os_scale = (os_scale + step + OB1_NSCALE) % OB1_NSCALE;
++			write_key("scaling", ob1_scale_key[os_scale]);
++		}
++		video_write();
++		mb_reply(ST_DONE, 0, -1, 4);                     // VALUE 4: switch off and on to see it
++		return;
++	}
+ 	if (line == S_SHOW)
+ 	{
+ 		os_showcase = !os_showcase;
+@@ -1897,6 +1954,108 @@ static void cmd_setapply()
+ 	xml_load(full);                                  // as picking the launcher in the menu
+ }
+ 
++// ---------------------------------------------------------------- batch 1 (c) 2026 Mong00se
++
++// Fix 38 / Fix 54: the screens and the scaling into MiSTer.ini. The first change since Main started
++// backs the old MiSTer.ini up to octophonic/backups/MiSTer.ini.<date-time>; each change is one line
++// in update.log. MiSTer reads MiSTer.ini when it starts: the page says to switch off and on.
++// Nothing is restarted here.
++static int ini_backed = 0;
++static void video_write()
++{
++	int v = os_video < 0 ? 0 : os_video;
++	const char *keys[4] = { ob1_video_ini_keys[0], ob1_video_ini_keys[1], ob1_video_ini_keys[2], "vscale_mode" };
++	const char *vals[4] = { ob1_video_ini_vals[v][0], ob1_video_ini_vals[v][1], ob1_video_ini_vals[v][2], ob1_scale_ini_val[os_scale] };
++	char bak[256] = "";
++	if (!ini_backed)
++	{
++		time_t t = time(0);
++		char ts[32];
++		strftime(ts, sizeof(ts), "%Y%m%d-%H%M%S", localtime(&t));
++		mkdir(OS_DIR "/backups", 0777);
++		snprintf(bak, sizeof(bak), OS_DIR "/backups/MiSTer.ini.%s", ts);
++	}
++	int n = ob1_ini_set(OS_TOP "/MiSTer.ini", keys, vals, 4, bak[0] ? bak : NULL);
++	if (n > 0 && bak[0]) ini_backed = 1;
++	rgb_ulog("F8 settings: video %s, scaling %s -> MiSTer.ini %s%s%s (takes effect at the next switch-on; nothing restarted)",
++		os_video < 0 ? "not set" : ob1_video_key[os_video], ob1_scale_key[os_scale],
++		n < 0 ? "COULD NOT BE WRITTEN" : n == 0 ? "already so" : "changed", n > 0 && bak[0] ? ", old copy " : "", n > 0 && bak[0] ? bak : "");
++}
++
++// Fix 76: OCTOCODE on the card (Tools since Fix 45; Apps on an older card)
++static std::string octocode_path()
++{
++	const char *c[2] = { "Tools/OCTOCODE.PRG", "Apps/OCTOCODE.PRG" };
++	for (int i = 0; i < 2; i++)
++	{
++		std::string p = std::string(OS_TOP "/") + sd_root() + "/" + c[i];
++		if (!access(p.c_str(), R_OK)) return p;
++	}
++	return "";
++}
++
++// SRCOPEN ($19, Fix 76's O): the disk into drive 8, then OCTOCODE, which asks for the source (SRCNAME)
++static void cmd_srcopen(int idx)
++{
++	std::vector<Entry> v;
++	scan(v);
++	if (idx < 0 || idx >= (int)v.size() || type_of(v[idx]) != 2) { mb_reply(E_NOTFOUND, 0); return; }
++	std::string disk = full_of(v[idx].name);
++	char srcn[17];
++	if (!ob1_d64_source(disk.c_str(), srcn)) { mb_reply(E_NOTFOUND, 0); return; }
++	std::string oc = octocode_path();
++	if (oc.empty()) { os_log("  SRCOPEN: no Tools/OCTOCODE.PRG on the card"); mb_reply(E_NOTFOUND, 0); return; }
++	src_pending = srcn;
++	mb_reply(ST_DONE, 0, -1, 1);                    // the core resets now: the reply goes first
++	os_log("  mount #8 %s, source %s, then %s", disk.c_str(), srcn, oc.c_str());
++	user_io_file_mount(disk.c_str(), 0);
++	disk8 = disk;
++	prog_dir = disk.substr(0, disk.rfind('/'));
++	octo_oled_logo(0);
++	user_io_store_filename(oc.c_str());
++	c64_open_file(oc.c_str(), 0x01);
++}
++
++// SRCNAME ($1A): the source SRCOPEN picked (once)
++static void cmd_srcname(uint16_t addr)
++{
++	std::vector<uint8_t> out(src_pending.begin(), src_pending.end());
++	out.push_back(0);
++	ram_write(addr ? addr : 0xA000, out.data(), out.size());
++	int l = (int)src_pending.size();
++	if (l) os_log("  SRCNAME: %s", src_pending.c_str());
++	src_pending.clear();
++	mb_reply(ST_DONE, l);
++}
++
++// NEWDISK ($1B, Fix 46): a blank NAME.d64 in this folder, into drive 8
++static void cmd_newdisk(const char *name)
++{
++	if (!strcmp(cwd, DRIVES) || !name[0]) { mb_reply(E_NOTFOUND, 0); return; }
++	std::string n;
++	for (const char *c = name; *c && n.size() < 16; c++)
++		if (isalnum((unsigned char)*c) || strchr(" -_.!()+", *c)) n.push_back(*c);
++	while (!n.empty() && n.back() == ' ') n.pop_back();
++	if (n.empty()) { mb_reply(E_NOTFOUND, 0); return; }
++	std::string file = n + ".d64";
++	std::string path = full_of(file);
++	char dn[17];
++	size_t k = 0;
++	for (; k < n.size(); k++) dn[k] = (char)to_pet(n[k]);
++	dn[k] = 0;
++	int r = ob1_d64_new(path.c_str(), dn);
++	if (r == -1) { mb_reply(E_THERE, 0); return; }
++	if (r) { os_log("  NEWDISK: can't write %s", path.c_str()); mb_reply(E_READ, 0); return; }
++	user_io_file_mount(path.c_str(), 0);
++	disk8 = path;
++	std::vector<Entry> v;
++	scan(v);
++	int at = 0xFFFF;
++	for (int i = 0; i < (int)v.size(); i++) if (!v[i].dir && !strcasecmp(v[i].name.c_str(), file.c_str())) at = i;
++	rgb_ulog("NEW DISK: %s made and put in drive 8", path.c_str());
++	mb_reply(ST_DONE, 0, at, 8);
++}
++
+ // ------------------------------------------------------- CTRL+F12: out of a demo, to the start
+ 
+ // a demo doesn't listen to the mailbox and often blocks RUN/STOP+RESTORE, so Main does it: the
+@@ -2405,6 +2564,9 @@ void octo_poll()
+ 	case 0x12: cmd_menu(); break;
+ 	case 0x17: cmd_drive8(addr); break;
+ 	case 0x18: cmd_reu(name, reg[R_ARG] & 1); break;
++	case 0x19: cmd_srcopen(len); break;                  // batch 1 (Fix 76)
++	case 0x1A: cmd_srcname(addr); break;
++	case 0x1B: cmd_newdisk(name); break;                 // batch 1 (Fix 46)
+ 	default:   mb_reply(E_BADCMD, 0); break;
+ 	}
+ 	if (strcmp(was, cwd)) keep_cwd();
+@@ -2412,7 +2574,7 @@ void octo_poll()
+ 	// was the answer taken? (the 6502 may have given up and asked something else meanwhile)
+ 	// (not after RUN, OPEN or a preset: the core may already be restarting)
+ 	int taken = 1;
+-	if (reg[R_CMD] != 0x04 && reg[R_CMD] != 0x07 && reg[R_CMD] != 0x0A && reg[R_CMD] != 0x12)
++	if (reg[R_CMD] != 0x04 && reg[R_CMD] != 0x07 && reg[R_CMD] != 0x0A && reg[R_CMD] != 0x12 && reg[R_CMD] != 0x19)
+ 	{
+ 		uint8_t now[16];
+ 		char nn[33];
+diff --git a/support/octo/octo.h b/support/octo/octo.h
+index d4170bf..ae77f7f 100644
+--- a/support/octo/octo.h
++++ b/support/octo/octo.h
+@@ -33,5 +33,6 @@ const char *octo_oled_program(const char *path);   // returns the animation used
+ void octo_oled_logo(int force);
+ void octo_oled_shell();
+ void octo_oled_boot();
++void octo_oled_started();                          // batch 1, Fix 41: the program is in now (after its REU)
+ 
+ #endif
+diff --git a/support/octo/octo_oled.cpp b/support/octo/octo_oled.cpp
+index cfbc79c..0b76db0 100644
+--- a/support/octo/octo_oled.cpp
++++ b/support/octo/octo_oled.cpp
+@@ -118,6 +118,15 @@ void octo_oled_shell()
+ 	octo_oled_logo(0);
+ }
+ 
++// batch 1 (Fix 41), (c) 2026 Mong00se: the program is going in NOW - after its REU, which can take longer than
++// the 10 s above (a 16 MB .reu). The clock starts again here, so the cold start that its load causes still
++// counts as "just started" and the program's own animation stays on the front screen while it runs.
++void octo_oled_started()
++{
++	if (!oled_launched) return;
++	oled_launch = GetTimer(0);
++}
++
+ // Main has (re)started with the Octophonic core: the logo, if nothing else is looking after the screen
+ void octo_oled_boot()
+ {
