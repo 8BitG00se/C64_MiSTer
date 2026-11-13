@@ -483,6 +483,285 @@ l_save  ldx #<m_disk
 @r      rts
 s_ows   !text "OWS1"
 
+; ---- (batch 1, Fix 31 - (c) 2026 Mong00se) the songs on the disk as a list: VIC text, full screen. C set: one picked,
+; in fname / fnlen (wp_got 1); C clear: wp_none 0 RUN/STOP (nothing), 1 no songs on the disk (load by the song's name)
+WPBUF   = STAGE         ; the names, 16 bytes each (the stage is free until the load)
+WPMAX   = 64
+WPROWS  = 18            ; rows 3-20
+wpick   lda #0
+        sta wp_got
+        sta wp_n
+        sta wp_line
+        lda #1
+        sta wp_none
+        jsr prep
+        jsr io_begin
+        lda #1
+        ldx #<wp_dol
+        ldy #>wp_dol
+        jsr SETNAM
+        lda #2
+        ldx #8
+        ldy #0
+        jsr SETLFS
+        jsr OPEN
+        bcs @cl0
+        ldx #2
+        jsr CHKIN
+        bcs @cl0
+        jsr @in
+        jsr @in
+@line   jsr @in
+        sta t0
+        jsr @in
+        ora t0
+        bne @l2
+@cl0    jmp @cl
+@l2     jsr @in
+        jsr @in
+@q      jsr @in
+        beq @next
+        cmp #$22
+        bne @q
+        ldy #0
+@n      jsr @in
+        beq @next
+        cmp #$22
+        beq @ne
+        cpy #16
+        bcs @n
+        sta wp_nm,y
+        iny
+        bne @n
+@ne     sty t1
+@t      jsr @in
+        beq @next
+        cmp #$20
+        beq @t
+        ldx wp_line             ; (line 0: the disk's own name)
+        beq @skip
+        cmp #'S'                ; a SEQ file ...
+        bne @skip
+        ldy t1                  ; ... whose name ends .OWS
+        cpy #5
+        bcc @skip
+        lda wp_nm-4,y
+        cmp #'.'
+        bne @skip
+        lda wp_nm-3,y
+        cmp #'O'
+        bne @skip
+        lda wp_nm-2,y
+        cmp #'W'
+        bne @skip
+        lda wp_nm-1,y
+        cmp #'S'
+        bne @skip
+        lda wp_n
+        cmp #WPMAX
+        bcs @skip
+        jsr wp_ptr
+        ldy #0
+@cp     lda #0
+        cpy t1
+        bcs +
+        lda wp_nm,y
++       sta (ip),y
+        iny
+        cpy #16
+        bne @cp
+        inc wp_n
+@skip   jsr @in
+        bne @skip
+@next   inc wp_line
+        jmp @line
+@cl     jsr CLRCHN
+        lda #2
+        jsr CLOSE
+        jsr io_end
+        lda wp_n
+        bne @show
+        clc
+        rts
+@in     jsr CHRIN               ; Z set at a line's end; the file's end unwinds to @cl
+        pha
+        lda $90
+        bne @eof
+        pla
+        cmp #0
+        rts
+@eof    pla
+        pla
+        pla
+        jmp @cl
+@show   lda #0
+        sta wp_sel
+        sta wp_top
+@draw   jsr clrscr
+        lda #0
+        sta rvf
+        lda #7
+        sta tcol
+        ldx #1
+        ldy #0
+        jsr txtpos
+        ldx #<wp_tit
+        ldy #>wp_tit
+        jsr wp_puts
+        lda #15
+        sta tcol
+        ldx #1
+        ldy #23
+        jsr txtpos
+        ldx #<wp_k1
+        ldy #>wp_k1
+        jsr wp_puts
+        ldx #1
+        ldy #24
+        jsr txtpos
+        ldx #<wp_k2
+        ldy #>wp_k2
+        jsr wp_puts
+        lda #0
+        sta wp_row
+@row    lda wp_top
+        clc
+        adc wp_row
+        cmp wp_n
+        bcs @keys
+        sta wp_cur
+        jsr wp_ptr
+        lda wp_row
+        clc
+        adc #3
+        tay
+        ldx #2
+        jsr txtpos
+        lda #1
+        sta tcol
+        lda #0
+        sta rvf
+        lda wp_cur
+        cmp wp_sel
+        bne +
+        lda #7
+        sta tcol
+        lda #$80
+        sta rvf
++       ldy #0
+@ch     sty wp_y
+        lda (ip),y
+        bne +
+        lda #$20
++       and #$3f                ; PETSCII letters and digits -> screen codes
+        jsr putc
+        ldy wp_y
+        iny
+        cpy #16
+        bne @ch
+        lda #0
+        sta rvf
+        inc wp_row
+        lda wp_row
+        cmp #WPROWS
+        bne @row
+@keys   jsr waitkey
+        cmp #$0d
+        beq @pick
+        cmp #$03
+        beq @stop
+        cmp #$11
+        beq @down
+        cmp #$91
+        bne @keys
+        lda wp_sel              ; up
+        beq @keys
+        dec wp_sel
+        lda wp_sel
+        cmp wp_top
+        bcs @rd
+        dec wp_top
+@rd     jmp @draw
+@down   ldx wp_sel
+        inx
+        cpx wp_n
+        bcs @keys
+        stx wp_sel
+        txa
+        sec
+        sbc wp_top
+        cmp #WPROWS
+        bcc @rd
+        inc wp_top
+        jmp @draw
+@stop   lda #0
+        sta wp_none
+        jsr wp_back
+        clc
+        rts
+@pick   lda wp_sel
+        jsr wp_ptr
+        ldy #0
+-       lda (ip),y
+        beq +
+        sta fname,y
+        iny
+        cpy #16
+        bne -
++       sty fnlen
+        lda #1
+        sta wp_got
+        jsr wp_back
+        sec
+        rts
+wp_back jsr clrscr              ; the editor's screen again, all of it
+        jsr draw_title
+        lda #1
+        sta clrf
+        sta dirty
+        rts
+wp_ptr  ldx #0                  ; ip = WPBUF + A * 16
+        stx ip+1
+        asl
+        rol ip+1
+        asl
+        rol ip+1
+        asl
+        rol ip+1
+        asl
+        rol ip+1
+        sta ip
+        lda ip+1
+        clc
+        adc #>WPBUF
+        sta ip+1
+        rts
+wp_puts stx jp                  ; a 0-ended screen-code string at tp
+        sty jp+1
+        ldy #0
+-       lda (jp),y
+        beq +
+        sty wp_y
+        jsr putc
+        ldy wp_y
+        iny
+        bne -
++       rts
+wp_got  !byte 0
+wp_none !byte 0
+wp_n    !byte 0
+wp_line !byte 0
+wp_sel  !byte 0
+wp_top  !byte 0
+wp_row  !byte 0
+wp_cur  !byte 0
+wp_y    !byte 0
+wp_nm   !fill 16, 0
+wp_dol  !text "$"
+wp_tit  !scr "load a song (.ows) - drive 8", 0
+wp_k1   !scr "crsr up/down pick   return: load it", 0
+wp_k2   !scr "run/stop: back", 0
+
 ; the player stops and the SIDs are quiet before the disk is used
 prep    sei
         jsr pl_stop
@@ -507,18 +786,28 @@ plain_out
 @d      rts
 
 ; ---- L: load a song: first into the stage
+; (batch 1, Fix 31) the disk's songs (.OWS) as a list to pick from; none on the disk: the song's own name, as before
 l_load  ldx #<m_disk
         ldy #>m_disk
         jsr askyn
+        bcs @pk
+        rts
+@pk     jsr wpick
         bcs @go
+        lda wp_none
+        bne @go
         rts
 @go     tsx
         stx iosp
         lda #1
         sta okmsg
         jsr prep
+        lda wp_got              ; a song picked from the list: fname has it already
+        bne @nm
         lda #0
         jsr mkname
+@nm     lda #0
+        sta wp_got
         jsr io_begin
         jsr cb_clear
         jsr cb_name

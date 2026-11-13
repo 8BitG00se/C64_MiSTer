@@ -22,7 +22,7 @@
 
 !cpu 6502
 
-BUILD   = 1             ; the build number (1-9): on the help page and at start; build.sh reads it
+BUILD   = 2             ; the build number (1-9): on the help page and at start; build.sh reads it
 
 ; ------------------------------------------------------------------------------------------------ OctoVIC
 VADDR   = $D600
@@ -4222,17 +4222,25 @@ vout    ldx frow
 .r      rts
 
 !zone c_open
-c_open  ldx #<s_openas
+c_open  jsr diskask             ; (batch 1, Fix 31) the disk first, then its pictures as a list
+        bcs .pk
+        ldx #<m_noopen
+        ldy #>m_noopen
+        jmp msg
+.pk     lda #'S'                ; .OCT pictures are SEQ files
+        ldx #<s_pkopen
+        ldy #>s_pkopen
+        jsr pickfile
+        bcs .g
+        lda pk_none             ; RUN/STOP: nothing; none on the disk, or N: type the name
+        bne .ask
+        rts
+.ask    ldx #<s_openas
         ldy #>s_openas
         jsr askname
         bcs .g
         rts
 .g      jsr mkname
-        jsr diskask
-        bcs .y
-        ldx #<m_noopen
-        ldy #>m_noopen
-        jmp msg
 .y      jsr bar_clear
         jsr io_begin
         jsr doload
@@ -4618,7 +4626,7 @@ d_free  !scr "  free ", $ff
 ; fname and kname change places (the import has a name of its own, used as typed)
 !zone swapname
 swapname
-        ldx #11
+        ldx #15                 ; (batch 1: 16, a name picked from the disk can be that long)
 .l      lda fname,x
         tay
         lda kname,x
@@ -4686,20 +4694,27 @@ rdblock jsr inb
 
 !zone c_import
 c_import
-        jsr swapname
+        jsr diskask             ; (batch 1, Fix 31) the disk first, then its programs (Koala files) as a list
+        bcs .pk
+        ldx #<m_noimp
+        ldy #>m_noimp
+        jmp msg
+.pk     jsr swapname
+        lda #'P'                ; Koala pictures are PRG files
+        ldx #<s_pkimp
+        ldy #>s_pkimp
+        jsr pickfile
+        bcs .g
+        lda pk_none
+        beq .back
         ldx #<s_impas
         ldy #>s_impas
         jsr askname
         bcs .g
-        jsr swapname
+.back   jsr swapname
         rts
 .g      jsr mkraw
         jsr swapname
-        jsr diskask
-        bcs .y
-        ldx #<m_noimp
-        ldy #>m_noimp
-        jmp msg
 .y      jsr bar_clear
         jsr io_begin
         lda #0
@@ -4920,6 +4935,293 @@ m_imported !scr "imported ", $ff
 ; ================================================================================================ H: the help page
 ; VIC text, full screen: OctoVIC is switched off (CTRL = 0) while it shows, any key brings the picture back.
 
+; ================================================================================================ the file picker
+; (batch 1, Fix 31 - (c) 2026 Mong00se) the disk's directory as a list to pick from, like a file browser: VIC text,
+; full screen, OctoVIC off while it shows (as the help page). A = the type wanted ('S' SEQ: .OCT pictures, 'P' PRG:
+; Koala pictures), X/Y = the title. C set: the name is in fname/flen (screen codes, as askname leaves it).
+; C clear: none - pk_none 0 RUN/STOP (do nothing), 1 none of that type on the disk, or N (type a name instead).
+PKBUF   = $A000         ; the names, 16 bytes each (the fill stack / Koala buffer: free until the file loads)
+PKMAX   = 64
+PKROWS  = 19            ; rows 3-21
+!zone pickfile
+pickfile
+        sta pktype
+        stx pktit
+        sty pktit+1
+        jsr io_begin
+        jsr pkread
+        jsr io_end
+        lda #1
+        sta pk_none
+        lda pkn
+        bne .show
+        clc
+        rts
+.show   lda OCTRL
+        sta hsave
+        lda #0
+        sta OCTRL
+        sta pksel
+        sta pktop
+.draw   jsr clrscreen
+        lda #7
+        sta tcol
+        ldx #1
+        ldy #0
+        jsr txtpos
+        lda pktit
+        sta str
+        lda pktit+1
+        sta str+1
+        jsr puts
+        lda #15
+        sta tcol
+        ldx #1
+        ldy #23
+        jsr txtpos
+        +puts s_pkkeys
+        ldx #1
+        ldy #24
+        jsr txtpos
+        +puts s_pkkeys2
+        lda #0
+        sta pkrow
+.row    lda pktop
+        clc
+        adc pkrow
+        cmp pkn
+        bcs .rows
+        sta pkcur
+        jsr pkptr               ; ptr: its name
+        ldx #2
+        lda pkrow
+        clc
+        adc #3
+        tay
+        jsr txtpos
+        lda #1
+        sta tcol
+        lda pkcur
+        cmp pksel
+        bne .nm
+        lda #7
+        sta tcol
+.nm     ldy #0
+.c      lda (ptr),y
+        bne +
+        lda #$20                ; (after the name: spaces)
+        bne ++
++       jsr pet2scr
+++      ldx pkcur
+        cpx pksel
+        bne .nr
+        ora #$80                ; the picked one: reversed
+.nr     sty ni
+        jsr putc
+        ldy ni
+        iny
+        cpy #16
+        bne .c
+        inc pkrow
+        lda pkrow
+        cmp #PKROWS
+        bne .row
+.rows   jsr kclear
+.key    jsr waitkey
+        cmp #1                  ; RETURN: this one
+        beq .pick
+        cmp #63                 ; RUN/STOP: back, nothing done
+        beq .stop
+        cmp #39                 ; N: type a name instead
+        beq .type
+        cmp #7                  ; CRSR DOWN (with SHIFT: up)
+        bne .key
+        lda #$fd                ; SHIFT held? (left: column 1 row 7, right: column 6 row 4)
+        sta $dc00
+        lda $dc01
+        and #$80
+        beq .up
+        lda #$bf
+        sta $dc00
+        lda $dc01
+        and #$10
+        beq .up
+        ldx pksel               ; down
+        inx
+        cpx pkn
+        bcs .key
+        stx pksel
+        txa
+        sec
+        sbc pktop
+        cmp #PKROWS
+        bcc .redraw
+        inc pktop
+.redraw jmp .draw
+.up     lda pksel
+        beq .key
+        dec pksel
+        lda pksel
+        cmp pktop
+        bcs .redraw
+        dec pktop
+        jmp .draw
+.stop   lda #0
+        sta pk_none
+.type   jsr .back
+        clc
+        rts
+.pick   lda pksel
+        jsr pkptr
+        ldy #0
+.cp     lda (ptr),y
+        beq .ce
+        jsr pet2scr
+        sta fname,y
+        iny
+        cpy #16
+        bne .cp
+.ce     sty flen
+        jsr .back
+        sec
+        rts
+.back   lda hsave
+        sta OCTRL
+        jsr clrscreen
+        jsr ui_all
+        jmp kclear
+
+; ptr = PKBUF + A * 16
+!zone pkptr
+pkptr   ldx #0
+        stx ptr+1
+        asl
+        rol ptr+1
+        asl
+        rol ptr+1
+        asl
+        rol ptr+1
+        asl
+        rol ptr+1
+        sta ptr
+        lda ptr+1
+        clc
+        adc #>PKBUF
+        sta ptr+1
+        rts
+
+; a PETSCII name character as a screen code (letters 1-26, the rest as they are)
+!zone pet2scr
+pet2scr cmp #$41
+        bcc .r
+        cmp #$5b
+        bcs .o
+        and #$3f
+.r      rts
+.o      lda #$3f                ; anything else: ?
+        rts
+
+; the directory of drive 8: the names of files of type pktype into PKBUF (pkn of them, at most PKMAX)
+!zone pkread
+pkread  lda #0
+        sta pkn
+        sta pkline
+        lda #1
+        ldx #<s_dollar
+        ldy #>s_dollar
+        jsr SETNAM
+        lda #2
+        ldx #8
+        ldy #0
+        jsr SETLFS
+        jsr OPEN
+        bcs .close
+        ldx #2
+        jsr CHKIN
+        bcs .close
+        jsr .in                 ; the load address
+        jsr .in
+.line   jsr .in                 ; a line: its link (0 0: the end), its block count, then the text
+        sta t0
+        jsr .in
+        ora t0
+        beq .close
+        jsr .in
+        jsr .in
+.q      jsr .in                 ; up to the name's opening quote (none: "blocks free" - the next line)
+        beq .next
+        cmp #$22
+        bne .q
+        ldy #0
+.n      jsr .in
+        beq .next
+        cmp #$22
+        beq .ne
+        cpy #16
+        bcs .n
+        sta pkname,y
+        iny
+        bne .n
+.ne     sty t0
+.t      jsr .in                 ; the type, after the spaces
+        beq .next
+        cmp #$20
+        beq .t
+        ldx pkline              ; (line 0 is the disk's own name and ID)
+        beq .skip
+        cmp pktype
+        bne .skip
+        ldx pkn
+        cpx #PKMAX
+        bcs .skip
+        txa
+        jsr pkptr
+        ldy #0
+.cpy    lda #0
+        cpy t0
+        bcs +
+        lda pkname,y
++       sta (ptr),y
+        iny
+        cpy #16
+        bne .cpy
+        inc pkn
+.skip   jsr .in                 ; the rest of the line
+        bne .skip
+.next   inc pkline
+        jmp .line
+.close  jsr CLRCHN
+        lda #2
+        jmp CLOSE
+.in     jsr CHRIN               ; a byte; Z set at the line's end (0); the file's end unwinds to .close
+        pha
+        lda $90
+        bne .eof
+        pla
+        cmp #0
+        rts
+.eof    pla
+        pla                     ; (the return into the loop)
+        pla
+        jmp .close
+
+!zone pkdata
+pktype  !byte 0
+pktit   !word 0
+pkn     !byte 0
+pksel   !byte 0
+pktop   !byte 0
+pkrow   !byte 0
+pkcur   !byte 0
+pkline  !byte 0
+pk_none !byte 0
+pkname  !fill 16
+s_dollar !text "$"
+s_pkopen !scr "open a picture (.oct) - drive 8", $ff
+s_pkimp  !scr "import a koala picture - drive 8", $ff
+s_pkkeys !scr "crsr up/down pick   return: this one", $ff
+s_pkkeys2 !scr "n: type a name   run/stop: back", $ff
+
 !zone c_help
 c_help  lda OCTRL
         sta hsave
@@ -5128,7 +5430,7 @@ xr      !fill 2
 ny      !fill 1
 scnt    !fill 2
 inrun   !fill 1
-fname   !fill 12
+fname   !fill 16
 flen    !fill 1
 pbuf    !fill 24
 plen    !fill 1
@@ -5155,7 +5457,7 @@ cnt     !fill 1
 rv      !fill 1
 crc     !fill 2
 hbuf    !fill 10
-kname   !fill 12
+kname   !fill 16
 klen    !fill 1
 pcnt    !fill 1
 kbg     !fill 1
