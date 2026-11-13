@@ -134,12 +134,21 @@ wire  [3:0] cls   = (cls0 > 4'd13) ? 4'd13 : cls0;
 wire  [7:0] group = (s1_kind == 2'd1) ? {5'b11110, s1_spr} :
                     (s1_kind == 2'd2) ? {4'hE, q_band} :
                                         {cls, q_band};
-reg   [7:0] q_slot;
+// (Build 14 fix: the remap read must stay a plain registered read - `rm_q <= remap_m[...]` - so
+// Quartus puts the 4096-byte table in block RAM. Build 14 first wrote `ovr ? ovr_slot : remap_m[...]`
+// in that register; the mux on the RAM's output stopped the inference and the table was built from
+// ~16,500 logic cells. The Level 2 override is now picked AFTER the registers: same clock, same result.)
+reg   [7:0] rm_q;
+reg         ovr_q;
+reg   [7:0] ovs_q;
 reg   [1:0] s2_kind;
 always @(posedge clk) begin
-	q_slot  <= ovr ? ovr_slot : remap_m[{group, s1_idx}];
+	rm_q    <= remap_m[{group, s1_idx}];
+	ovr_q   <= ovr;
+	ovs_q   <= ovr_slot;
 	s2_kind <= s1_kind;
 end
+wire  [7:0] q_slot = ovr_q ? ovs_q : rm_q;
 
 // E2 -> E3: the slot addresses the palette
 reg  [23:0] q_rgb;
