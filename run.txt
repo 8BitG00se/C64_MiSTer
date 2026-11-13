@@ -1,0 +1,11 @@
+Writing output file "rwgame.bin".
+Writing output file "rwrom.bin".
+%Error-PINNOTFOUND: fpga64_synth.v05:37502:6: Pin not found: 'sc_sel'
+%Error-PINNOTFOUND: fpga64_synth.v05:37507:6: Pin not found: 'sc_rec'
+%Error-PINNOTFOUND: fpga64_synth.v05:37508:6: Pin not found: 'sc_aud'
+%Error: Exiting due to 3 error(s)
+%Error-PINNOTFOUND: fpga64_synth.v05:37508:6: Pin not found: 'sc_aud'
+37508 |     .sc_aud());
+      |      ^~~~~~
+%Error: Exiting due to 3 error(s)
+        ... See the manual at https://verilator.org/verilator_doc.html for more assistance.

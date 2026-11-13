@@ -1,0 +1,12 @@
+%Error-PINNOTFOUND: fpga64_synth.v05:37502:6: Pin not found: 'sc_sel'
+37502 |     .sc_sel(sc_sel),
+      |      ^~~~~~
+                    ... For error description see https://verilator.org/warn/PINNOTFOUND?v=5.032
+%Error-PINNOTFOUND: fpga64_synth.v05:37507:6: Pin not found: 'sc_rec'
+37507 |     .sc_rec(),
+      |      ^~~~~~
+%Error-PINNOTFOUND: fpga64_synth.v05:37508:6: Pin not found: 'sc_aud'
+37508 |     .sc_aud());
+      |      ^~~~~~
+%Error: Exiting due to 3 error(s)
+        ... See the manual at https://verilator.org/verilator_doc.html for more assistance.

@@ -1,0 +1,1 @@
+full.sh: no /tmp/rewind/obj20/tb - sim/rewind/run.sh builds it
