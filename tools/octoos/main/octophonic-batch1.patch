@@ -1,8 +1,8 @@
 diff --git a/support/octo/octo.cpp b/support/octo/octo.cpp
-index e0510ef..05d22f9 100644
+index e0510ef..ace6257 100644
 --- a/support/octo/octo.cpp
 +++ b/support/octo/octo.cpp
-@@ -43,6 +43,17 @@
+@@ -43,6 +43,19 @@
  //               blocks while it goes in), then VALUE 2 put in now / 4 it was in already (ARG b0:
  //               load it again anyway), RESULT its size in 64 KB; $81 not found
  //   SETLIST's line 12 (os-fixes): SHOWCASE OFF/ON, os.ini showcase= (0/1), shown as NET b3
@@ -15,12 +15,14 @@ index e0510ef..05d22f9 100644
 +//               once (0: none - OCTOCODE starts as before)
 +//   1B NEWDISK  (Fix 46) a blank formatted NAME.d64 in the browser's folder, put in drive 8; LEN =
 +//               its place in the list (for the bar); $87 a file of that name is there already
++//   1C SAVEREU  (Fix 56) a .reu made on the machine: LEN pages of VRAM from page ADDR into NAME.reu (ARG b0: add
++//               to its end) in the program's folder; RESULT its size in 64 KB
 +//   SETLIST lines 13 VIDEO OUT and 14 SCALING (Fix 38, Fix 54's set-up): os.ini video= / scaling=,
 +//           written to MiSTer.ini (backed up first) - VALUE 4 after SETSTEP: switch off and on to see it
  // NET (the mailbox's $D6FF): b1-0 the network share, b3 SHOWCASE (demos leave out their debug rows),
  // b7/b6 a screenshot, b4 always set - Main serves
  // the OS (the start jingle asks for SHELL.PRG only then), b5 always set - this Main is on a MiSTer
-@@ -80,6 +91,7 @@
+@@ -80,6 +93,7 @@
  #include "../../scaler.h"
  #include "../../cfg.h"
  #include "octo.h"
@@ -28,7 +30,7 @@ index e0510ef..05d22f9 100644
  #include "../../menu.h"
  
  #define OS_DIR      "/media/fat/octophonic"
-@@ -101,7 +113,7 @@
+@@ -101,7 +115,7 @@
  
  enum { R_CMD, R_STATUS, R_ADDRL, R_ADDRH, R_LENL, R_LENH, R_ARG, R_VALUE, R_NAMELEN, R_9, R_RESL, R_RESH, R_VER, R_SEQ, R_RSEQ };
  enum { ST_IDLE = 0, ST_BUSY = 1, ST_DONE = 2,
@@ -37,7 +39,7 @@ index e0510ef..05d22f9 100644
  
  static int  os_enabled = 0;
  static char os_boot[512] = "_Computer/Octophonic 64.mgl";
-@@ -120,6 +132,9 @@ static int  os_showcase = 0;             // os.ini showcase=1: NET b3, demos lea
+@@ -120,6 +134,9 @@ static int  os_showcase = 0;             // os.ini showcase=1: NET b3, demos lea
  static std::string prog_dir;             // the folder the running program came from (REU, $18)
  static int  rgb_core = 0;                // C64RGB 256 (Fix 60): the core running is the recolour core
  static int  os_remaster = 1;             // Build 12: os.ini remaster=1 (default) - a game with no pack gets one made
@@ -47,7 +49,7 @@ index e0510ef..05d22f9 100644
  static void rgb_now_read();              // Build 12 (below)
  
  // ------------------------------------------------------------------------------------------ log
-@@ -155,6 +170,8 @@ static void read_ini()
+@@ -155,6 +172,8 @@ static void read_ini()
  {
  	os_enabled = 0;
  	os_remaster = 1;
@@ -56,7 +58,7 @@ index e0510ef..05d22f9 100644
  	FILE *f = fopen(OS_INI, "r");
  	if (!f) return;
  	os_enabled = 1;
-@@ -176,6 +193,11 @@ static void read_ini()
+@@ -176,6 +195,11 @@ static void read_ini()
  		else if (!strcasecmp(p, "startin")) snprintf(os_startin, sizeof(os_startin), "%s", v);
  		else if (!strcasecmp(p, "showcase")) os_showcase = atoi(v) != 0;
  		else if (!strcasecmp(p, "remaster")) os_remaster = atoi(v) != 0;    // Build 12: auto packs on/off
@@ -68,7 +70,7 @@ index e0510ef..05d22f9 100644
  	}
  	fclose(f);
  }
-@@ -1487,6 +1509,7 @@ static int run_path(const std::string &path, const std::vector<Entry> *folder)
+@@ -1487,6 +1511,7 @@ static int run_path(const std::string &path, const std::vector<Entry> *folder)
  		reu_load(full_of(reu).c_str());
  	}
  	mb_reply(ST_DONE, 0, -1, 1);                    // the core resets now: the reply goes first
@@ -76,7 +78,7 @@ index e0510ef..05d22f9 100644
  	os_log("  load %s (index 0x%02X)", p, idx);
  	user_io_store_filename(p);
  	c64_open_file(p, idx);
-@@ -1654,6 +1677,8 @@ static void cmd_list(uint16_t addr, int first, int count)
+@@ -1654,6 +1679,8 @@ static void cmd_list(uint16_t addr, int first, int count)
  		if (!e.size.empty()) snprintf(sz, sizeof(sz), "%5s", e.size.c_str());
  		else size_text(e, sz);
  		rec[0] = (uint8_t)type_of(e);
@@ -85,7 +87,7 @@ index e0510ef..05d22f9 100644
  		for (int k = 0; k < 5; k++) rec[1 + k] = to_pet(sz[k]);
  		std::string ext = !strcmp(cwd, DRIVES) ? "DRV" : (e.dir || e.up) ? "DIR" : ext_of(e.name);
  		for (int k = 0; k < 3 && k < (int)ext.size(); k++) rec[6 + k] = to_pet(ext[k]);
-@@ -1726,7 +1751,12 @@ static const Opt opts[] = {
+@@ -1726,7 +1753,12 @@ static const Opt opts[] = {
  #define S_CHIPR  2
  #define S_START  3       // where the OS starts: network / SD card / last used (os.ini startin=)
  #define S_OPT0   4
@@ -99,7 +101,7 @@ index e0510ef..05d22f9 100644
  static const char *startins[3] = { "net", "sd", "last" };
  static const char *startnames[3] = { "NETWORK", "SD CARD", "LAST USED" };
  static int startin_now()
-@@ -1826,8 +1856,12 @@ static void cmd_setlist(uint16_t addr)
+@@ -1826,8 +1858,12 @@ static void cmd_setlist(uint16_t addr)
  	}
  	put_field(out, "SHOWCASE", 20);
  	put_field(out, os_showcase ? "ON - NO DEBUG ROWS" : "OFF", 20);
@@ -113,7 +115,7 @@ index e0510ef..05d22f9 100644
  }
  
  static void cmd_setstep(int line, int dir)
-@@ -1865,6 +1899,29 @@ static void cmd_setstep(int line, int dir)
+@@ -1865,6 +1901,29 @@ static void cmd_setstep(int line, int dir)
  		mb_reply(ST_DONE, 0);
  		return;
  	}
@@ -143,7 +145,7 @@ index e0510ef..05d22f9 100644
  	if (line == S_SHOW)
  	{
  		os_showcase = !os_showcase;
-@@ -1897,6 +1954,108 @@ static void cmd_setapply()
+@@ -1897,6 +1956,108 @@ static void cmd_setapply()
  	xml_load(full);                                  // as picking the launcher in the menu
  }
  
@@ -252,7 +254,7 @@ index e0510ef..05d22f9 100644
  // ------------------------------------------------------- CTRL+F12: out of a demo, to the start
  
  // a demo doesn't listen to the mailbox and often blocks RUN/STOP+RESTORE, so Main does it: the
-@@ -2148,6 +2307,8 @@ static void comp_line(char *s)               // (comp_mx held) one line of ACME'
+@@ -2148,6 +2309,8 @@ static void comp_line(char *s)               // (comp_mx held) one line of ACME'
  	comp_add(s);
  }
  
@@ -261,7 +263,7 @@ index e0510ef..05d22f9 100644
  static void comp_thread()                    // ACME, its output line by line into the log
  {
  	std::string prg = comp_dir + "/" + comp_base + ".prg";
-@@ -2211,6 +2372,8 @@ static void cmd_compile(const char *name, int len, int arg)
+@@ -2211,6 +2374,8 @@ static void cmd_compile(const char *name, int len, int arg)
  	fwrite(txt.data(), 1, txt.size(), f); fclose(f);
  	char buf[96];
  	snprintf(buf, sizeof(buf), "Saved %s.asm, %d lines", base.c_str(), lines); comp_add(buf);
@@ -270,17 +272,55 @@ index e0510ef..05d22f9 100644
  	comp_add("ACME " + base + ".asm");
  	std::thread(comp_thread).detach();
  	mb_reply(ST_DONE, 0, (int)comp_log.size(), 0);
-@@ -2405,6 +2568,9 @@ void octo_poll()
+@@ -2279,6 +2444,36 @@ static void cmd_prgvram(const char *name)    // build 3 of OCTOCODE: the last go
+ 	mb_reply(ST_DONE, (int)n);
+ }
+ 
++// ------------------------------------------------------------- batch 1 (Fix 56), (c) 2026 Mong00se
++// SAVEREU ($1C): a program makes a .reu on the machine itself. It puts the bytes in OctoVIC's VRAM first (the
++// REU's DMA into VDATA does that fast: REU -> C64 with the C64 address fixed at $D604), then asks Main to write
++// them: ADDR = the VRAM page (VRAM address / 256), LEN = how many 256-byte pages, NAME = the file (".reu" added),
++// ARG b0 = add to the end of the file (a 16 MB REU goes 64 KB at a time). The file goes in the program's own
++// folder (as REU $18 looks for one), else beside the disk in drive 8, else the browser's folder.
++// RESULT = the file's size in 64 KB blocks; $81 no name, $83 past the end of VRAM, $84 can't write.
++static void cmd_savereu(const char *name, int vpage, int pages, int append)
++{
++	std::string n;
++	for (const char *c = name; *c && n.size() < 40; c++)
++		if (isalnum((unsigned char)*c) || strchr(" -_.()+", *c)) n.push_back(*c);
++	if (n.empty()) { mb_reply(E_NOTFOUND, 0); return; }
++	if (!ends_with(n.c_str(), ".reu")) n += ".reu";
++	if (pages <= 0 || (uint32_t)(vpage + pages) > 0x10000) { mb_reply(E_TOOBIG, 0); return; }
++	std::string dir = !prog_dir.empty() ? prog_dir : !disk8.empty() ? disk8.substr(0, disk8.rfind('/')) : std::string(OS_TOP "/") + cwd;
++	std::string path = dir + "/" + n;
++	uint32_t len = (uint32_t)pages << 8;
++	uint8_t *v = (uint8_t *)shmem_map(VRAM_DDR3 + ((uint32_t)vpage << 8), len);
++	if (!v) { mb_reply(E_READ, 0); return; }
++	FILE *f = fopen(path.c_str(), append ? "ab" : "wb");
++	size_t w = f ? fwrite(v, 1, len, f) : 0;
++	shmem_unmap(v, len);
++	if (!f || fclose(f) || w != len) { os_log("  SAVEREU: can't write %s", path.c_str()); mb_reply(E_READ, 0); return; }
++	struct stat st;
++	long kb64 = stat(path.c_str(), &st) ? 0 : (long)((st.st_size + 65535) >> 16);
++	os_log("  SAVEREU %s: %u bytes from VRAM $%06X%s, now %ld x 64 KB", path.c_str(), len, (unsigned)vpage << 8, append ? " (added)" : "", kb64);
++	mb_reply(ST_DONE, (int)kb64);
++}
++
+ // ------------------------------------------------------------------------- os-fixes: 17, 18
+ 
+ // DRIVE8 ($17): the disk in drive 8, as the core has it (also one mounted from the MiSTer's menu)
+@@ -2405,6 +2600,10 @@ void octo_poll()
  	case 0x12: cmd_menu(); break;
  	case 0x17: cmd_drive8(addr); break;
  	case 0x18: cmd_reu(name, reg[R_ARG] & 1); break;
 +	case 0x19: cmd_srcopen(len); break;                  // batch 1 (Fix 76)
 +	case 0x1A: cmd_srcname(addr); break;
 +	case 0x1B: cmd_newdisk(name); break;                 // batch 1 (Fix 46)
++	case 0x1C: cmd_savereu(name, addr, len, reg[R_ARG] & 1); break;   // batch 1 (Fix 56)
  	default:   mb_reply(E_BADCMD, 0); break;
  	}
  	if (strcmp(was, cwd)) keep_cwd();
-@@ -2412,7 +2578,7 @@ void octo_poll()
+@@ -2412,7 +2611,7 @@ void octo_poll()
  	// was the answer taken? (the 6502 may have given up and asked something else meanwhile)
  	// (not after RUN, OPEN or a preset: the core may already be restarting)
  	int taken = 1;

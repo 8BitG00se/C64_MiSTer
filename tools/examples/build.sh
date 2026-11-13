@@ -20,7 +20,7 @@ if [ -z "$OC" ]; then acme -f cbm -o "$W/octocode.prg" "$REPO/tools/octoos/octoc
 cp "$OC" "$G/Tools/OCTOCODE.PRG"
 
 # Code: the OCTOCODE examples - each .asm (as OCTOCODE's F2 leaves it in Code) and its program
-for a in hello stock raster scroll sprites plasma bounce split parallax; do
+for a in hello stock raster scroll sprites plasma bounce split parallax makereu; do
     cp "$HERE/code/$a.asm" "$G/Code/$a.asm"
     acme -f cbm -o "$G/Code/$a.prg" "$HERE/code/$a.asm"
 done
@@ -37,7 +37,7 @@ done
 # OCTOCODE Examples.d64: OCTOCODE first (RETURN on the disk starts it, and it opens HELLO.ASM from
 # the disk), then every example's source for its F3
 ARGS=(-write "$OC" "octocode")
-for a in hello stock raster scroll sprites plasma bounce split parallax; do
+for a in hello stock raster scroll sprites plasma bounce split parallax makereu; do
     python3 -I "$REPO/tools/octoos/octocode/a2p.py" "$HERE/code/$a.asm" "$W/$a.seq"
     ARGS+=(-write "$W/$a.seq" "$a.asm,s")
 done
