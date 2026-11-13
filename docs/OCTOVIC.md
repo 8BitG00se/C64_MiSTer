@@ -120,6 +120,7 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | C9 | SCC | its colour (a palette entry); the glow is SCC + 1 |
 | CA | SCX0 | the x of its first sample (x 0 is the 40-column window's left edge); 304 samples, a pixel each |
 | CB | SCF | b0 the glow (a line more each way, in SCC + 1) |
+| CC-CE | VMUTE0-2 (r/w) | Fix 65, the mixer: a mute bit for each of the 24 SID voices - CC b0-7 voices 0-7, CD voices 8-15, CE voices 16-23 (voice = 3s + v, as in SCV); 1 = muted, 0 = plays. Reads back, so a program can flip one bit. The voice is silenced just before its SID's filter (its oscillator, sync and ring links, and the scope's view of it are unchanged). All 0 after a reset. Solo is a program's job: write FF to the other bits. |
 
 ### A layer (20 + 16*k)
 

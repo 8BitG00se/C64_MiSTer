@@ -59,7 +59,10 @@ module octovic
 	input             sid_ce,
 	output      [2:0] sc_sel,
 	input      [39:0] sc_rec0, sc_rec1, sc_rec2, sc_rec3,
-	input      [15:0] sc_aud0, sc_aud1, sc_aud2, sc_aud3
+	input      [15:0] sc_aud0, sc_aud1, sc_aud2, sc_aud3,
+
+	// Fix 65: the mixer - one bit per voice (the scope's channel numbers: SID pair*6 + chip*3 + voice), 1 = muted
+	output     [23:0] vmute
 );
 
 // THE CORE'S NAME, readable by the 6502 so the start screen, the settings page and the demos can
@@ -117,6 +120,8 @@ reg  [23:0] backdrop;
 // version 5, OCTOSCOPE: the channel shown (b5: SID b2-0's whole output, else voice 0-23), the centre line, half
 // the height, the gain, the colour (the glow SCC + 1), the x of the first sample, b0 the glow
 reg   [7:0] scv, sch, scg, scc, scx0, scf;
+reg  [23:0] vmute_r;           // Fix 65: voice mute mask ($D6CC-$D6CE), 1 = that voice is muted
+assign      vmute = vmute_r;
 reg   [8:0] scy;
 // the scope as the renderer draws a line of it (latched from the registers at the scope pass's start)
 reg   [4:0] sc_ch;
@@ -246,7 +251,7 @@ always @(posedge clk) begin
 		mula <= 0; mulb <= 0; mathctl <= 0; divn <= 0; divd <= 0; divq <= 0; divr <= 0; div_busy <= 0;
 		bsrc <= 0; bdst <= 0; bw <= 0; bh <= 0; bss <= 0; bds <= 0; bfill <= 0; bop <= 0; blt_go <= 0;
 		lx0 <= 0; ly0 <= 0; lx1 <= 0; ly1 <= 0;
-		scv <= 0; scy <= 0; sch <= 0; scg <= 0; scc <= 0; scx0 <= 0; scf <= 0;
+		scv <= 0; scy <= 0; sch <= 0; scg <= 0; scc <= 0; scx0 <= 0; scf <= 0; vmute_r <= 0;
 		irqline <= 0; irqen <= 0; irqst <= 0; irq_prev_y <= 0; collidx <= 0;
 	end
 	else begin
@@ -364,6 +369,10 @@ always @(posedge clk) begin
 				8'hC9: scc <= rw_d;
 				8'hCA: scx0 <= rw_d;
 				8'hCB: scf <= rw_d;
+				// Fix 65: the mixer - mute mask, voices 1-8 / 9-16 / 17-24 (read back, so a program can toggle one bit)
+				8'hCC: vmute_r[7:0]   <= rw_d;
+				8'hCD: vmute_r[15:8]  <= rw_d;
+				8'hCE: vmute_r[23:16] <= rw_d;
 				8'h88: af_u0[7:0]   <= rw_d;  8'h89: af_u0[15:8]   <= rw_d;  8'h8A: af_u0[23:16]   <= rw_d;  8'h8B: af_u0[31:24]   <= rw_d;
 				8'h8C: af_v0[7:0]   <= rw_d;  8'h8D: af_v0[15:8]   <= rw_d;  8'h8E: af_v0[23:16]   <= rw_d;  8'h8F: af_v0[31:24]   <= rw_d;
 				8'h90: af_dux[7:0]  <= rw_d;  8'h91: af_dux[15:8]  <= rw_d;  8'h92: af_dux[23:16]  <= rw_d;  8'h93: af_dux[31:24]  <= rw_d;
@@ -398,6 +407,7 @@ always @(*) begin
 		8'hAE: dout = h_latmax;     8'hAF: dout = h_latavg;
 		8'hB0: dout = h_stall;      8'hB1: dout = {6'd0, h_lead};
 		8'hB2: dout = vlost;
+		8'hCC: dout = vmute_r[7:0];  8'hCD: dout = vmute_r[15:8];  8'hCE: dout = vmute_r[23:16];   // Fix 65
 		8'hB3: dout = sysinfo;      8'hB4: dout = CORE_DATE[7:0]; 8'hB5: dout = CORE_DATE[15:8]; 8'hB6: dout = CORE_DATE[23:16];
 		8'hB8, 8'hB9, 8'hBA, 8'hBB, 8'hBC, 8'hBD, 8'hBE, 8'hBF: dout = CORE_TAG[8*(7 - addr[2:0]) +: 8];
 		8'h50: dout = mula[7:0];    8'h51: dout = mula[15:8];    8'h52: dout = mulb[7:0];    8'h53: dout = mulb[15:8];

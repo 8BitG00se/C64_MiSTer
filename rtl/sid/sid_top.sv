@@ -56,7 +56,11 @@ module sid_top
 	// and both chips' whole output (audio >> 10, as this microsecond first latched it) for the scope's channels 24-31
 	input   [2:0] sc_sel,
 	output reg [39:0] sc_rec,
-	output reg [15:0] sc_aud
+	output reg [15:0] sc_aud,
+
+	// Fix 65: the mixer - bit n*3+k = voice k+1 of this pair's chip n muted (zeroed just before the filter; the
+	// oscillator, the sync and ring links and the scope's view of the voice are untouched)
+	input   [5:0] vmute
 );
 
 localparam N = DUAL ? 2 : 1;
@@ -357,9 +361,9 @@ sid_filter sid_filter
 	.F0(F0),
 	.Res_Filt(Filter_Res_Filt[n]),
 	.Mode_Vol(Filter_Mode_Vol[n]),
-	.voice1(voice_1[n]),
-	.voice2(voice_2[n]),
-	.voice3(voice_3[n]),
+	.voice1(vmute[n*3+0] ? 22'sd0 : voice_1[n]),
+	.voice2(vmute[n*3+1] ? 22'sd0 : voice_2[n]),
+	.voice3(vmute[n*3+2] ? 22'sd0 : voice_3[n]),
 	.ext_in(22'(signed'({n ? ext_in_r : ext_in_l, 3'b000}))),
 
 	.audio(faudio)

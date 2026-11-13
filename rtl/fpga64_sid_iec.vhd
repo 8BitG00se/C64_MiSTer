@@ -421,6 +421,8 @@ signal sid4_aud_r   : std_logic_vector(17 downto 0);
 signal sc_sel       : std_logic_vector(2 downto 0);
 signal sc_rec1, sc_rec2, sc_rec3, sc_rec4 : std_logic_vector(39 downto 0);
 signal sc_aud1, sc_aud2, sc_aud3, sc_aud4 : std_logic_vector(15 downto 0);
+-- Fix 65: the mixer's voice mutes (OctoVIC $D6CC-$D6CE), 6 per SID pair; none in the RGB core
+signal vmute        : std_logic_vector(23 downto 0);
 signal pot_x1       : std_logic_vector(7 downto 0);
 signal pot_y1       : std_logic_vector(7 downto 0);
 signal pot_x2       : std_logic_vector(7 downto 0);
@@ -482,7 +484,8 @@ component sid_top
 		eq_any        : in  std_logic := '0';
 		sc_sel        : in  std_logic_vector(2 downto 0) := "000";
 		sc_rec        : out std_logic_vector(39 downto 0);
-		sc_aud        : out std_logic_vector(15 downto 0)
+		sc_aud        : out std_logic_vector(15 downto 0);
+		vmute         : in  std_logic_vector(5 downto 0) := "000000"
   );
 end component;
 
@@ -574,7 +577,8 @@ port (
 	sid_ce         : in  std_logic;
 	sc_sel         : out std_logic_vector(2 downto 0);
 	sc_rec0, sc_rec1, sc_rec2, sc_rec3 : in std_logic_vector(39 downto 0);
-	sc_aud0, sc_aud1, sc_aud2, sc_aud3 : in std_logic_vector(15 downto 0)
+	sc_aud0, sc_aud1, sc_aud2, sc_aud3 : in std_logic_vector(15 downto 0);
+	vmute          : out std_logic_vector(23 downto 0)
 );
 end component;
 
@@ -1033,7 +1037,8 @@ port map (
 	sc_aud0        => sc_aud1,
 	sc_aud1        => sc_aud2,
 	sc_aud2        => sc_aud3,
-	sc_aud3        => sc_aud4
+	sc_aud3        => sc_aud4,
+	vmute          => vmute
 );
 end generate;
 
@@ -1043,6 +1048,7 @@ end generate;
 g_nooct: if REWIND /= 0 generate
 	octo_do  <= x"FF";
 	octo_irq <= '0';
+	vmute    <= (others => '0');
 	ogx_ddr_addr <= (others => '0'); ogx_ddr_burstcnt <= (others => '0'); ogx_ddr_rd <= '0';
 	ogx_ddr_we <= '0'; ogx_ddr_din <= (others => '0'); ogx_ddr_be <= (others => '0');
 	vic_rgb_out <= octo_rgb;
@@ -1282,7 +1288,8 @@ port map (
 	eq_any  => eq_any,
 	sc_sel  => sc_sel,
 	sc_rec  => sc_rec1,
-	sc_aud  => sc_aud1
+	sc_aud  => sc_aud1,
+	vmute   => vmute(5 downto 0)
 );
 
 g_sids: if REWIND = 0 generate
@@ -1329,7 +1336,8 @@ port map (
 	eq_any  => eq_any,
 	sc_sel  => sc_sel,
 	sc_rec  => sc_rec2,
-	sc_aud  => sc_aud2
+	sc_aud  => sc_aud2,
+	vmute   => vmute(11 downto 6)
 );
 
 -- OCTOPHONIC: SIDs 5 and 6 ($D480, $D4A0)
@@ -1375,7 +1383,8 @@ port map (
 	eq_any  => eq_any,
 	sc_sel  => sc_sel,
 	sc_rec  => sc_rec3,
-	sc_aud  => sc_aud3
+	sc_aud  => sc_aud3,
+	vmute   => vmute(17 downto 12)
 );
 
 -- OCTOPHONIC: SIDs 7 and 8 ($D580, $D5A0)
@@ -1421,7 +1430,8 @@ port map (
 	eq_any  => eq_any,
 	sc_sel  => sc_sel,
 	sc_rec  => sc_rec4,
-	sc_aud  => sc_aud4
+	sc_aud  => sc_aud4,
+	vmute   => vmute(23 downto 18)
 );
 end generate;
 
