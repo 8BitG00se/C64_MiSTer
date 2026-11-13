@@ -158,9 +158,6 @@ localparam CONF_STR = {
 	"P1FC3,CHP,Load My Chip: Right SIDs;",
 	"P1O[101],My Chips,On,Off;",
 	"P1-;",
-`ifndef RGB256
-	"P1O[12],Sound Expander,Disabled,OPL2;",
-`endif
 	"P1O[41:40],DigiMax,Disabled,DE00,DF00;",
 	"P1O[19:18],Stereo Mix,None,25%,50%,100%;",
 
@@ -1879,29 +1876,13 @@ video_mixer_split #(.GAMMA(1)) video_mixer
 	.VGA_DE(vga_de)
 );
 
-`ifdef RGB256
-// C64RGB 256: no Sound Expander (its room goes to the recolour unit; old games don't use it)
+// No Sound Expander (OPL2) in any Octophonic core: its logic and block RAM go to the new
+// features (Rewind, scope tools, recolour unit). Nothing of ours uses it, and the stock
+// C64 core is still on the card for the few old programs that do. The three wires stay
+// (tied off) so the IO and audio mixer below are untouched. (c) 2026 Mong00se
 wire        opl_en = 1'b0;
 wire [15:0] opl_out = 16'd0;
 wire  [7:0] opl_dout = 8'd0;
-`else
-wire        opl_en = status[12];
-wire [15:0] opl_out;
-wire  [7:0] opl_dout;
-opl3 #(.OPLCLK(47291931)) opl_inst
-(
-	.clk(clk_sys),
-	.clk_opl(clk48),
-	.rst_n(reset_n & opl_en),
-
-	.addr(c64_addr[4]),
-	.dout(opl_dout),
-	.we(ram_we & IOF & opl_en & c64_addr[6] & ~c64_addr[5]),
-	.din(c64_data_out),
-
-	.sample_l(opl_out)
-);
-`endif
 
 reg ioe_we, iof_we;
 always @(posedge clk_sys) begin

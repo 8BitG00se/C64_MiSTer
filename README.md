@@ -43,7 +43,6 @@ Based on FPGA64 by Peter Wendrich with heavy later modifications by different pe
 - Dual SID with several degrees of mixing 6581/8580 from stereo to mono
 - Similar to 6581 and 8580 SID filters
 - REU 16MB and GeoRAM 4MB memory expanders
-- OPL2 sound expander
 - Pause option when OSD is opened
 - 4 joysticks mode
 - Snac DB9 joysticks support (via UserIO) 
