@@ -201,7 +201,7 @@ localparam CONF_STR = {
 	"P3R[6],Reset Disk Drives;",
 
 	"-;",
-	"O[3],Swap Joysticks,No,Yes;",
+	"O[3],Swap Joysticks,Yes,No;",   // Fix 14: swapped is the default (status bit 3 = 0); "No" = the original ports
 	"O[88:87],SNAC Joystick,Disabled,Joy 1,Joy 2;",
 	"-;",
 	"O[47:46],Turbo mode,C128,Off,Smart;",
@@ -643,18 +643,19 @@ wire [6:0] snac_joy  = {1'b0, ~USER_IN[6], ~USER_IN[2],
                         ~USER_IN[3], ~USER_IN[5], ~USER_IN[0], ~USER_IN[1]};
 // format: {fire3=0, fireB(Pin9), fireA(Pin6), right(Pin4), left(Pin3), down(Pin2), up(Pin1)}
 
-wire [6:0] joyA_c64 = (snac_mode == 2'd1) ? snac_joy : (status[3] ? joyB_int : joyA_int);
-wire [6:0] joyB_c64 = (snac_mode == 2'd2) ? snac_joy : (status[3] ? joyA_int : joyB_int);
+wire       jswap = ~status[3];     // Fix 14: the default is the swapped ports
+wire [6:0] joyA_c64 = (snac_mode == 2'd1) ? snac_joy : (jswap ? joyB_int : joyA_int);
+wire [6:0] joyB_c64 = (snac_mode == 2'd2) ? snac_joy : (jswap ? joyA_int : joyB_int);
 
-wire [7:0] paddle_1 = status[3] ? pd3 : pd1;
-wire [7:0] paddle_2 = status[3] ? pd4 : pd2;
-wire [7:0] paddle_3 = status[3] ? pd1 : pd3;
-wire [7:0] paddle_4 = status[3] ? pd2 : pd4;
+wire [7:0] paddle_1 = jswap ? pd3 : pd1;
+wire [7:0] paddle_2 = jswap ? pd4 : pd2;
+wire [7:0] paddle_3 = jswap ? pd1 : pd3;
+wire [7:0] paddle_4 = jswap ? pd2 : pd4;
 
-wire       paddle_1_btn = ~joy[8] & (status[3] ? joyC[7] : joyA[7]);
-wire       paddle_2_btn = ~joy[8] & (status[3] ? joyD[7] : joyB[7]);
-wire       paddle_3_btn = ~joy[8] & (status[3] ? joyA[7] : joyC[7]);
-wire       paddle_4_btn = ~joy[8] & (status[3] ? joyB[7] : joyD[7]);
+wire       paddle_1_btn = ~joy[8] & (jswap ? joyC[7] : joyA[7]);
+wire       paddle_2_btn = ~joy[8] & (jswap ? joyD[7] : joyB[7]);
+wire       paddle_3_btn = ~joy[8] & (jswap ? joyA[7] : joyC[7]);
+wire       paddle_4_btn = ~joy[8] & (jswap ? joyB[7] : joyD[7]);
 
 wire [1:0] pd12_mode = status[27:26];
 wire [1:0] pd34_mode = status[29:28];
