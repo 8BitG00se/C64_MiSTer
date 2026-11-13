@@ -17,6 +17,19 @@
 ;             (cursor up/down to pick, left/right to change, RETURN starts a chip preset)
 ; The 6502 is only the front end: the list, the folders and every load are Octophonic Main's,
 ; the same code the MiSTer menu uses (LIST, OPEN, CHDIR through the mailbox at $D6F0).
+;
+; BATCH 1 (build 9, (c) 2026 Mong00se):
+;   Fix 76  F1 opens the DISKS page: the Disks folder of the start drive (F1 there: the drives). Row 23
+;           always shows the keys - R/RETURN run, M mount, O source, N new - dimmed when they do nothing
+;           for the entry under the bar: O only lights on a disk with source on it (Main marks it, b3 of
+;           the record's type); O mounts the disk and opens its source in OCTOCODE (SRCOPEN, $19)
+;   Fix 46  N: a new blank disk - type its name, Main makes NAME.d64 here and puts it in drive 8 ($1B)
+;   Fix 38  F8: VIDEO OUT and SCALING (sharp pixels) - Main writes MiSTer.ini; the page scrolls now
+;   Fix 54  F7: the DUAL SCREEN set-up page - your screens (VIDEO OUT), the split, what each means,
+;           RETURN a test picture; the first time it asks you to pick (the 31 kHz split needs a core)
+;   To do 77 the slogan, one line (s_slogan) on the settings pages' row 23 - easy to move
+;   The browser's $C000-$CFFF was full: new code lives at $B000-$B7FF (RAM under BASIC's ROM), run
+;   with BASIC switched out through a small stub each; SHELL.PRG loads at $B000 now.
 !to "shell.prg", cbm
 
 MB      = $D6F0
@@ -48,12 +61,540 @@ STROUT  = $AB1E         ; BASIC: print the 0-terminated string at A/Y
 seq     = $02AB         ; the request number, shared with the ROM's commands
 ROWS    = 13
 TOP     = 9             ; the first list row (5 the path, 7 the column names, 8 left blank)
-LBUF    = $B800         ; Main writes the path (40) and the records (40 each) here (to $BA30; the settings to $BA08)
+LBUF    = $BA00         ; Main writes the path (40) and the records (40 each) here (to $BC30; the settings, 15 lines, to $BC58)
+                        ; (batch 1: $BA00 - it was $B800 - so the far code has $B000-$B9FF)
                         ; (build 5: in the RAM under BASIC's ROM, read with BASIC switched out for the moment of
                         ; each read - recb, compact - so $C000-$CFFF is all the browser's code; it was $CDC0)
 REC     = LBUF + 40
 P       = $FB
 Q       = $FD
+
+;------------------------------------------------------------- (batch 1) $B000-$B9FF: far code
+; In the RAM under BASIC's ROM, so run with BASIC switched out ($01 = $36) by its stub in the browser
+; (FAR below). It may call the browser's routines that don't switch $01 (status, scr, recat, call,
+; putrow...) but never recb, seltype or anything of BASIC's (STROUT): it reads LBUF directly.
+        * = $B000
+; the key strip (Fix 76) on row 23 for the entry under the bar; CURTYPE its type byte ($FF none)
+fkeys_b ldx #5                  ; N: anywhere but the drives level
+-       lda LBUF,x
+        cmp drvtxt,x
+        bne kn1
+        dex
+        bpl -
+        lda #0
+        beq kn2
+kn1     lda #$10
+kn2     sta lit
+        lda #$FF
+        sta curtype
+        lda count
+        beq kdraw
+        lda sel
+        jsr recat               ; rp: the record under the bar
+        lda rp
+        sta P
+        lda rp+1
+        sta P+1
+        ldy #0
+        lda (P),y
+        sta curtype
+        and #7
+        cmp #2                  ; a disk: M, and O when it has source (b3)
+        bne +
+        lda #4
+        ora lit
+        sta lit
+        lda curtype
+        and #8
+        beq +
+        lda #8
+        ora lit
+        sta lit
++       lda #2                  ; R/RETURN: always, on an entry
+        ora lit
+        sta lit
+kdraw   ldx #39
+-       lda kstrip,x
+        sta SCR + 23*40,x
+        lda kseg,x
+        beq ++
+        and lit
+        bne +
+        lda #11                 ; dimmed: does nothing here
+        bne +++
++       lda kkey,x              ; lit: the key yellow, its word grey
+        bne +++
+++      lda #15
++++     sta COL + 23*40,x
+        dex
+        bpl -
+        ldx #0
+        rts
+drvtxt  !pet "drives"
+lit     !byte 0
+; the strip (40 columns), each column's key bit (0 none) and colour when lit
+kstrip  !scr "r/return run  m mount  o source  n new  "
+kseg    !byte 2,2,2,2,2,2,2,2,2,2,2,2, 0,0, 4,4,4,4,4,4,4, 0,0, 8,8,8,8,8,8,8,8, 0,0, $10,$10,$10,$10,$10, 0,0
+kkey    !byte 7,15,7,7,7,7,7,7,15,15,15,15, 0,0, 7,15,15,15,15,15,15, 0,0, 7,15,15,15,15,15,15,15, 0,0, 7,15,15,15,15, 0,0
+
+; N (Fix 46): the new disk's name typed on the status row, then NEWDISK. X 1: made (LEN its place
+; in the list), 0: not (RUN/STOP, no name, or Main said no - its error is on the status row)
+fnewd_b lda lit                 ; (not at the drives level: N is dimmed there)
+        and #$10
+        bne +
+        tax
+        rts
++       ldx #fm_newd-fmsgs
+        jsr fstatus
+        lda #0
+        sta nlen
+nd_draw ldy #0                  ; the name after the prompt, the cursor a reversed space
+-       cpy nlen
+        bcs +
+        lda nbuf,y
+        jsr scr
+        sta SCR + 22*40 + 17,y
+        iny
+        bne -
++       lda #$A0
+        sta SCR + 22*40 + 17,y
+        lda #7
+        sta COL + 22*40 + 17,y
+        iny
+        cpy #18
+        bcs nd_key
+        lda #$20
+        sta SCR + 22*40 + 17,y
+nd_key  jsr GETIN
+        beq nd_key
+        cmp #13
+        beq nd_go
+        cmp #3                  ; RUN/STOP: not now
+        bne +
+        ldx #fm_none-fmsgs
+        jsr fstatus
+        ldx #0
+        rts
++       cmp #20                 ; DEL
+        bne +
+        lda nlen
+        beq nd_key
+        dec nlen
+        jmp nd_draw
++       ldx nlen                ; letters, digits, space, - . ! ( ) +
+        cpx #16
+        bcs nd_key
+        cmp #$20
+        bcc nd_key
+        cmp #$5B
+        bcs nd_key
+        cmp #$22                ; (no quotes, no commas, no colons, no wildcards)
+        beq nd_key
+        cmp #$2C
+        beq nd_key
+        cmp #$3A
+        beq nd_key
+        cmp #$2A
+        beq nd_key
+        cmp #$3F
+        beq nd_key
+        sta nbuf,x
+        inc nlen
+        jmp nd_draw
+nd_go   lda nlen
+        beq nd_key
+        sta MB_NCLR
+        ldx #0
+-       lda nbuf,x
+        sta MB_NAME
+        inx
+        cpx nlen
+        bne -
+        lda #$1B                ; NEWDISK
+        jsr call
+        beq +
+        jsr err
+        ldx #0
+        rts
++       ldx #1
+        rts
+nlen    !byte 0
+nbuf    !fill 16, 0
+
+; the settings pages, after each drawing: F7's set-up help (and the first-time line), F8's "more",
+; the slogan row
+fset_b  lda view
+        cmp #2
+        bne fs_more
+        ldx #0                  ; F7: what each choice means, rows 12-21 - names yellow, the rest grey
+-       lda dhelp,x
+        sta SCR + 12*40,x
+        lda dhelp+200,x
+        sta SCR + 12*40+200,x
+        txa
+        ldy #0
+--      cmp #40
+        bcc +
+        sbc #40
+        iny
+        bne --
++       cmp #13
+        lda #15
+        bcs +
+        lda #7
++       sta COL + 12*40,x
+        sta COL + 12*40+200,x
+        inx
+        cpx #200
+        bne -
+        lda LBUF + 20           ; VIDEO OUT still "NOT SET": the first time - say so
+        cmp #$4E
+        bne fs_slog
+        ldx #fm_first-fmsgs
+        jsr fstatus
+        jmp fs_slog
+fs_more ldx #39                 ; F8: more lines than rows - which way
+        lda #$20
+-       sta SCR + 8*40,x
+        dex
+        bpl -
+        lda count
+        cmp #ROWS+1
+        bcc fs_slog
+        ldy #0
+        lda stop
+        bne +
+        ldx #fm_below-fmsgs
+        bne fsm
++       ldx #fm_above-fmsgs
+fsm     lda fmsgs,x
+        beq fs_slog
+        sta SCR + 8*40 + 16,y
+        lda #12
+        sta COL + 8*40 + 16,y
+        inx
+        iny
+        bne fsm
+fs_slog ldx #39                 ; row 23: the slogan (To do 77) and the credit, mid grey
+-       lda s_slogan,x
+        sta SCR + 23*40,x
+        lda #12                 ; (mid grey: readable, not loud)
+        sta COL + 23*40,x
+        dex
+        bpl -
+        ldx #0
+        rts
+
+; RETURN on VIDEO OUT (Fix 54): a test picture on the VIC - with the split off every screen shows it.
+; Any key: back
+ftest_b ldx #0
+-       lda #$20
+        sta SCR,x
+        sta SCR+250,x
+        sta SCR+500,x
+        sta SCR+750,x
+        lda #1
+        sta COL,x
+        sta COL+250,x
+        sta COL+500,x
+        sta COL+750,x
+        inx
+        cpx #250
+        bne -
+        ldx #39                 ; the bars: rows 4-13 eight colours (5 columns each), rows 14-15 five greys
+-       txa
+        ldy #0
+--      cmp #5
+        bcc +
+        sbc #5
+        iny
+        bne --
++       lda tbars,y
+        sta tmp
+        txa
+        ldy #0
+--      cmp #8
+        bcc +
+        sbc #8
+        iny
+        bne --
++       lda tgrey,y
+        sta tmp+1
+        lda #$A0
+        sta SCR + 4*40,x
+        sta SCR + 5*40,x
+        sta SCR + 6*40,x
+        sta SCR + 7*40,x
+        sta SCR + 8*40,x
+        sta SCR + 9*40,x
+        sta SCR + 10*40,x
+        sta SCR + 11*40,x
+        sta SCR + 12*40,x
+        sta SCR + 13*40,x
+        sta SCR + 14*40,x
+        sta SCR + 15*40,x
+        lda tmp
+        sta COL + 4*40,x
+        sta COL + 5*40,x
+        sta COL + 6*40,x
+        sta COL + 7*40,x
+        sta COL + 8*40,x
+        sta COL + 9*40,x
+        sta COL + 10*40,x
+        sta COL + 11*40,x
+        sta COL + 12*40,x
+        sta COL + 13*40,x
+        lda tmp+1
+        sta COL + 14*40,x
+        sta COL + 15*40,x
+        dex
+        bpl -
+        ldx #0                  ; the words
+-       lda ttext,x
+        sta SCR + 1*40,x
+        lda ttext+80,x
+        sta SCR + 17*40,x
+        lda ttext+160,x
+        sta SCR + 19*40,x
+        lda ttext+240,x
+        sta SCR + 21*40,x
+        lda #7
+        sta COL + 17*40,x
+        sta COL + 18*40,x
+        inx
+        cpx #80
+        bne -
+        lda #0
+        sta $C6
+-       jsr GETIN
+        beq -
+        ldx #0
+        rts
+tbars   !byte 1, 7, 3, 5, 4, 2, 6, 0
+tgrey   !byte 0, 11, 12, 15, 1
+ttext   !scr "      octophonic 64 - screen test       "
+        !scr "                                        "
+        !scr "you should see this on every screen you "
+        !scr "have plugged in.                        "
+        !scr "split screens on: this is the c64 side  "
+        !scr "(vga/crt); hdmi shows octovic.          "
+        !scr "any key: back to the set-up page        "
+        !scr "(c) 2026 mong00se                       "
+
+; (moved here from the browser for room) REU ATTACHED (nnM), or (nnnK) under 1 MB
+reumsg_b
+        ldx #m_reu-msgs
+        jsr status
+        ldy #14
+        lda reuu+1              ; 256 units and up: 16M and more
+        bne rmbig
+        lda reuu
+        cmp #16
+        bcs rmmeg
+        asl                     ; under 1 MB: units x 64 = K (64..960)
+        asl
+        asl
+        asl
+        asl
+        asl
+        sta tmp                 ; low byte of units x 64
+        lda reuu
+        lsr
+        lsr
+        sta tmp+1               ; high byte
+        jsr dec16
+        lda #$0B                ; K
+        bne rmend
+rmbig   lda #16                 ; 256 units: 16M (the largest REU there is)
+        sta tmp
+        lda #0
+        sta tmp+1
+        jsr dec16
+        lda #$0D
+        bne rmend
+rmmeg   lsr                     ; 1-15 MB: units / 16
+        lsr
+        lsr
+        lsr
+        sta tmp
+        lda #0
+        sta tmp+1
+        jsr dec16
+        lda #$0D                ; M
+rmend   sta SCR + 22*40,y
+        iny
+        lda #$29                ; )
+        sta SCR + 22*40,y
+        lda #0
+        sta reumb
+        ldx #0
+        rts
+
+; tmp/tmp+1 (0-999) in decimal at SCR + 22*40 + Y, no leading zeros; Y moves on
+dec16   ldx #0
+        stx dflag
+        ldx #2
+-       lda #$30
+        sta dch
+--      lda tmp
+        sec
+        sbc dlo,x
+        pha
+        lda tmp+1
+        sbc dhi,x
+        bcc +
+        sta tmp+1
+        pla
+        sta tmp
+        inc dch
+        bne --
++       pla
+        lda dch
+        cpx #0
+        beq ++
+        cmp #$30
+        bne ++
+        bit dflag
+        bpl +++
+++      sta SCR + 22*40,y
+        iny
+        lda #$80
+        sta dflag
++++     dex
+        bpl -
+        rts
+dlo     !byte 1, 10, 100
+dhi     !byte 0, 0, 0
+dch     !byte 0
+dflag   !byte 0
+
+; (moved here for room) the core's name ($D6B8-$D6BF) and build date ($D6B4-$D6B6, BCD) on the
+; settings title row: "core mem3     01.11.26" - from OctoVIC itself, so it is always the core really running
+corenm_b
+        ldx #4
+-       lda t_core,x
+        sta SCR + 5*40 + 18,x
+        dex
+        bpl -
+        ldx #7
+-       lda $D6B8,x
+        and #$3F                ; ASCII to screen codes
+        sta SCR + 5*40 + 23,x
+        dex
+        bpl -
+        ldx #2                  ; day, month, year at 32, 35, 38
+        ldy #6
+-       lda $D6B4,x
+        pha
+        lsr
+        lsr
+        lsr
+        lsr
+        ora #$30
+        sta SCR + 5*40 + 32,y
+        pla
+        and #$0F
+        ora #$30
+        sta SCR + 5*40 + 33,y
+        cpx #0
+        beq +
+        lda #$2E
+        sta SCR + 5*40 + 31,y
++       tya
+        sec
+        sbc #3
+        tay
+        dex
+        bpl -
+        ldx #0
+        rts
+t_core  !scr "core "
+
+; (batch 1) moved to the far code - and not called since F1 stopped waiting for the share (build 4);
+; kept for when it is wanted again (call it through a +far stub)
+; the share is set up but still connecting (Main is waiting to open it): PLEASE WAIT, until it is
+; there (Main has the folder on it by then), a key is pressed, or 60 seconds - then the SD card
+netwait lda MB_NET
+        and #3
+        cmp #1
+        bne nwdone
+        ldx #m_wait-msgs
+        jsr status
+        lda #60
+        sta secs
+        lda #50
+        sta jifs
+        lda $A2
+        sta lastj
+nwloop  jsr netlite
+        lda MB_NET
+        and #3
+        cmp #1
+        bne nwdone              ; there (or Main stopped waiting)
+        jsr GETIN
+        bne nwsd                ; a key: the SD card now
+        lda $A2
+        cmp lastj
+        beq nwloop
+        sta lastj
+        dec jifs
+        bne nwloop
+        lda #50
+        sta jifs
+        dec secs
+        bne nwloop
+        lda #1                  ; 60 seconds: the SD card, and say so
+        sta nonet
+nwsd    lda #$0B                ; NOSHARE: Main stops waiting, the SD card's folder
+        jsr call
+nwdone  ldx #0
+        rts
+
+; a far message (X in fmsgs) on the status line, yellow - as status does with msgs
+fmsg_b
+fstatus ldy #0
+-       lda fmsgs,x
+        beq +
+        sta SCR + 22*40,y
+        lda #7
+        sta COL + 22*40,y
+        inx
+        iny
+        bne -
++       lda #$20
+-       cpy #40
+        bcs +
+        sta SCR + 22*40,y
+        iny
+        bne -
++       ldx #0
+        rts
+fmsgs
+fm_none   !scr 0
+fm_newd   !scr "new disk - name: ", 0
+fm_there  !scr "?a disk of that name is there already", 0
+fm_newok  !scr "new disk made - it is in drive 8 now", 0
+fm_osrc   !scr "opening its source in octocode...", 0
+fm_rs     !scr "saved - switch the mister off and on", 0
+fm_first  !scr "first time: pick your screens <- ->", 0
+fm_below  !scr "more below - cursor down", 0
+fm_above  !scr "more above - cursor up", 0
+!if * - fmsgs > 255 { !error "the far messages are over 255 bytes" }
+; F7's help, rows 12-21 (40 columns each)
+dhelp   !scr "hdmi only    one screen - no split      "
+        !scr "hdmi+vga 31k a pc monitor on vga. its   "
+        !scr "             c64 side needs a new core  "
+        !scr "hdmi+crt 15k a crt on vga/bnc, and hdmi "
+        !scr "crt only 15k one crt - no split         "
+        !scr "                                        "
+        !scr "split        c64 on the crt, octovic on "
+        !scr "             hdmi (hdmi+crt 15k only)   "
+        !scr "return       a test picture             "
+        !scr "saved to mister.ini: switch off and on  "
+; To do 77: the slogan - ONE line, here; to move it, move this string and its fset_b lines
+s_slogan !scr "the future is the past  (c)2026 mong00se"
+!if * > LBUF { !error "the far code runs into LBUF" }
+        !fill $BE00 - *, 0      ; LBUF (batch 1: $BA00-$BDFF), Main's list (zeros in the file)
 
 ; ------------------------------------------------------------- (build 5) $BE00-$BFFF: the jingle
 ; In the RAM under BASIC's ROM: SHELL.PRG starts here now (its $C000-$CFFF is all the browser's).
@@ -302,7 +843,7 @@ start   lda $0202               ; the letter after @@: what the browser is opene
         cmp #2
         beq mload               ; "C" F3
         bcs msids               ; "D" F5
-mbrowse jmp drives              ; "B" F1
+mbrowse jmp disks               ; "B" F1: the Disks page (batch 1, Fix 76)
 mdual   lda #2                  ; its own page: DUAL SCREEN
         !byte $2C
 msids   lda #1                  ; its own page: SID CHIPS
@@ -313,17 +854,20 @@ mset    lda #0                  ; SETTINGS, everything
         sta setonly
         jmp settings
 mload   jmp f3load              ; (build 4) F3: the disk in drive 8, not the browser
-mbrows  jsr netwait             ; a share still connecting: wait for it (any key: the SD card)
-reload  lda #$FF                ; (build 5) the hint under the list: drawn again for the bar
+reload  lda #$FF                 ; (build 5) the key strip under the list: drawn again for the bar
         sta hsel
-        lda #0
-        sta hwas
         jsr dolist
         jsr drawall
         jsr hilite
         lda reumb               ; a .reu just attached: say so once the list is up
         beq +
         jsr reumsg
++       lda newmb               ; (batch 1) a new disk just made: say so
+        beq +
+        lda #0
+        sta newmb
+        ldx #fm_newok-fmsgs
+        jsr fmsg
 +       lda nonet               ; "no network" from the wait: say so once the list is up
         beq loop
         lda #0
@@ -332,7 +876,7 @@ reload  lda #$FF                ; (build 5) the hint under the list: drawn again
         jsr status
 loop    jsr netlite             ; when the share comes or goes, list again
         bcs reload
-        jsr hint                ; (build 5) the bar on a disk: RETURN runs it, M only mounts it
+        jsr hint                ; (batch 1) the key strip on row 23 for the entry under the bar
         jsr cpage               ; on a MiSTer: C= held shows the help's second page
         jsr getkey
         beq loop
@@ -358,10 +902,11 @@ loop    jsr netlite             ; when the share comes or goes, list again
         cmp #20                 ; DEL
         beq upf
         cmp #95                 ; left arrow
-upf     beq upfold
+        beq upf
         cmp #157                ; cursor left (joystick left)
-        beq upfold
-        cmp #140                ; F8: settings
+        bne +
+upf     jmp upfold
++       cmp #140                ; F8: settings
         bne +
         jmp settings
 +
@@ -369,13 +914,14 @@ upf     beq upfold
         bne +                   ; the MiSTer's own menu
         lda $028D
         and #2
-        beq startf
+        beq gostf
         lda MB_NET
         and #$20
-        beq startf
+        beq gostf
         lda #$12                ; MENU: Main loads the MiSTer's menu core
         jsr call
         jmp loop
+gostf   jmp startf
 +
         cmp #19                 ; HOME
         beq home
@@ -394,6 +940,16 @@ upf     beq upfold
         bne +                   ; (not a disk: nothing)
         lda #1
         jmp open
++       cmp #$52                ; (batch 1) R: as RETURN
+        bne +
+        lda #0
+        jmp open
++       cmp #$4F                ; (batch 1) O: the disk's source in OCTOCODE
+        bne +
+        jmp osrc
++       cmp #$4E                ; (batch 1) N: a new blank disk here
+        bne +
+        jmp newd
 +       cmp #136                ; F7
         beq quit
         cmp #3                  ; RUN/STOP
@@ -777,6 +1333,10 @@ err     cmp #$FE
 +       cmp #$86
         bne +
         ldx #m_nonc-msgs
++       cmp #$87                ; (batch 1) NEWDISK: that name is there already
+        bne +
+        ldx #fm_there-fmsgs
+        jmp fmsg
 +       jmp status
 hexd    cmp #10                 ; a hex digit as a screen code
         bcc +
@@ -856,7 +1416,7 @@ status  ldy #0
         bne -
 +       lda #$20
 -       cpy #40
-        beq +
+        bcs +
         sta SCR + 22*40,y
         iny
         bne -
@@ -1034,21 +1594,7 @@ hint    lda sel
         sta hsel
         lda first
         sta hfirst
-        jsr seltype
-        cmp #2
-        bne hnot
-        ldx #s_hint-strs        ; (on the status line, row 22)
-        lda #22
-        jsr putrow
-        lda #1
-        sta hwas
-        rts
-hnot    lda hwas
-        beq hx
-        lda #0
-        sta hwas
-        ldx #m_none-msgs
-        jmp status
+        jmp fkeys               ; (batch 1, Fix 76) the key strip, row 23
 hx      rts
 
 ; (build 5) DRIVE8 ($17): the name of the disk in drive 8 into d8buf (PETSCII, 0 after it). Z set
@@ -1182,10 +1728,60 @@ joymap  lda joyold
         rts
 
 
+; (batch 1, Fix 76) F1 at READY: the Disks folder of the start drive - CHDIR "/DISKS"; not there: the drives
+disks   lda #'/'
+        sta MB_NCLR
+        sta MB_NAME
+        ldx #0
+-       lda dsname,x
+        beq +
+        sta MB_NAME
+        inx
+        bne -
++       lda #$02
+        jsr call
+        beq +
+        jmp drives
++       jmp home
+dsname  !pet "disks", 0
+
+; (batch 1, Fix 76) O: a disk with source (type 2, b3) - Main puts it in drive 8 and starts OCTOCODE,
+; which opens the source (SRCOPEN $19, then OCTOCODE's SRCNAME $1A). The core resets.
+osrc    lda curtype
+        and #$0F
+        cmp #$0A
+        beq +
+        jmp loop                ; (not a disk with source: nothing - O is dimmed)
++       clc
+        lda first
+        adc sel
+        sta MB_LL
+        lda first+1
+        adc #0
+        sta MB_LH
+        lda #$19
+        jsr call
+        beq +
+        jsr err
+        jmp loop
++       ldx #fm_osrc-fmsgs
+        jsr fmsg
+-       jsr STOP
+        bne -
+        jmp quit
+; (batch 1, Fix 46) N: a new blank disk in this folder, put in drive 8, the bar on it
+newd    jsr fnewd
+        bne +
+        jmp loop
++       lda #1
+        sta newmb
+        jmp place
+
 ; ------------------------------------------------------------------------------- the settings
 settings
         lda #0
         sta sline
+        sta stop                ; (batch 1) the first line shown (the F8 list scrolls)
         ldx #39
 -       lda #$20                ; the help (row 7 blank)
         sta SCR + 7*40,x
@@ -1223,6 +1819,12 @@ sreload lda #<LBUF
         lda #m_none-msgs
         tax
         jsr status
+        lda rsmsg               ; (batch 1) a MiSTer.ini setting changed: switch off and on
+        beq sdraw
+        lda #0
+        sta rsmsg
+        ldx #fm_rs-fmsgs
+        jsr fmsg
 sdraw   lda #0
         sta row
 -       lda row
@@ -1233,6 +1835,8 @@ sdraw   lda #0
         dey
         bpl --
         lda row
+        clc
+        adc stop
         cmp count
         bcs +
         jsr sline40
@@ -1240,6 +1844,7 @@ sdraw   lda #0
         lda row
         cmp #ROWS
         bne -
+        jsr fset                ; (batch 1) F7's help, F8's "more", the slogan row
         lda sline
         jsr hirow
 sloop   jsr getkey
@@ -1250,7 +1855,15 @@ sloop   jsr getkey
         inx
         cpx count
         bcs sloop
-        lda sline
+        txa                     ; (batch 1) off the bottom: the list moves up a line
+        sec
+        sbc stop
+        cmp #ROWS
+        bcc sdn1
+        inc stop
+        inc sline
+        jmp sdraw
+sdn1    lda sline
         jsr hirow
         inc sline
         lda sline
@@ -1260,7 +1873,12 @@ sloop   jsr getkey
         bne +
         lda sline
         beq sloop
-        jsr hirow
+        cmp stop                ; (batch 1) off the top: the list moves down a line
+        bne sup1
+        dec stop
+        dec sline
+        jmp sdraw
+sup1    jsr hirow
         dec sline
         lda sline
         jsr hirow
@@ -1276,6 +1894,12 @@ sloop   jsr getkey
 +       cmp #13
         bne +
         jsr actual
+        cmp #13                 ; (batch 1, Fix 54) RETURN on VIDEO OUT: the test picture
+        bne snotv
+        jsr ftest
+        jsr FRAME
+        jmp settings
+snotv   cmp #0
         bne ++
         lda #$0A                ; RETURN on the chip preset: start it
         jsr call
@@ -1305,6 +1929,10 @@ sstep   sta MB_VAL
         beq +
         jsr err
         jmp sloop
++       lda MB_VAL              ; (batch 1) VALUE 4: in MiSTer.ini - switch off and on
+        cmp #4
+        bne +
+        sta rsmsg
 +       jmp sreload
 
 sstart  ldx #m_preset-msgs      ; Main starts the core again with the preset
@@ -1315,6 +1943,8 @@ sstart  ldx #m_preset-msgs      ; Main starts the core again with the preset
 
 ; settings line row: the label (grey) and the value (white), from LBUF + row*40
 sline40 lda row
+        clc
+        adc stop                ; (batch 1) the line shown on this row
         asl                     ; row*40 = row*32 + row*8
         asl
         asl
@@ -1403,11 +2033,12 @@ actual  lda sline
         lda vmap,y
 +       cmp #0
         rts
-lbl     !for i, 0, 11 { !byte <(LBUF + i*40) }
-lbh     !for i, 0, 11 { !byte >(LBUF + i*40) }
-vmap    !byte 0, 1, 2, 4, 5, 6, 7, 8, 9
+lbl     !for i, 0, 14 { !byte <(LBUF + i*40) }
+lbh     !for i, 0, 14 { !byte >(LBUF + i*40) }
+; (batch 1) Main's 15 lines: ... 12 SHOWCASE, 13 VIDEO OUT, 14 SCALING. F7 DUAL SCREEN: 13 VIDEO OUT, 9 SPLIT
+vmap    !byte 0, 1, 2, 4, 5, 6, 7, 8, 13, 9
 vbase   !byte 0, 0, 8
-vcnt    !byte 12, 8, 1
+vcnt    !byte 15, 8, 2
 vtitle  !byte s_set-strs, s_sids-strs, s_dual-strs
 vsub    !byte s_setu-strs, s_sidsu-strs, s_dualu-strs
 ; a string (X in strs, 0 at its end) on screen row A, yellow, the rest of the row blank
@@ -1440,16 +2071,17 @@ putrow  tay
         bne -
 +       rts
 strs
-s_browse !scr "f1 browse: return runs, m mounts a disk", 0
+s_browse !scr "disks and files - f1: the drives", 0
 s_set   !scr "settings", 0
 s_sids  !scr "sid chips", 0
 s_dual  !scr "dual screen", 0
 s_setu  !scr "everything, in one list", 0
 s_sidsu !scr "which sids play, and which chips", 0
-s_dualu !scr "c64 on the crt, octovic on hdmi", 0
-s_hint  !scr "return: load+run it   m: mount it only", 0
+s_dualu !scr "set-up: your screens, and the split", 0
 
-hirow   jsr rowptr              ; the bar on settings line A
+hirow   sec                     ; the bar on settings line A (batch 1: on the screen at A - stop)
+        sbc stop
+        jsr rowptr
         ldy #39
 -       lda (Q),y
         eor #$80
@@ -1493,42 +2125,6 @@ cpage   lda MB_NET
         bpl -
 +       rts
 
-; the share is set up but still connecting (Main is waiting to open it): PLEASE WAIT, until it is
-; there (Main has the folder on it by then), a key is pressed, or 60 seconds - then the SD card
-netwait lda MB_NET
-        and #3
-        cmp #1
-        bne nwdone
-        ldx #m_wait-msgs
-        jsr status
-        lda #60
-        sta secs
-        lda #50
-        sta jifs
-        lda $A2
-        sta lastj
-nwloop  jsr netlite
-        lda MB_NET
-        and #3
-        cmp #1
-        bne nwdone              ; there (or Main stopped waiting)
-        jsr GETIN
-        bne nwsd                ; a key: the SD card now
-        lda $A2
-        cmp lastj
-        beq nwloop
-        sta lastj
-        dec jifs
-        bne nwloop
-        lda #50
-        sta jifs
-        dec secs
-        bne nwloop
-        lda #1                  ; 60 seconds: the SD card, and say so
-        sta nonet
-nwsd    lda #$0B                ; NOSHARE: Main stops waiting, the SD card's folder
-        jsr call
-nwdone  rts
 
 ; a .reu attached on its own: the bar onto its .prg (Main says where: LEN), the list again, and
 ; REU ATTACHED (nnM) on the status line - RETURN then runs the demo without loading the .reu again
@@ -1538,7 +2134,7 @@ reuin   lda MB_RL               ; RESULT: its size in 64 KB units (kept for REU 
         sta reuu+1
         lda #1
         sta reumb
-        lda MB_LH
+place   lda MB_LH               ; (batch 1: N comes in here too) LEN: the entry to put the bar on
         cmp #$FF
         beq ++
         sec                     ; on this page? then just the bar
@@ -1560,134 +2156,31 @@ reuin   lda MB_RL               ; RESULT: its size in 64 KB units (kept for REU 
         sta sel
 ++      jmp reload
 
-reumsg  ldx #m_reu-msgs         ; REU ATTACHED (nnM), or (nnnK) under 1 MB
-        jsr status
-        ldy #14
-        lda reuu+1              ; 256 units and up: 16M and more
-        bne rmbig
-        lda reuu
-        cmp #16
-        bcs rmmeg
-        asl                     ; under 1 MB: units x 64 = K (64..960)
-        asl
-        asl
-        asl
-        asl
-        asl
-        sta tmp                 ; low byte of units x 64
-        lda reuu
-        lsr
-        lsr
-        sta tmp+1               ; high byte
-        jsr dec16
-        lda #$0B                ; K
-        bne rmend
-rmbig   lda #16                 ; 256 units: 16M (the largest REU there is)
-        sta tmp
-        lda #0
-        sta tmp+1
-        jsr dec16
-        lda #$0D
-        bne rmend
-rmmeg   lsr                     ; 1-15 MB: units / 16
-        lsr
-        lsr
-        lsr
-        sta tmp
-        lda #0
-        sta tmp+1
-        jsr dec16
-        lda #$0D                ; M
-rmend   sta SCR + 22*40,y
-        iny
-        lda #$29                ; )
-        sta SCR + 22*40,y
-        lda #0
-        sta reumb
-        rts
-
-; tmp/tmp+1 (0-999) in decimal at SCR + 22*40 + Y, no leading zeros; Y moves on
-dec16   ldx #0
-        stx dflag
-        ldx #2
--       lda #$30
-        sta dch
---      lda tmp
-        sec
-        sbc dlo,x
-        pha
-        lda tmp+1
-        sbc dhi,x
-        bcc +
-        sta tmp+1
-        pla
-        sta tmp
-        inc dch
-        bne --
-+       pla
-        lda dch
-        cpx #0
-        beq ++
-        cmp #$30
-        bne ++
-        bit dflag
-        bpl +++
-++      sta SCR + 22*40,y
-        iny
-        lda #$80
-        sta dflag
-+++     dex
-        bpl -
-        rts
-dlo     !byte 1, 10, 100
-dhi     !byte 0, 0, 0
-dch     !byte 0
-dflag   !byte 0
+; (batch 1) reumsg and dec16 moved to the far code ($B000)
 reuu    !word 0
 
 rowlo   !for i, 0, 24 { !byte <(SCR + i*40) }
 rowhi   !for i, 0, 24 { !byte >(SCR + i*40) }
 colours !byte 7, 1, 13, 3, 12, 7, 12, 12   ; folders yellow, .prg white, disks light green, .crt sky blue, others grey
 autold  !byte $4C, $4F, $41, $44, $22, $2A, $22, $2C, $38, $2C, $31, 0   ; LOAD"*",8,1 in full (build 6: ,1)
-; the core's name ($D6B8-$D6BF) and build date ($D6B4-$D6B6, BCD) on the settings title row:
-; "core mem3     01.11.26" - from OctoVIC itself, so it is always the core really running
-corenm  ldx #4
--       lda t_core,x
-        sta SCR + 5*40 + 18,x
-        dex
-        bpl -
-        ldx #7
--       lda $D6B8,x
-        and #$3F                ; ASCII to screen codes
-        sta SCR + 5*40 + 23,x
-        dex
-        bpl -
-        ldx #2                  ; day, month, year at 32, 35, 38
-        ldy #6
--       lda $D6B4,x
-        pha
-        lsr
-        lsr
-        lsr
-        lsr
-        ora #$30
-        sta SCR + 5*40 + 32,y
-        pla
-        and #$0F
-        ora #$30
-        sta SCR + 5*40 + 33,y
-        cpx #0
-        beq +
-        lda #$2E
-        sta SCR + 5*40 + 31,y
-+       tya
-        sec
-        sbc #3
-        tay
-        dex
-        bpl -
+; (batch 1) corenm moved to the far code ($B000)
+; the far code's stubs: BASIC switched out, the routine, BASIC back in; A = its X (flags set)
+!macro far .r {
+        lda #$36
+        sta $01
+        jsr .r
+        lda #$37
+        sta $01
+        txa
         rts
-t_core  !scr "core "
+}
+fkeys   +far fkeys_b
+fnewd   +far fnewd_b
+fset    +far fset_b
+ftest   +far ftest_b
+reumsg  +far reumsg_b
+corenm  +far corenm_b
+fmsg    +far fmsg_b
 shelp   !scr "up/down pick  left/right change  f7 back"
 hdr     !scr " name                         type size "
 help    !scr "f1 drives f3 up f5/6 page f7 back f8 set"
@@ -1747,6 +2240,10 @@ view    !byte 0
 cv      !byte 0
 ck      !byte 0
 setonly !byte 0
+stop    !byte 0                 ; (batch 1) the settings list's first line on screen
+rsmsg   !byte 0                 ; (batch 1) say "switch off and on" after the list is drawn
+curtype !byte $FF               ; (batch 1) the type byte of the entry under the bar ($FF none)
+newmb   !byte 0                 ; (batch 1) a new disk was made: say so
 ; the jingle's tune (read by its player from here: SHELL.PRG stays in RAM while it plays)
 ; C4 D4 E4 F4 G4 A4 B4 C5 E5 (PAL: Hz x 17.0284)
 jfreq   !word 4455, 5001, 5613, 5947, 6675, 7493, 8410, 8910, 11226

@@ -98,7 +98,10 @@ cold    cld
         lda #$36                ; BASIC off: $A000-$BFFF holds source too
         sta $01
         jsr scrinit
-        lda alive
+        jsr srcask              ; (batch 1, Fix 76) the Disks page's O: a source to open first
+        bcs +
+        jmp srcopen
++       lda alive
         cmp #$A5
         bne +
         jmp resume2             ; RUN after F7: everything is still here
@@ -120,6 +123,43 @@ fresh   lda #$A5
         ldx #<m_fresh           ; (no load from drive 8 here: on the MiSTer, with no disk in the
         ldy #>m_fresh           ; drive, the 1541 never answers and the editor hung at the start)
         jsr status
+        jmp edit
+
+; (batch 1, Fix 76 - (c) 2026 Mong00se) the Disks page's O put a disk with source in drive 8 and
+; started OCTOCODE: Main says which source (SRCNAME $1A, given once). C clear: fname has it.
+; Not on an Octophonic, an older Main, or nothing asked: C set - OCTOCODE starts as before.
+srcask  lda MB+$C               ; (scrinit opened OctoVIC's page) the mailbox's version: 2
+        cmp #2
+        bne sa_no
+        lda #<LOGBUF
+        sta MB_AL
+        lda #>LOGBUF
+        sta MB_AH
+        lda #$1A                ; SRCNAME
+        jsr call
+        bne sa_no
+        lda MB_RL
+        beq sa_no
+        cmp #17
+        bcc +
+        lda #16
++       sta fnlen
+        tax
+-       dex
+        bmi +
+        lda LOGBUF,x
+        sta fname,x
+        jmp -
++       clc
+        rts
+sa_no   sec
+        rts
+; ... and its source from drive 8, into a fresh editor
+srcopen lda #$A5
+        sta alive
+        jsr empty
+        jsr drawall
+        jsr loadfile
         jmp edit
 
 ; back from a program (RUN/STOP+RESTORE): the code as it was
