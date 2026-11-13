@@ -1,0 +1,102 @@
+# OCTOPHONIC 64 - OLD-SOFTWARE REGRESSION TEST (Fix 69): the whole-C64 RTL part.          (c) 2026 Mong00se
+# The last core's C64 and the new core's C64 (GHDL + Verilator, as sim/rewind builds it) boot the Octophonic
+# KERNAL and run our stock-VIC programs; every frame's picture and the SID registers are compared
+# (tools/regress/rtl). The job fails when the new core is not identical: a core does not ship until it passes.
+# A proof run beside it makes one deliberate one-byte KERNAL change and checks the comparator catches it.
+# No Quartus here. Results: the job summary, the artifact "regress-rtl", and the branch regress-results-<ref>.
+name: Regression test (RTL)
+
+on:
+  push:
+    branches: [ regression-harness ]
+    paths: [ 'tools/regress/**', 'sim/rewind/**', '.github/workflows/regress-rtl.yml' ]
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: 'the last core: a branch, tag or commit'
+        default: 'release-line'
+      proof:
+        description: 'also run the deliberate-change proof (it must be caught)'
+        type: boolean
+        default: true
+      frames:
+        description: 'frames per run'
+        default: '320'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      BASE_REF: ${{ github.event.inputs.baseline_ref || 'release-line' }}
+      PROOF: ${{ github.event.inputs.proof || 'true' }}
+      FRAMES: ${{ github.event.inputs.frames || '320' }}
+    steps:
+      - name: The new core (this ref)
+        uses: actions/checkout@v4
+        with:
+          path: new
+      - name: The last core
+        uses: actions/checkout@v4
+        with:
+          path: last
+          ref: ${{ env.BASE_REF }}
+      - name: Tools
+        run: |
+          sudo apt-get update -qq >/dev/null
+          sudo apt-get install -y -qq ghdl verilator acme >/dev/null || sudo apt-get install -y -qq ghdl verilator >/dev/null
+          ghdl --version | head -1; verilator --version; command -v acme || echo "no acme: only the KERNAL boot runs"
+          python3 -c "import numpy, PIL" 2>/dev/null || pip install -q numpy pillow
+          echo "last core: $BASE_REF $(git -C last rev-parse --short HEAD)   new core: $GITHUB_REF_NAME $(git -C new rev-parse --short HEAD)"
+      - name: Build and run both sides
+        run: |
+          mkdir -p /tmp/rr
+          new/tools/regress/rtl/run_rtl.sh last /tmp/rr/last $FRAMES > /tmp/rr/last.txt 2>&1 & A=$!
+          new/tools/regress/rtl/run_rtl.sh new  /tmp/rr/new  $FRAMES > /tmp/rr/new.txt  2>&1 & B=$!
+          ra=0; rb=0; wait $A || ra=$?; wait $B || rb=$?
+          echo "== last core side (rc $ra)"; cat /tmp/rr/last.txt
+          echo "== new core side (rc $rb)";  cat /tmp/rr/new.txt
+      - name: Compare - the gate (PASS or FAIL)
+        id: gate
+        continue-on-error: true
+        run: python3 new/tools/regress/rtl/compare_rtl.py /tmp/rr/last /tmp/rr/new /tmp/rr/report
+      - name: Proof - a one-byte KERNAL change (border colour, $FBCA 06 -> 0E) must be caught
+        if: env.PROOF == 'true'
+        run: |
+          [ -x /tmp/rr/new/obj/tb_regress ] || { echo "PROOF_NOT_RUN: the new core's testbench did not build"; exit 1; }
+          RTL_REUSE_TB=/tmp/rr/new/obj/tb_regress RTL_KERNAL_POKE=3BCA:0E new/tools/regress/rtl/run_rtl.sh new /tmp/rr/proof $FRAMES
+          if python3 new/tools/regress/rtl/compare_rtl.py /tmp/rr/new /tmp/rr/proof /tmp/rr/report-proof; then
+            echo "PROOF_FAILED: the deliberate change was NOT caught"; exit 1
+          else
+            echo "PROOF_OK: the deliberate one-byte change was caught (FAIL, as it must be)"
+          fi
+          python3 new/tools/regress/rtl/compare_rtl.py /tmp/rr/new /tmp/rr/new /tmp/rr/report-self && echo "PROOF_OK: a run compared with itself passes"
+      - name: Results
+        if: always()
+        run: |
+          mkdir -p /tmp/keep
+          cp -r /tmp/rr/report* /tmp/keep/ 2>/dev/null || true
+          cp /tmp/rr/*.txt /tmp/keep/ 2>/dev/null || true
+          for s in last new proof; do mkdir -p /tmp/keep/$s; cp /tmp/rr/$s/*.txt /tmp/rr/$s/*.log /tmp/rr/$s/*.rc /tmp/rr/$s/roms.md5 /tmp/keep/$s/ 2>/dev/null || true; done
+          { echo '```'; cat /tmp/rr/report/REPORT.txt 2>/dev/null || echo "no report"; echo; cat /tmp/rr/report-proof/REPORT.txt 2>/dev/null; echo '```'; } >> $GITHUB_STEP_SUMMARY
+          cd /tmp/keep
+          echo "new $(git -C $GITHUB_WORKSPACE/new rev-parse --short HEAD) last $BASE_REF $(git -C $GITHUB_WORKSPACE/last rev-parse --short HEAD) $(date -u +%Y-%m-%dT%H:%MZ) gate ${{ steps.gate.outcome }}" > result.txt
+          git init -q; git checkout -q -b "regress-results-${GITHUB_REF_NAME}"; git add -A
+          git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Regression test (RTL): $(cat result.txt)"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "regress-results-${GITHUB_REF_NAME}" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: regress-rtl
+          path: /tmp/keep
+      - name: The verdict
+        if: always()
+        run: |
+          [ "${{ steps.gate.outcome }}" = success ] && echo "PASS: the new core's RTL runs are identical to the last core's" || { echo "FAIL: see the report"; exit 1; }
