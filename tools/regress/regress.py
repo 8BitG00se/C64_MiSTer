@@ -269,7 +269,7 @@ def compare_fp(b, c):
         # the same pictures, only later or earlier? (a timing shift, e.g. a slower boot)
         tail = [k for k in common if k >= max(DROP_AT, bad[0])]
         best = (0, 0)
-        if len(tail) > 50:
+        if len(tail) > 50 and sum(1 for k in bad if k in set(tail)) > 0.5 * len(tail):   # most of the program differs
             for off in range(-75, 76):
                 if off == 0: continue
                 n = sum(1 for k in tail if k + off in cf and cf[k + off][1] == bf[k][1])

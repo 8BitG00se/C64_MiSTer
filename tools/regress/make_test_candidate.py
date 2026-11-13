@@ -10,7 +10,11 @@
 #                                                 LDA #$0E (one VIC register value; the emulator's built-in KERNAL
 #                                                 patch and its CRC are changed as a rebuild with that mif would)
 #   make_test_candidate.py jingle-note   OUTDIR   the start jingle's first note C4: SID frequency 4455 -> 4456
-#                                                 (one SID register value, one step; in SHELL.PRG, the OS side)
+#                                                 (one SID register value, one step; in SHELL.PRG, the OS side).
+#                                                 NOTE: the headless emulator boots silently (no jingle), so this
+#                                                 change is NOT caught - kept to show that limit honestly
+#   make_test_candidate.py sid-8580      OUTDIR   the SIDs' default chip: the core's 6581 tables -> its 8580 tables
+#                                                 (one setting; the programs write the same, they sound different)
 #   [--emu X64SC]   the emulator to copy (default /home/claude/emu/x64sc)
 import os, re, shutil, sys, zlib
 
@@ -25,7 +29,7 @@ def main():
     a = sys.argv[1:]
     emu = '/home/claude/emu/x64sc'
     if '--emu' in a: i = a.index('--emu'); emu = a[i + 1]; del a[i:i + 2]
-    if len(a) != 2 or a[0] not in ('same', 'kernal-border', 'jingle-note'): sys.exit('usage: make_test_candidate.py same|kernal-border|jingle-note OUTDIR [--emu X64SC]')
+    if len(a) != 2 or a[0] not in ('same', 'kernal-border', 'jingle-note', 'sid-8580'): sys.exit('usage: make_test_candidate.py same|kernal-border|jingle-note|sid-8580 OUTDIR [--emu X64SC]')
     kind, out = a
     src = os.path.dirname(os.path.abspath(emu))
     os.makedirs(out, exist_ok=True)
@@ -53,6 +57,11 @@ def main():
         s[i:i + 2] = (4456).to_bytes(2, 'little')
         open(p, 'wb').write(s)
         print('jingle-note: SHELL.PRG offset %d: the first note 4455 -> 4456' % i)
+    elif kind == 'sid-8580':
+        hits = [m.start() for m in re.finditer(b'core:6581\0', b)]
+        assert len(hits) == 1, 'the default SID choice is not found once in the emulator (%d)' % len(hits)
+        b[hits[0]:hits[0] + 9] = b'core:8580'
+        print('sid-8580: the default SID choice core:6581 -> core:8580 (all 8 SIDs)')
     open(os.path.join(out, 'x64sc'), 'wb').write(b)
     os.chmod(os.path.join(out, 'x64sc'), 0o755)
     print('test candidate (%s): %s/x64sc' % (kind, out))

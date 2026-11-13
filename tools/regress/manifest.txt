@@ -24,7 +24,8 @@
 #
 # Every program is dropped on Octophonic OS at frame 150, as a user would pick it in the browser. A .d64 is only
 # mounted by that (as on the core), so for a .d64 with input "-" the runner presses F3 (LOAD) at frame 170:
-# LOAD"*",8,1 and RUN, as Neal does on the start screen.
+# LOAD"*",8,1 and RUN, as Neal does on the start screen. Disk loading is the slow stock 1541 speed (no fast
+# loader yet, Fix 49), so disk entries get long runs (Dithering Doughnut: 202 blocks, about 2 minutes).
 
 # ---------------------------------------------------------------- in this repo: committed programs
 sacred-01 | REPO | tools/sacred/d64/01 Seed Of Life.d64        | - | 2500 | - | BASIC, OctoVIC bitmap+blitter, SID 1 | Sacred Geometry 01 Seed of Life
@@ -42,7 +43,7 @@ sacred-12 | REPO | tools/sacred/d64/12 Fibonacci.d64           | - | 2500 | - | 
 sacred-13 | REPO | tools/sacred/d64/13 Platonic Solids.d64     | - | 2500 | - | BASIC, OctoVIC bitmap+blitter, SID 1 | Sacred Geometry 13 Platonic Solids
 sacred-14 | REPO | tools/sacred/d64/14 Rose.d64                | - | 2500 | - | BASIC, OctoVIC bitmap+blitter, SID 1 | Sacred Geometry 14 Rose
 octocode  | REPO | tools/octoos/octocode/octocode.prg          | - | 600  | - | OctoVIC text, OS mailbox             | Tools: OCTOCODE (the code editor), as committed
-compile-test-b2 | REPO | tools/octoos/octocode/Compile Test build 2.d64 | - | 1000 | - | OCTOCODE on a disk           | OCTOCODE Compile Test build 2 disk
+compile-test-b2 | REPO | tools/octoos/octocode/Compile Test build 2.d64 | - | 2500 | - | OCTOCODE on a disk           | OCTOCODE Compile Test build 2 disk
 
 # ---------------------------------------------------------------- in this repo: assembled from source here
 code-hello    | BUILT | tools/examples/code/hello.asm      | Hello.prg      | 800 | - | OctoVIC                 | Code example: hello
@@ -79,11 +80,11 @@ abduction-b1      | LOCAL | The Abduction build 1                     | The Abdu
 chapel-b4         | LOCAL | Sacred City L1 Chapel build 4             | Sacred City L1 Chapel.prg | 1500 | - | OctoVIC, REU   | Sacred City L1 Chapel build 4
 sacred-city-src   | LOCAL | Sacred City (compile it yourself)         | sacred.prg      | 1500 | - | OctoVIC, REU             | Sacred City (compile it yourself)
 elements-b1       | LOCAL | Elements build 1                          | Elements.prg    | 1500 | - | OctoVIC, REU, SIDs       | Elements build 1
-doughnut-b5       | LOCAL | Dithering Doughnut build 5                | Dithering Doughnut.d64 | 1500 | - | one prg: stock VIC / OctoVIC | Dithering Doughnut build 5 (one program, two machines)
+doughnut-b5       | LOCAL | Dithering Doughnut build 5                | Dithering Doughnut.d64 | 8000 | - | one prg: stock VIC / OctoVIC | Dithering Doughnut build 5 (one program, two machines)
 voices-b1         | LOCAL | Voices build 1                            | Voices.prg      | 1500 | - | rasters, 8 SIDs          | Voices build 1
 rgbflicker-b1     | LOCAL | RGB Flicker build 1                       | RGB FLICKER.prg | 1000 | - | OctoVIC, REU             | RGB Flicker build 1
 wake8-b1          | LOCAL | Wake 8 SIDs build 1                       | WAKE8.prg       | 1000 | - | 8 SIDs                   | Wake 8 SIDs build 1
-octoplay-b6       | LOCAL | OctoPlay build 6 - with Tuneful Eight     | OCTOPLAY.d64    | 1500 | - | OctoVIC, 8 SIDs, scope   | OctoPlay build 6 (with The Tuneful Eight)
+octoplay-b6       | LOCAL | OctoPlay build 6 - with Tuneful Eight     | OCTOPLAY.d64    | 5000 | KEYS=170:0:5,3200:0:7,3220:0:7,3240:0:1 | OctoVIC, 8 SIDs, scope   | OctoPlay build 6 (with The Tuneful Eight)
 captest-b1        | LOCAL | Capture Test build 1                      | Capture Test.prg | 1000 | - | timing test picture     | Capture Test build 1
 odyssey-b3        | LOCAL | Octophonic Odyssey build 3                | Octophonic Odyssey.prg | 1500 | - | one prg: stock / OctoVIC + REU | 2026: An Octophonic Odyssey build 3
 st1-front-line    | LOCAL | Octophonic Shooter Template build 1       | Front Line/Front Line.prg | 1500 | - | OctoVIC, REU      | Shooter Template build 1 - Front Line
