@@ -8,7 +8,7 @@ name: Build core
 
 on:
   push:
-    branches: [ master, octovic, octovic2, octophonic-v1.1, octovic-mem, octophonic-core3, rgb256, fix82-scope-second-screen ]
+    branches: [ master, octovic, octovic2, octophonic-v1.1, octovic-mem, octophonic-core3, rgb256 ]
   workflow_dispatch:
 
 permissions:
