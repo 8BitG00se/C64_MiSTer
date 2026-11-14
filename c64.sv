@@ -1142,7 +1142,9 @@ assign hk_reset = hk_kernal;
 wire [23:0] vic_rgb;                       // SPLIT SCREENS: the VIC's picture alone, in step with r/g/b
 wire        split = status[102];
 wire        quarter;                       // FINE SCROLL (Fix 42): OctoVIC's quarter pixels reach the output (set below)
-assign VGA2_EN = split;                    // SPLIT SCREENS: the VGA output shows the VIC alone
+wire        screen2;                       // Fix 82: OctoVIC's SCOPEKEY is 2 or 3 (the scope on the second screen)
+assign VGA2_EN = split | screen2;          // SPLIT SCREENS: the VGA output shows the VIC alone; Fix 82: or OctoVIC's
+                                           //   second picture (the program's with the scope on HDMI, or the scope screen)
 
 wire        ntsc_req = status[2];
 
@@ -1287,6 +1289,7 @@ fpga64_sid_iec fpga64
 	.vic_rgb_out(vic_rgb),
 	.split(split),
 	.scope_key(hk_spare),                      // Fix 72: SHIFT+F3 - the scope over any program
+	.screen2(screen2),
 	.quarter(quarter),
 
 	.game(game),

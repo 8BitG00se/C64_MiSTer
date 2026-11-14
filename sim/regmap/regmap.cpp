@@ -67,11 +67,11 @@ int main (int argc, char **argv) {
     for (int a = 0xC4; a <= 0xCB; a++) { wr (a, 0x12); want ("OCTOSCOPE reg (reads $FF)", a, rd (a), 0xFF); wr (a, 0); }
     // Fix 72: SCOPEKEY ($CF) reads back; the hot key moves it on; a reset leaves it as it is
     want ("SCOPEKEY after power-on", 0xCF, rd (0xCF), 0);
-    rw ("SCOPEKEY", 0xCF, 0xFF, 0x01, 0x00);
+    rw ("SCOPEKEY", 0xCF, 0xFF, 0x01, 0x02); rw ("SCOPEKEY", 0xCF, 0xFF, 0x03, 0x00);
     t->scope_key = 1; tick (); t->scope_key = 0; tick (); want ("SCOPEKEY after the hot key", 0xCF, rd (0xCF), 1);
     t->reset = 1; for (int i = 0; i < 20; i++) tick (); t->reset = 0; for (int i = 0; i < 20; i++) tick ();
     want ("SCOPEKEY after a reset (kept)", 0xCF, rd (0xCF), 1);
-    t->scope_key = 1; tick (); t->scope_key = 0; tick (); want ("SCOPEKEY after the hot key again", 0xCF, rd (0xCF), 0);
+    for (int k = 2; k <= 4; k++) { t->scope_key = 1; tick (); t->scope_key = 0; tick (); want ("SCOPEKEY after the hot key again (1 -> 2 -> 3 -> 0)", 0xCF, rd (0xCF), k & 3); }
     printf (fails ? "REGMAP: %d FAILED\n" : "REGMAP: all registers right\n", fails);
     delete t; return fails ? 1 : 0;
 }

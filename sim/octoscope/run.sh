@@ -22,3 +22,6 @@ grep -q "OCTOSCOPE: PASS" $T/result.txt
 # (63 us) once a frame: still every sample, no word lost, no late line
 $T/obj/tb 13 2 50 20 80 2016 | tee $T/result_busy.txt
 grep -q "OCTOSCOPE: PASS" $T/result_busy.txt
+# Fix 72 / Fix 82: and a 263-line (60 Hz) picture - the scope screen's smaller rows, lines 16-255 compared
+NTSC=1 $T/obj/tb 13 2 50 20 80 2016 | tee $T/result_ntsc.txt
+grep -q "OCTOSCOPE: PASS" $T/result_ntsc.txt

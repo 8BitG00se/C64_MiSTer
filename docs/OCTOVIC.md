@@ -121,7 +121,7 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | CA | SCX0 | the x of its first sample (x 0 is the 40-column window's left edge); 304 samples, a pixel each |
 | CB | SCF | b0 the glow (a line more each way, in SCC + 1) |
 | CC-CE | VMUTE0-2 (r/w) | Fix 65, the mixer: a mute bit for each of the 24 SID voices - CC b0-7 voices 0-7, CD voices 8-15, CE voices 16-23 (voice = 3s + v, as in SCV); 1 = muted, 0 = plays. Reads back, so a program can flip one bit. The voice is silenced just before its SID's filter (its oscillator, sync and ring links, and the scope's view of it are unchanged). All 0 after a reset. Solo is a program's job: write FF to the other bits. |
-| CF | SCOPEKEY (r/w) | Fix 72, THE SCOPE OVER ANY PROGRAM (see below): 0 off, 1 all 24 voices' traces drawn over the picture. The hot key SHIFT+F3 (held) moves it on; a program may write it (the CPU only, not the copper). A reset leaves it as it is. |
+| CF | SCOPEKEY (r/w) | Fix 72, THE SCOPE OVER ANY PROGRAM (see below): b1-0 - 0 off, 1 all 24 voices' traces drawn over the picture; Fix 82, THE SCOPE ON THE SECOND SCREEN: 2 the scope screen on HDMI and the picture on the VGA output, 3 the two swapped. The hot key SHIFT+F3 (held) moves it on (0, 1, 2, 3, 0); a program may write it (the CPU only, not the copper). A reset leaves it as it is. |
 
 ### A layer (20 + 16*k)
 
@@ -318,6 +318,21 @@ for a program that wants it.
 - It costs the program nothing: the captures are fetched from the DDR3 a row ahead (114 reads a row, one at a
   time, behind every other user of OctoVIC's port) into one block of RAM, and the pixels are made as the beam
   goes (rtl/octovic/scope_screen.sv). A row is drawn only once all of it is in.
+
+### THE SCOPE ON THE SECOND SCREEN (Fix 82)
+
+With two screens on the MiSTer - HDMI, and a 15 kHz screen on the analogue VGA output - the program plays on one
+and the scope is live on the other. Hold SHIFT+F3 again (SCOPEKEY 2): HDMI shows **the scope screen** - the same
+24 traces as a picture of their own, on black, a dim line through the middle of each - and the VGA output shows
+the program's whole picture (OctoVIC's layers and sprites too, not only the VIC). Hold it once more (SCOPEKEY 3)
+and the two swap: the program on HDMI, the scope screen on the VGA output. Once more: off.
+
+It uses the Split Screens arrangement, and needs what that needs: the VGA output at the core's own timing
+(vga_scaler=0 and forced_scandoubler=0 in MiSTer.ini, no scandoubler in the menu). The two pictures share the
+C64's own timing; no frame buffer is involved and sys/ is untouched. While SCOPEKEY is 2 or 3 the Split Screens
+menu option's VIC-only picture is not shown (the VGA output carries the scope's arrangement instead).
+With one screen only: on HDMI, SCOPEKEY 2 shows the scope screen alone and 3 looks like off; on a VGA screen
+alone it is the other way round.
 
 ## Animation
 

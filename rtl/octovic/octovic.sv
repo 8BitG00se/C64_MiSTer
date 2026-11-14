@@ -35,8 +35,10 @@ module octovic
 	input       [8:0] vic_y,       // its raster line
 	input       [3:0] vic_index,   // the pixel's colour (valid the clock after the strobe)
 	input      [23:0] vic_rgb,     // that colour through the core's palette
-	output     [23:0] rgb,         // the picture (Fix 72: the scope's traces over it, with SCOPEKEY = 1)
+	output     [23:0] rgb,         // the picture (Fix 72: the scope's traces over it, with SCOPEKEY = 1;
+	                               //   Fix 82: the scope screen instead, with SCOPEKEY = 2)
 	output     [23:0] rgb_vic,     // SPLIT SCREENS: the VIC's picture alone (for the VGA output), in step with rgb
+	                               //   (Fix 82: with SCOPEKEY = 2 the picture, with SCOPEKEY = 3 the scope screen)
 	input             split,       // SPLIT SCREENS: the menu option is on (read in STATUS b3)
 	input             quarter,     // FINE SCROLL (Fix 42): the 4x pixel clock reaches the output (OSD Quarter Pixels on,
 	                               //   no scandoubler) - STATUS b4; off, the FINE registers are not used
@@ -65,7 +67,10 @@ module octovic
 	output     [23:0] vmute,
 
 	// Fix 72, THE SCOPE OVER ANY PROGRAM: the hot key (a pulse: SCOPEKEY moves on)
-	input             scope_key
+	input             scope_key,
+	// Fix 82, THE SCOPE ON THE SECOND SCREEN: SCOPEKEY is 2 or 3 - the VGA output must be given rgb_vic (as with
+	// Split Screens)
+	output            screen2
 );
 
 // THE CORE'S NAME, readable by the 6502 so the start screen, the settings page and the demos can
@@ -125,16 +130,18 @@ reg  [23:0] backdrop;
 reg   [7:0] scv, sch, scg, scc, scx0, scf;
 reg  [23:0] vmute_r;           // Fix 65: voice mute mask ($D6CC-$D6CE), 1 = that voice is muted
 // Fix 72, THE SCOPE OVER ANY PROGRAM (scope_screen.sv): SCOPEKEY ($D6CF) - 0 off; 1 all 24 voices' traces drawn
-// over the picture, whatever is running. Set by the hot key (SHIFT+F3) or a program; a reset leaves it as it is
-// (the scope stays up when a game is restarted).
-reg         scr = 1'b0;
+// over the picture, whatever is running. Fix 82, THE SCOPE ON THE SECOND SCREEN: 2 the scope screen (a picture of
+// its own) on HDMI and the program's picture on the VGA output; 3 the two swapped. Set by the hot key (SHIFT+F3:
+// 0 -> 1 -> 2 -> 3 -> 0) or a program; a reset leaves it as it is (the scope stays up when a game is restarted).
+reg   [1:0] scr = 2'd0;
+assign      screen2 = scr[1];
 reg  [23:0] rgb_m, rgb_v;      // OctoVIC's own two pictures (rgb and rgb_vic before Fix 72)
 wire [23:0] s2_rgb;            // the scope screen's pixel; it is a trace's; it is in a trace's box
 wire        s2_lit, s2_box;
 // the traces over the picture: a trace's pixel in its colour, the picture at half brightness inside the boxes
 wire [23:0] rgb_o   = s2_lit ? s2_rgb : s2_box ? {1'b0, rgb_m[23:17], 1'b0, rgb_m[15:9], 1'b0, rgb_m[7:1]} : rgb_m;
-assign      rgb     = scr ? rgb_o : rgb_m;
-assign      rgb_vic = rgb_v;
+assign      rgb     = (scr == 2'd1) ? rgb_o : (scr == 2'd2) ? s2_rgb : rgb_m;
+assign      rgb_vic = (scr == 2'd2) ? rgb_m : (scr == 2'd3) ? s2_rgb : rgb_v;
 assign      vmute = vmute_r;
 reg   [8:0] scy;
 // the scope as the renderer draws a line of it (latched from the registers at the scope pass's start)
@@ -251,8 +258,8 @@ ovlab #(.AW(6), .DW(32)) wfm (.clk(clk), .we(wf_we), .wa(wf_w), .wd({vaddr, rw_d
 
 // Fix 72: SCOPEKEY - the hot key moves it on; the CPU (not the copper) writes it; no reset
 always @(posedge clk) begin
-	if (scope_key) scr <= !scr;
-	else if (!reset && cpu_w && addr == 8'hCF) scr <= din[0];
+	if (scope_key) scr <= scr + 2'd1;
+	else if (!reset && cpu_w && addr == 8'hCF) scr <= din[1:0];
 end
 
 always @(posedge clk) begin
@@ -428,7 +435,7 @@ always @(*) begin
 		8'hB0: dout = h_stall;      8'hB1: dout = {6'd0, h_lead};
 		8'hB2: dout = vlost;
 		8'hCC: dout = vmute_r[7:0];  8'hCD: dout = vmute_r[15:8];  8'hCE: dout = vmute_r[23:16];   // Fix 65
-		8'hCF: dout = {7'd0, scr};                                                                    // Fix 72: SCOPEKEY
+		8'hCF: dout = {6'd0, scr};                                                                    // Fix 72: SCOPEKEY
 		8'hB3: dout = sysinfo;      8'hB4: dout = CORE_DATE[7:0]; 8'hB5: dout = CORE_DATE[15:8]; 8'hB6: dout = CORE_DATE[23:16];
 		8'hB8, 8'hB9, 8'hBA, 8'hBB, 8'hBC, 8'hBD, 8'hBE, 8'hBF: dout = CORE_TAG[8*(7 - addr[2:0]) +: 8];
 		8'h50: dout = mula[7:0];    8'h51: dout = mula[15:8];    8'h52: dout = mulb[7:0];    8'h53: dout = mulb[15:8];

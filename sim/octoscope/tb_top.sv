@@ -78,7 +78,7 @@ octovic octo
 	.sid_ce(sid_ce), .sc_sel(sc_sel),
 	.sc_rec0(rec[0]), .sc_rec1(rec[1]), .sc_rec2(rec[2]), .sc_rec3(rec[3]),
 	.sc_aud0(aud[0]), .sc_aud1(aud[1]), .sc_aud2(aud[2]), .sc_aud3(aud[3]),
-	.vmute(), .scope_key(scope_key)
+	.vmute(), .scope_key(scope_key), .screen2()
 );
 assign dbg_scr = octo.scr;
 assign dbg_tick  = octo.scope.tick_done;
