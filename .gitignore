@@ -38,3 +38,6 @@ c5_pin_model_dump.txt
 *_netlist
 *.cdf
 __pycache__/
+
+# built by tools/testcard/build.sh on every image build, not a source file
+tools/testcard/card.bin
