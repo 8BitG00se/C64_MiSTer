@@ -186,6 +186,8 @@ sh "$REPO/tools/spec/build.sh" "$PAY/SPEC.PRG"
 sh "$REPO/tools/testcard/build.sh" "$PAY/TESTCARD.PRG"
 # MY CHIPS, Neal's measured SID chips (step 058 puts them in games/C64/My Chips)
 mkdir -p "$PAY/chips" && cp "$REPO"/chips/*.CHP "$PAY/chips/"
+# OCTOPLAY, the PSID player with the OctoScope, and its tunes (step 059 puts them in Tools, Disks and SIDs)
+sh "$REPO/tools/octoplay/build.sh" "$PAY"
 # no menu core in the payload: since build 4 the stock (white noise) menu.rbf stays; step 095 puts
 # it back on a card that had the navy one
 rm -f "$PAY/menu.rbf"
@@ -245,6 +247,9 @@ fi
     echo "$(md5sum < "$PAY/SPEC.PRG" | cut -c1-32)  games/C64/Tools/SPEC.PRG"
     echo "$(md5sum < "$PAY/TESTCARD.PRG" | cut -c1-32)  games/C64/Tools/TESTCARD.PRG"
     for c in "$PAY"/chips/*.CHP; do echo "$(md5sum < "$c" | cut -c1-32)  games/C64/My Chips/$(basename "$c")"; done
+    echo "$(md5sum < "$PAY/OCTOPLAY.PRG" | cut -c1-32)  games/C64/Tools/OCTOPLAY.PRG"
+    [ -f "$PAY/Octo Tunes.d64" ] && echo "$(md5sum < "$PAY/Octo Tunes.d64" | cut -c1-32)  games/C64/Disks/Octo Tunes.d64"
+    for t in "$PAY"/tunes/*.sid; do [ -f "$t" ] && echo "$(md5sum < "$t" | cut -c1-32)  games/C64/SIDs/$(basename "$t")"; done
     echo "$(md5sum < "$PAY/oled.sh" | cut -c1-32)  octophonic/oled.sh"
     for f in tty2oled.sh S60tty2oled; do echo "$(md5sum < "$PAY/tty2oled/$f" | cut -c1-32)  tty2oled/$f"; done
     for f in "$HERE/run-steps.sh" "$HERE/octo-step-lib.sh"; do echo "$(md5sum < "$f" | cut -c1-32)  octophonic/recipe/$(basename "$f")"; done
