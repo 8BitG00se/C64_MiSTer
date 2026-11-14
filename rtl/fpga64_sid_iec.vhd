@@ -144,9 +144,9 @@ port(
 	audio_l     : out std_logic_vector(17 downto 0);
 	audio_r     : out std_logic_vector(17 downto 0);
 	sid_filter  : in  std_logic_vector(1 downto 0);
-	sid_ver     : in  std_logic_vector(1 downto 0);
+	sid_ver     : in  std_logic_vector(7 downto 0);   -- Fix 81: a model for each SID (bit n = SID n+1)
 	sid_mode    : in  unsigned(2 downto 0);
-	sid_cfg     : in  std_logic_vector(3 downto 0);
+	sid_cfg     : in  std_logic_vector(15 downto 0);  --   ...and a filter curve (two bits a SID)
 	sid_fc_off_l: in  std_logic_vector(12 downto 0);
 	sid_fc_off_r: in  std_logic_vector(12 downto 0);
 	sid_ld_clk  : in  std_logic;
@@ -159,7 +159,11 @@ port(
 	chip_wtbl   : in  std_logic_vector(1 downto 0) := "00";
 	chip_widx   : in  std_logic_vector(11 downto 0) := (others => '0');
 	chip_wdata  : in  std_logic_vector(7 downto 0) := (others => '0');
-	chip_on     : in  std_logic_vector(1 downto 0) := "00";
+	-- Fix 81 (rtl/sid/chip_slots.sv), bit n = SID n+1: it plays measured waveforms, whose (0 chip A, 1 chip B),
+	-- and it has a chip's own filter curve
+	chip_on     : in  std_logic_vector(7 downto 0) := (others => '0');
+	chip_bk     : in  std_logic_vector(7 downto 0) := (others => '0');
+	chip_fc     : in  std_logic_vector(7 downto 0) := (others => '0');
 	sid_digifix : in  std_logic;
 	-- OCTOPHONIC: '1' four SIDs - $D400, $D420, $D500, $D520 (the standard multi-SID layout)
 	sid_quad    : in  std_logic := '0';
@@ -481,6 +485,8 @@ component sid_top
 		chip_ql       : in  std_logic_vector(31 downto 0);
 		chip_qr       : in  std_logic_vector(31 downto 0);
 		chip_on       : in  std_logic_vector(1 downto 0);
+		chip_bk       : in  std_logic_vector(1 downto 0);
+		chip_fc       : in  std_logic_vector(1 downto 0);
 		eq_any        : in  std_logic := '0';
 		sc_sel        : in  std_logic_vector(2 downto 0) := "000";
 		sc_rec        : out std_logic_vector(39 downto 0);
@@ -1270,8 +1276,8 @@ port map (
 	ext_in_r(16 downto 0) => (others => '0'),
 
 	filter_en => sid_filter,
-	mode    => sid_ver,
-	cfg     => sid_cfg,
+	mode    => sid_ver(1 downto 0),
+	cfg     => sid_cfg(3 downto 0),
 	
 	fc_offset_l => sid_fc_off_l,
 	fc_offset_r => sid_fc_off_r,
@@ -1284,7 +1290,9 @@ port map (
 	tbl_acc => tacc1,
 	chip_ql => cql1,
 	chip_qr => cqr1,
-	chip_on => chip_on,
+	chip_on => chip_on(1 downto 0),
+	chip_bk => chip_bk(1 downto 0),
+	chip_fc => chip_fc(1 downto 0),
 	eq_any  => eq_any,
 	sc_sel  => sc_sel,
 	sc_rec  => sc_rec1,
@@ -1311,15 +1319,15 @@ port map (
 	audio_l => sid2_aud_l,
 	audio_r => sid2_aud_r,
 
-	ext_in_l(17) => sid_ver(0) and sid_digifix,
+	ext_in_l(17) => sid_ver(2) and sid_digifix,
 	ext_in_l(16 downto 0) => (others => '0'),
 
-	ext_in_r(17) => sid_ver(1) and sid_digifix,
+	ext_in_r(17) => sid_ver(3) and sid_digifix,
 	ext_in_r(16 downto 0) => (others => '0'),
 
 	filter_en => sid_filter,
-	mode    => sid_ver,
-	cfg     => sid_cfg,
+	mode    => sid_ver(3 downto 2),
+	cfg     => sid_cfg(7 downto 4),
 	
 	fc_offset_l => sid_fc_off_l,
 	fc_offset_r => sid_fc_off_r,
@@ -1332,7 +1340,9 @@ port map (
 	tbl_acc => tacc2,
 	chip_ql => cql2,
 	chip_qr => cqr2,
-	chip_on => chip_on,
+	chip_on => chip_on(3 downto 2),
+	chip_bk => chip_bk(3 downto 2),
+	chip_fc => chip_fc(3 downto 2),
 	eq_any  => eq_any,
 	sc_sel  => sc_sel,
 	sc_rec  => sc_rec2,
@@ -1358,15 +1368,15 @@ port map (
 	audio_l => sid3_aud_l,
 	audio_r => sid3_aud_r,
 
-	ext_in_l(17) => sid_ver(0) and sid_digifix,
+	ext_in_l(17) => sid_ver(4) and sid_digifix,
 	ext_in_l(16 downto 0) => (others => '0'),
 
-	ext_in_r(17) => sid_ver(1) and sid_digifix,
+	ext_in_r(17) => sid_ver(5) and sid_digifix,
 	ext_in_r(16 downto 0) => (others => '0'),
 
 	filter_en => sid_filter,
-	mode    => sid_ver,
-	cfg     => sid_cfg,
+	mode    => sid_ver(5 downto 4),
+	cfg     => sid_cfg(11 downto 8),
 	
 	fc_offset_l => sid_fc_off_l,
 	fc_offset_r => sid_fc_off_r,
@@ -1379,7 +1389,9 @@ port map (
 	tbl_acc => tacc3,
 	chip_ql => cql3,
 	chip_qr => cqr3,
-	chip_on => chip_on,
+	chip_on => chip_on(5 downto 4),
+	chip_bk => chip_bk(5 downto 4),
+	chip_fc => chip_fc(5 downto 4),
 	eq_any  => eq_any,
 	sc_sel  => sc_sel,
 	sc_rec  => sc_rec3,
@@ -1405,15 +1417,15 @@ port map (
 	audio_l => sid4_aud_l,
 	audio_r => sid4_aud_r,
 
-	ext_in_l(17) => sid_ver(0) and sid_digifix,
+	ext_in_l(17) => sid_ver(6) and sid_digifix,
 	ext_in_l(16 downto 0) => (others => '0'),
 
-	ext_in_r(17) => sid_ver(1) and sid_digifix,
+	ext_in_r(17) => sid_ver(7) and sid_digifix,
 	ext_in_r(16 downto 0) => (others => '0'),
 
 	filter_en => sid_filter,
-	mode    => sid_ver,
-	cfg     => sid_cfg,
+	mode    => sid_ver(7 downto 6),
+	cfg     => sid_cfg(15 downto 12),
 	
 	fc_offset_l => sid_fc_off_l,
 	fc_offset_r => sid_fc_off_r,
@@ -1426,7 +1438,9 @@ port map (
 	tbl_acc => tacc4,
 	chip_ql => cql4,
 	chip_qr => cqr4,
-	chip_on => chip_on,
+	chip_on => chip_on(7 downto 6),
+	chip_bk => chip_bk(7 downto 6),
+	chip_fc => chip_fc(7 downto 6),
 	eq_any  => eq_any,
 	sc_sel  => sc_sel,
 	sc_rec  => sc_rec4,

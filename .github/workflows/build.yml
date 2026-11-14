@@ -39,6 +39,12 @@ jobs:
           for i in 1 2 3 4 5; do sudo apt-get update -qq >/dev/null 2>&1; sudo apt-get install -y -qq verilator >/dev/null && break; echo "apt: try $i failed"; sleep 30; done; command -v verilator >/dev/null
           sim/regmap/run.sh
 
+      - name: My Chips per SID - every SID plays the chip its menu line says, model, filter curve and waveforms (Fix 81)
+        if: matrix.variant == 'octophonic'
+        continue-on-error: true
+        timeout-minutes: 20
+        run: sim/perslot/run.sh
+
       - name: OctoVIC sprite table, frame by frame against the emulator's model (DDR3 idle, busy, held; no VDATA byte lost)
         if: matrix.variant == 'octophonic'
         continue-on-error: true
@@ -178,6 +184,8 @@ jobs:
           OUTB=build-reports; [ "${GITHUB_REF_NAME}" = rgb256 ] && OUTB=build-reports-rgb256
           # Build 12 branches (and their seeds) each keep their own, too
           case "${GITHUB_REF_NAME}" in build12*) OUTB="build-reports-${GITHUB_REF_NAME}" ;; esac
+          # a fix being tried on its own branch (fix81-perslot-chips ...) keeps its own as well: build-reports-fix81
+          case "${GITHUB_REF_NAME}" in fix[0-9]*) OUTB="build-reports-${GITHUB_REF_NAME%%-*}" ;; esac
           git checkout -q -b "$OUTB"
           git add -A
           git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Reports: $(cat result.txt) - RGB 256: $(cat rgb256/result.txt)"

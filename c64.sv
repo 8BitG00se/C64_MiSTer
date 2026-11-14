@@ -154,12 +154,29 @@ localparam CONF_STR = {
 	"P1O[100:99],OctoSID FX,Off,Chorus,Echo,Chorus+Echo;",
 	"P1O[37],8580 Digifix,On,Off;",
 	"P1FC7,FLT,Load Custom Filters;",
-	"P1FC2,CHP,Load My Chip: Left SIDs;",
-	"P1FC3,CHP,Load My Chip: Right SIDs;",
-	"P1O[101],My Chips,On,Off;",
 	"P1-;",
 	"P1O[41:40],DigiMax,Disabled,DE00,DF00;",
 	"P1O[19:18],Stereo Mix,None,25%,50%,100%;",
+
+	// MY CHIPS (Fix 81, rtl/sid/chip_slots.sv, docs/CHIPS.md): three of Neal's own chips loaded at once, and each
+	// SID's pick of them. Every SID line's first choice is what the core did before (1 3 5 7 chip A, 2 4 6 8 chip B)
+	"P4,My Chips;",
+	"P4O[101],My Chips,On,Off;",
+	"P4-;",
+	"P4FC2,CHP,Load Chip A;",
+	"P4FC3,CHP,Load Chip B;",
+	"P4FC6,CHP,Load Chip C (filter only);",
+	"P4-;",
+	"P4O[111:110],SID 1,Chip A,Chip B,Chip C,Core;",
+	"P4O[113:112],SID 2,Chip B,Chip A,Chip C,Core;",
+`ifndef RGB256
+	"P4O[115:114],SID 3,Chip A,Chip B,Chip C,Core;",
+	"P4O[117:116],SID 4,Chip B,Chip A,Chip C,Core;",
+	"P4O[119:118],SID 5,Chip A,Chip B,Chip C,Core;",
+	"P4O[121:120],SID 6,Chip B,Chip A,Chip C,Core;",
+	"P4O[123:122],SID 7,Chip A,Chip B,Chip C,Core;",
+	"P4O[125:124],SID 8,Chip B,Chip A,Chip C,Core;",
+`endif
 
 	"P2,Hardware;", 
 	"P2O[52],GeoRAM,Disabled,4MB;",
@@ -457,40 +474,48 @@ wire load_tap   = ioctl_index == 'hC1;
 wire load_flt   = ioctl_index == 7;
 wire load_rom   = ioctl_index == 8;
 wire load_c1581 = ioctl_index == 9;
-wire load_chl   = ioctl_index == 2;    // OCTOPHONIC: a chip personality (.CHP) for the left SIDs
-wire load_chr   = ioctl_index == 3;    //   ...for the right SIDs
 
 // OCTOPHONIC: MY CHIPS - Neal's own SID chips, measured off his C64 Reloaded MK2 (chips/, docs/CHIPS.md).
-// A .CHP holds a chip's combined waveforms ($0000-$3FFF: S+T, P+T, P+S, P+S+T), its filter curve
-// ($4000-$47FF) and its model ($4800 - writing it turns the chip on). Off while one is loading.
-reg        chip_we = 0;
-reg        chip_wside;
-reg  [1:0] chip_wtbl;
-reg [11:0] chip_widx;
-reg  [7:0] chip_wdata;
-reg  [1:0] chip_loaded = 0;
-reg  [1:0] chip_model = 0;
-reg        chip_old_dl = 0;
-always @(posedge clk_sys) begin
-	chip_we <= 0;
-	chip_old_dl <= ioctl_download;
-	if(~chip_old_dl & ioctl_download & load_chl) chip_loaded[0] <= 0;
-	if(~chip_old_dl & ioctl_download & load_chr) chip_loaded[1] <= 0;
-	if(ioctl_wr && (load_chl | load_chr)) begin
-		if(ioctl_addr < 25'h4000) begin
-			chip_we    <= 1;
-			chip_wside <= load_chr;
-			chip_wtbl  <= ioctl_addr[13:12];
-			chip_widx  <= ioctl_addr[11:0];
-			chip_wdata <= ioctl_data;
-		end
-		if(ioctl_addr == 25'h4800) begin
-			chip_model[load_chr]  <= ioctl_data[0];
-			chip_loaded[load_chr] <= 1;
-		end
-	end
-end
-wire [1:0] chip_on = chip_loaded & {2{~status[101]}};
+// Fix 81: three chips loaded at once (file indexes 2, 3 and 6: chips A, B and C) and each of the eight SIDs
+// plays whichever the My Chips page says - rtl/sid/chip_slots.sv
+wire        chip_we;
+wire        chip_wside;
+wire  [1:0] chip_wtbl;
+wire [11:0] chip_widx;
+wire  [7:0] chip_wdata;
+wire        chip_crv_wr;
+wire [11:0] chip_crv_addr;
+wire [15:0] chip_crv_data;
+wire  [7:0] sid_ver;
+wire [15:0] sid_cfg;
+wire  [7:0] chip_on, chip_bk, chip_fc;
+chip_slots chip_slots
+(
+	.clk(clk_sys),
+	.ioctl_download(ioctl_download),
+	.ioctl_wr(ioctl_wr),
+	.ioctl_index(ioctl_index),
+	.ioctl_addr(ioctl_addr),
+	.ioctl_data(ioctl_data),
+	.enable(~status[101]),
+	.slot_opt(status[125:110]),
+	.menu_ver({status[16], status[13]}),
+	.menu_cfg({status[68:67], status[65:64]}),
+	.chip_we(chip_we),
+	.chip_wbank(chip_wside),
+	.chip_wtbl(chip_wtbl),
+	.chip_widx(chip_widx),
+	.chip_wdata(chip_wdata),
+	.crv_wr(chip_crv_wr),
+	.crv_addr(chip_crv_addr),
+	.crv_data(chip_crv_data),
+	.sid_ver(sid_ver),
+	.sid_cfg(sid_cfg),
+	.chip_on(chip_on),
+	.chip_bk(chip_bk),
+	.chip_fc(chip_fc),
+	.loaded()
+);
 
 wire game;
 wire exrom;
@@ -1337,16 +1362,18 @@ fpga64_sid_iec fpga64
 	.sid_ld_wr(sid_ld_wr),
 	.sid_mode(status[22:20]),
 	.sid_filter(2'b11),
-	.sid_ver({chip_on[1] ? chip_model[1] : status[16], chip_on[0] ? chip_model[0] : status[13]}),   // MY CHIPS: a chip is its own model
-	.sid_cfg({chip_on[1] ? 2'd2 : status[68:67], chip_on[0] ? 2'd1 : status[65:64]}),              //   ...and its own filter curve
-	.sid_fc_off_l((status[66] & ~chip_on[0]) ? (13'h600 - {status[72:70],7'd0}) : 13'd0),
-	.sid_fc_off_r((status[69] & ~chip_on[1]) ? (13'h600 - {status[75:73],7'd0}) : 13'd0),
+	.sid_ver(sid_ver),                    // MY CHIPS (Fix 81): each SID its own model
+	.sid_cfg(sid_cfg),                    //   ...and its own filter curve (a SID with a chip's curve takes no Fc offset: sid_top)
+	.sid_fc_off_l(status[66] ? (13'h600 - {status[72:70],7'd0}) : 13'd0),
+	.sid_fc_off_r(status[69] ? (13'h600 - {status[75:73],7'd0}) : 13'd0),
 	.chip_we(chip_we),
 	.chip_wside(chip_wside),
 	.chip_wtbl(chip_wtbl),
 	.chip_widx(chip_widx),
 	.chip_wdata(chip_wdata),
 	.chip_on(chip_on),
+	.chip_bk(chip_bk),
+	.chip_fc(chip_fc),
 	.sid_digifix(~status[37]),
 	.sid_quad(~status[98]),               // OCTOPHONIC (8 SIDs, 4 SIDs, Off): SIDs at $D400, $D420, $D500, $D520
 	.sid_oct(status[98:97] == 2'b00),
@@ -1915,16 +1942,11 @@ always @(posedge clk_sys) begin
 			sid_ld_data[7:0] <= ioctl_data;
 		end
 	end
-	// OCTOPHONIC: a chip's filter curve ($4000-$47FF of the .CHP) into Custom 1 (left) or 2 (right)
-	if(ioctl_wr && (load_chl | load_chr) && ioctl_addr[24:11] == 14'h8) begin
-		if(ioctl_addr[0]) begin
-			sid_ld_data[15:8] <= ioctl_data;
-			sid_ld_addr <= {1'b0, load_chr, ioctl_addr[10:1]};
-			sid_ld_wr <= 1;
-		end
-		else begin
-			sid_ld_data[7:0] <= ioctl_data;
-		end
+	// OCTOPHONIC: a chip's filter curve ($4000-$47FF of the .CHP) into Custom 1, 2 or 3 (chip A, B, C: chip_slots.sv)
+	if(chip_crv_wr) begin
+		sid_ld_data <= chip_crv_data;
+		sid_ld_addr <= chip_crv_addr;
+		sid_ld_wr   <= 1;
 	end
 end
 

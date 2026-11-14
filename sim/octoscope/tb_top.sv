@@ -58,7 +58,7 @@ generate for (g = 0; g < 4; g = g + 1) begin : sp
 		.fc_offset_r(13'd0), .pot_x_r(8'd0), .pot_y_r(8'd0), .ext_in_r(18'd0), .audio_r(ar[g]),
 		.filter_en(2'b11), .mode(sid_mode), .cfg(4'd0),
 		.ld_clk(clk), .ld_addr(12'd0), .ld_data(16'd0), .ld_wr(1'b0),
-		.tbl_acc(), .chip_ql(32'd0), .chip_qr(32'd0), .chip_on(2'b00), .eq_any(1'b0),
+		.tbl_acc(), .chip_ql(32'd0), .chip_qr(32'd0), .chip_on(2'b00), .chip_bk(2'b00), .chip_fc(2'b00), .eq_any(1'b0),
 		.sc_sel(sc_sel), .sc_rec(rec[g]), .sc_aud(aud[g])
 	);
 	assign dbg_aud[g*2]   = al[g];

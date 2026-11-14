@@ -1,0 +1,69 @@
+MOS 6581 5084 vs CSG 8580R5 3591: 1024 of 1024 curve entries differ, 3640 of 16384 waveform bytes differ
+MOS 6581 5084 vs MOS 6581 3184: 1024 of 1024 curve entries differ, 892 of 16384 waveform bytes differ
+MOS 6581 5084 vs MOS 8580R5 4687: 1024 of 1024 curve entries differ, 3417 of 16384 waveform bytes differ
+CSG 8580R5 3591 vs MOS 6581 3184: 1023 of 1024 curve entries differ, 3731 of 16384 waveform bytes differ
+CSG 8580R5 3591 vs MOS 8580R5 4687: 1013 of 1024 curve entries differ, 1480 of 16384 waveform bytes differ
+MOS 6581 3184 vs MOS 8580R5 4687: 1024 of 1024 curve entries differ, 3456 of 16384 waveform bytes differ
+nothing loaded                     1:core65 2:core85 3:core65 4:core85 5:core65 6:core85 7:core65 8:core85
+    level (rms): 347 7360 347 7360 347 7360 347 7360 | ref65 347 ref85 7360
+loaded chip A: MOS 6581 5084 (6581)
+only A loaded                      1:A      2:core65 3:A      4:core65 5:A      6:core65 7:A      8:core65
+    level (rms): 548 347 548 347 548 347 548 347 | ref65 347 ref85 7360
+loaded chip B: CSG 8580R5 3591 (8580)
+loaded chip C: MOS 6581 3184 (6581)
+as before Fix 81 (all 0)           1:A      2:B      3:A      4:B      5:A      6:B      7:A      8:B     
+    level (rms): 548 7539 548 7539 548 7539 548 7539 | ref65 347 ref85 7360
+My Chips Off                       1:core85 2:core65 3:core85 4:core65 5:core85 6:core65 7:core85 8:core65
+    level (rms): 7360 347 7360 347 7360 347 7360 347 | ref65 347 ref85 7360
+every SID chip A                   1:A      2:A      3:A      4:A      5:A      6:A      7:A      8:A     
+    level (rms): 548 548 548 548 548 548 548 548 | ref65 347 ref85 7360
+every SID chip B                   1:B      2:B      3:B      4:B      5:B      6:B      7:B      8:B     
+    level (rms): 7539 7539 7539 7539 7539 7539 7539 7539 | ref65 347 ref85 7360
+every SID chip C                   1:C      2:C      3:C      4:C      5:C      6:C      7:C      8:C     
+    level (rms): 172 172 172 172 172 172 172 172 | ref65 347 ref85 7360
+every SID the core's own           1:core85 2:core65 3:core85 4:core65 5:core85 6:core65 7:core85 8:core65
+    level (rms): 7360 347 7360 347 7360 347 7360 347 | ref65 347 ref85 7360
+A B C core, twice                  1:A      2:B      3:C      4:core85 5:A      6:B      7:C      8:core85
+    level (rms): 548 7539 172 7360 548 7539 172 7360 | ref65 347 ref85 7360
+eight different pairings           1:core85 2:C      3:A      4:A      5:C      6:core65 7:B      8:B     
+    level (rms): 7360 172 548 548 172 347 7539 7539 | ref65 347 ref85 7360
+random 1 ($CC01)                   1:B      2:B      3:A      4:B      5:A      6:core65 7:A      8:core65
+    level (rms): 7539 7539 548 7539 548 347 548 347 | ref65 347 ref85 7360
+random 2 ($48A4)                   1:A      2:A      3:C      4:C      5:A      6:C      7:A      8:A     
+    level (rms): 548 548 172 172 548 172 548 548 | ref65 347 ref85 7360
+random 3 ($759F)                   1:core65 2:core85 3:B      4:C      5:B      6:A      7:core65 8:A     
+    level (rms): 347 7360 7539 172 7539 548 347 548 | ref65 347 ref85 7360
+random 4 ($DC7A)                   1:C      2:C      3:core65 4:A      5:A      6:core65 7:B      8:core65
+    level (rms): 172 172 347 548 548 347 7539 347 | ref65 347 ref85 7360
+random 5 ($22BB)                   1:core85 2:C      3:core85 4:C      5:C      6:B      7:C      8:B     
+random 6 ($BCCA)                   1:C      2:C      3:A      4:core85 5:A      6:core85 7:core85 8:C     
+random 7 ($BC9D)                   1:B      2:core85 3:B      4:C      5:A      6:core85 7:core65 8:C     
+random 8 ($E10C)                   1:A      2:core65 3:A      4:B      5:B      6:B      7:C      8:core65
+random 9 ($C3DF)                   1:core85 2:core85 3:B      4:core85 5:core85 6:B      7:A      8:core85
+random 10 ($7AD7)                  1:core65 2:A      3:B      4:core85 5:C      6:C      7:core65 8:A     
+random 11 ($8751)                  1:B      2:B      3:B      4:A      5:core65 6:A      7:A      8:C     
+random 12 ($AC4A)                  1:C      2:C      3:A      4:A      5:A      6:core65 7:C      8:C     
+random 13 ($67D8)                  1:A      2:C      3:B      4:core85 5:core85 6:A      7:C      8:A     
+random 14 ($DF66)                  1:C      2:A      3:C      4:A      5:core65 6:core85 7:B      8:core85
+random 15 ($2149)                  1:B      2:C      3:A      4:A      5:B      6:B      7:C      8:B     
+random 16 ($9671)                  1:B      2:B      3:core85 4:A      5:C      6:A      7:B      8:C     
+random 17 ($5052)                  1:C      2:B      3:B      4:A      5:A      6:B      7:B      8:A     
+random 18 ($CD54)                  1:A      2:A      3:B      4:A      5:B      6:core65 7:A      8:core65
+random 19 ($AD51)                  1:B      2:B      3:B      4:A      5:B      6:core65 7:C      8:C     
+random 20 ($43FC)                  1:A      2:core85 3:core85 4:core85 5:core85 6:B      7:A      8:A     
+random 21 ($B439)                  1:B      2:C      3:core65 4:B      5:A      6:A      7:core65 8:C     
+random 22 ($49BB)                  1:core85 2:C      3:core85 4:C      5:B      6:C      7:A      8:A     
+random 23 ($B173)                  1:core85 2:B      3:core85 4:A      5:B      6:B      7:core85 8:C     
+random 24 ($E1A7)                  1:core85 2:A      3:C      4:C      5:B      6:B      7:C      8:core65
+loaded chip A: MOS 8580R5 4687 (8580)
+A reloaded (4687), all 0           1:A      2:B      3:A      4:B      5:A      6:B      7:A      8:B     
+    level (rms): 6546 7539 6546 7539 6546 7539 6546 7539 | ref65 347 ref85 7360
+A B C core, twice                  1:A      2:B      3:C      4:core65 5:A      6:B      7:C      8:core65
+    level (rms): 6546 7539 172 347 6546 7539 172 347 | ref65 347 ref85 7360
+loaded chip C: MOS 6581 5084 (6581)
+C reloaded (5084)                  1:core65 2:C      3:A      4:A      5:C      6:core85 7:B      8:B     
+    level (rms): 347 449 6546 6546 449 7360 7539 7539 | ref65 347 ref85 7360
+Fc offset on (Adjustable)          chips' curves untouched; the core's own 6581s moved at 48 of 48 readings
+SOUND: SIDs set alike were never more than 23 apart, SIDs set differently never less than 2760 (of 131072)
+15920 checks, 0 mismatches
+PERSLOT: PASS

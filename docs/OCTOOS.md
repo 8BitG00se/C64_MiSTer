@@ -170,7 +170,7 @@ CTRL+F11 (OS mode): a screenshot of whatever is running into `Screenshots/Manual
 
 Cursor up/down picks a line, left/right changes it, RETURN on CHIP PRESET starts it.
 Lines: chip preset (the `_Computer/Octophonic 64*.mgl` launchers; the one started becomes `boot=` in
-os.ini), my chip left/right (the `.CHP` files in `games/C64/My Chips`), START IN (network / SD card / last used), then the core's options:
+os.ini), my chip left/right (the `.CHP` files in `games/C64/My Chips`; since Fix 81 these load chips A and B, and which SID plays which is on the core menu's My Chips page - docs/CHIPS.md), START IN (network / SD card / last used), then the core's options:
 Left/Right SIDs, My Chips, Octophonic, OctoSID FX, Split Screens, Turbo mode, Turbo speed, and last
 (line 12, os-fixes) **SHOWCASE**: OFF / ON - NO DEBUG ROWS, saved as `showcase=` (0/1) in os.ini.
 

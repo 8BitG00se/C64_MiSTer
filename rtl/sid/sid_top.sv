@@ -39,12 +39,16 @@ module sid_top
 	input         ld_wr,
 
 	// OCTOPHONIC: chip personalities (chip_bank.sv) - this pair's lookups out, the measured
-	// combined waveforms back ({P+S+T, P+S, P+T, S+T}) for the left and right chip, and which
-	// side has one loaded
+	// combined waveforms back ({P+S+T, P+S, P+T, S+T}) for chip A (chip_ql) and chip B (chip_qr).
+	// Fix 81 (chip_slots.sv), for each of this pair's two SIDs: chip_on = it plays measured
+	// waveforms, chip_bk = whose (0 chip A, 1 chip B), chip_fc = it has a chip's own filter curve
+	// (cfg picks it; an 8580 then uses the curve too, and the Fc offset is off)
 	output [11:0] tbl_acc,
 	input  [31:0] chip_ql,
 	input  [31:0] chip_qr,
-	input   [1:0] chip_on,
+	input [N-1:0] chip_on,
+	input [N-1:0] chip_bk,
+	input [N-1:0] chip_fc,
 
 	// OCTOPHONIC (build 6): '1' while the start screen is up (OctoVIC CTRL = $0B, the start screen's;
 	// fpga64_sid_iec.vhd) - ENV3 ($1C) then reads the loudest of the SID's three envelopes, so the
@@ -209,7 +213,7 @@ generate
 			.sc_lock(scv[i*3+2][38])
 		);
 		
-		always @(posedge clk) Fc_offset[i] <= i ? fc_offset_r : fc_offset_l;
+		always @(posedge clk) Fc_offset[i] <= chip_fc[i] ? 13'd0 : i ? fc_offset_r : fc_offset_l;
 
 		// Register Decoding
 		always @(posedge clk) begin
@@ -299,7 +303,7 @@ sid_tables #(MULTI_FILTERS) sid_tables
 	.ld_addr(ld_addr),
 	.ld_data(ld_data),
 	.ld_wr(ld_wr),
-	.chipf(chip_on[n])
+	.chipf(chip_fc[n])
 );
 
 wire  [7:0] f__st_out;
@@ -310,7 +314,7 @@ reg  [11:0] f_acc_t;
 reg   [3:0] state;
 assign tbl_acc = f_acc_t;
 
-// a chip's measured waveforms, for the side being captured (voices 0-2 left, 3-5 right)
+// a chip's measured waveforms, for the SID being captured (voices 0-2 the pair's left SID, 3-5 its right)
 reg        ce_d;
 always @(posedge clk) ce_d <= ce_1m;
 wire       ce_st = PHASE ? ce_d : ce_1m;
@@ -323,8 +327,8 @@ always @(posedge clk) begin
 	if(~&state) state <= state + 1'd1;
 	if(ce_st) state <= 0;
 
-	cside = (v >= 3'd3);
-	cq    = cside ? chip_qr : chip_ql;
+	cside = DUAL && (v >= 3'd3);
+	cq    = chip_bk[cside] ? chip_qr : chip_ql;
 	con   = chip_on[cside];
 
 	case(state)
