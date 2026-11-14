@@ -1286,6 +1286,7 @@ fpga64_sid_iec fpga64
 `endif
 	.vic_rgb_out(vic_rgb),
 	.split(split),
+	.scope_key(hk_spare),                      // Fix 72: SHIFT+F3 - the scope over any program
 	.quarter(quarter),
 
 	.game(game),

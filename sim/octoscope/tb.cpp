@@ -21,6 +21,10 @@
 //   TRACE    the trace never breaks: where y(i) is inside +-SCH, columns i and i+1 are both lit on line SCY + y(i)
 //   BANDS    each band's first line already shows that band's colour (the copper's writes land on their line)
 //   LATE     no late lines (the scope pass waits for the line's earlier pixels; it must not make lines late)
+//   SCOPEKEY Fix 72, the scope over any program: SCOPEKEY ($D6CF) moved on by the hot key and written by the CPU -
+//            every pixel of the picture each frame: with SCOPEKEY 1 the picture above with all 24 voices' traces
+//            over it (scope_screen.sv, against the model below, from the emulator's shown captures); the second
+//            output (the VIC alone) untouched
 //
 //   tb frames [seed busy% latmin latmax]
 #include "Vtb_top.h"
@@ -130,6 +134,35 @@ static void scope_line(int L, int lm)
     }
 }
 // =====================================================================================================
+
+// Fix 72, THE SCOPE SCREEN (rtl/octovic/scope_screen.sv): the pixel at raster X R, line L - 8 rows (a SID each),
+// 3 traces a row (its voices), 120 pixels each showing sample 5x/2 at y = -(sample >> 3), joined to the pixel before.
+// Returns the scope screen's own pixel; *lit: a trace's pixel, *box: inside a trace's box
+static const uint32_t S2COL[8] = { 0x40FF60, 0x40E0FF, 0xFFE040, 0xFF8040, 0xFF60C0, 0xB080FF, 0x60A0FF, 0xFFFFFF };
+static long s2_lit_n;
+static int NTSC = 0;
+static uint32_t screen2_pixel(int R, int L, int* lit, int* box)
+{
+    const int top = NTSC ? 28 : 19, pitch = NTSC ? 29 : 33, half = NTSC ? 14 : 16;
+    *lit = *box = 0;
+    if (L < top || L >= top + 8 * pitch) return 0;
+    const int k = (L - top) / pitch, dy = (L - top) % pitch - half;
+    int c = -1, x = 0;
+    for (int j = 0; j < 3; j++) if (R >= 6 + 126 * j && R < 6 + 126 * j + 120) { c = j; x = R - (6 + 126 * j); }
+    if (c < 0) return 0;
+    *box = 1;
+    auto yq = [&] (int xx) { int q = sc_disp[k * 3 + c][(5 * xx) >> 1] >> 3; if (NTSC) q -= q >> 3; return q; };
+    const int d = dy + yq (x), dp = x ? dy + yq (x - 1) : d;
+    if (!((d > 0 && dp > 0) || (d < 0 && dp < 0))) { *lit = 1; ++s2_lit_n; return S2COL[k]; }
+    if (dy == 0) return (S2COL[k] >> 2) & 0x3F3F3F;
+    return 0;
+}
+// the picture with the traces over it (SCOPEKEY 1)
+static uint32_t over_pixel(uint32_t pic, int R, int L)
+{
+    int lit, box; const uint32_t s = screen2_pixel (R, L, &lit, &box);
+    return lit ? s : box ? (pic >> 1) & 0x7F7F7F : pic;
+}
 
 static int fails = 0;
 #define FAIL(...) do { if (fails++ < 40) { std::printf ("FAIL "); std::printf (__VA_ARGS__); std::printf ("\n"); } } while (0)
@@ -281,7 +314,14 @@ int main (int argc, char** argv)
     int es = 99; long us = -1;                                   // clocks since the SIDs' edge, microseconds
     struct TickIn { VoiceIn v[24]; int32_t aud[8]; };
     std::deque<TickIn> pend;                                     // microseconds taken, waiting for the RTL's tick
-    std::vector<uint32_t> pic ((size_t) 504 * 312, 0);
+    std::vector<uint32_t> pic ((size_t) 504 * 312, 0), pic2 ((size_t) 504 * 312, 0);
+    int scr_c = 0;                                               // SCOPEKEY as the C side has it
+    const int SCRN = 2;                                          // its values: 0 off, 1 the traces over the picture
+    long n_s2px = 0, n_s2frames[4] = {0, 0, 0, 0};
+    // SCOPEKEY's changes, each at a frame's line 305: the hot key (-1: moves it on) or the CPU's write of a value
+    struct ScrW { int frame, val; };
+    const std::vector<ScrW> scw = { {1, -1}, {3, -1}, {FB, -1}, {FB + 1, 0}, {FT - 1, 1}, {FT + 1, -1}, {FT + 2, -1} };
+    size_t scwi = 0;
     std::vector<std::pair<int,int>> act;                         // pixel strobes: (R, y), 1 clock later out
     long n_cap = 0, n_capcmp = 0, n_latch = 0, n_px = 0, n_lines = 0, n_trace = 0, n_bands = 0, n_ticks = 0;
     long n_scope_lines = 0, st_timed = 0, st_locked = 0, st_hole = 0, st_bighole = 0, st_bigfill = 0;
@@ -335,6 +375,13 @@ int main (int argc, char** argv)
             creg (rw[rwi].reg, rw[rwi].val);
             if (rw[rwi].reg == 0x0E || (rw[rwi].reg >= 0x10 && rw[rwi].reg <= 0x12)) cop_on = false;   // waits for line 0
             ++rwi;
+        }
+        // Fix 72: SCOPEKEY - the hot key's pulse, or the CPU's write to $CF (line 305, a clock the other writes don't use)
+        t->scope_key = 0;
+        if ((phase & 31) == 12 && y == 305 && scwi < scw.size() && scw[scwi].frame <= frame) {
+            if (scw[scwi].val < 0) { t->scope_key = 1; scr_c = (scr_c + 1) % SCRN; }
+            else { t->cs = 1; t->wr = 1; t->addr = 0xCF; t->din = scw[scwi].val; scr_c = scw[scwi].val % SCRN; }
+            ++scwi;
         }
         // ---- the DDR3
         const bool held = holdc > 0 && y == 100 + frame % 7 * 20 && R < 300 + holdc / 4 && frame >= 0;   // the port held (other users)
@@ -434,7 +481,8 @@ int main (int argc, char** argv)
         }
         if (pend.size() > 2) FAIL ("the RTL is behind: %zu microseconds waiting", pend.size());
         // the picture: a pixel is out 1 clock after its strobe
-        for (auto& p : act) { const uint32_t c = t->rgb; pic[(size_t) p.second * 504 + p.first] = c; }
+        for (auto& p : act) { pic[(size_t) p.second * 504 + p.first] = t->rgb; pic2[(size_t) p.second * 504 + p.first] = t->rgb2; }
+        if (t->dbg_scr != scr_c && (phase & 31) == 20) FAIL ("SCOPEKEY is %d, should be %d", t->dbg_scr, scr_c);
         act.clear();
         if (pe) act.push_back ({R, y});
         if (pe) {
@@ -446,6 +494,22 @@ int main (int argc, char** argv)
                     // ---- the frame is done: the emulator draws it (copper and all) and every pixel is compared
                     if (rp->tb_top__DOT__octo__DOT__h_late != 0 && frame >= FB) FAIL ("frame %d: %d late lines", frame - 1, rp->tb_top__DOT__octo__DOT__h_late);
                     std::memcpy (r, rc, sizeof r); std::memcpy (pal, pal_c, sizeof pal);
+                    // Fix 72: the second output is the VIC alone whatever SCOPEKEY says
+                    const std::vector<uint32_t>& picD = pic;
+                    ++n_s2frames[scr_c];
+                    if (const char* dd = std::getenv ("S2DUMP")) for (int o = 0; o < 2; ++o) {     // the two outputs, as pictures
+                        char fn[256]; std::snprintf (fn, sizeof fn, "%s/f%02d_out%d_scr%d.ppm", dd, frame, o + 1, scr_c);
+                        if (FILE* f = std::fopen (fn, "wb")) {
+                            std::fprintf (f, "P6 %d 284 255\n", RW);
+                            for (int L = 16; L < 300; ++L) for (int R2 = 0; R2 < RW; ++R2) { const uint32_t c = (o ? pic2 : pic)[(size_t) L * 504 + R2]; std::fputc (c >> 16, f); std::fputc ((c >> 8) & 255, f); std::fputc (c & 255, f); }
+                            std::fclose (f);
+                        }
+                    }
+                    for (int L = 16; L < 300; ++L) for (int R2 = 0; R2 < RW; ++R2) {
+                        const uint32_t got = pic2[(size_t) L * 504 + R2], want = VICRGB;
+                        ++n_s2px;
+                        if (got != want) FAIL ("frame %d line %d raster X %d: SCOPEKEY %d, the second picture is %06X, should be %06X", frame, L, R2, scr_c, got, want);
+                    }
                     size_t ci = 0;
                     // (the C side's own register file runs through the copper's writes line by line)
                     for (int L = 0; L < 300; ++L) {
@@ -462,26 +526,27 @@ int main (int argc, char** argv)
                         }
                         bool any = false;
                         for (int R2 = 0; R2 < RW; ++R2) {
-                            const uint32_t want = linebuf[R2] >= 0 ? (uint32_t) linebuf[R2] : VICRGB;
-                            const uint32_t got = pic[(size_t) L * 504 + R2];
+                            uint32_t want = linebuf[R2] >= 0 ? (uint32_t) linebuf[R2] : VICRGB;
+                            if (scr_c == 1) want = over_pixel (want, R2, L);       // Fix 72: the traces over it
+                            const uint32_t got = picD[(size_t) L * 504 + R2];
                             ++n_px;
                             if (linebuf[R2] >= 0) any = true;
                             if (got != want) FAIL ("frame %d line %d x %d: pixel %06X, the emulator's %06X", frame, L, R2 - 32, got, want);
                         }
                         ++n_lines; if (any) ++n_scope_lines;
                         // BANDS: on a band's first line (the copper's writes for it), the band's colour where its trace is
-                        if (cop_on && (r[0x05] & 1)) for (int b = 0; b < 24; ++b) if (L == 22 + 11 * b) {
+                        if (cop_on && (r[0x05] & 1) && scr_c != 1) for (int b = 0; b < 24; ++b) if (L == 22 + 11 * b) {
                             // its centre line is 5 below: check that line instead (the trace is surely there? not if
                             // clipped) - the first line drawn with the band's registers must use the band's colour only
                             for (int R2 = 0; R2 < RW; ++R2) if (linebuf[R2] >= 0) {
-                                const uint32_t c = pic[(size_t) L * 504 + R2];
+                                const uint32_t c = picD[(size_t) L * 504 + R2];
                                 if (c != pal[r[0xC9]] && c != pal[(r[0xC9] + 1) & 255] && (r[0x2F] & 3) == 0) FAIL ("band %d line %d: a colour not the band's", b, L);
                             }
                             ++n_bands;
                         }
                         // TRACE: columns i and i+1 both lit on line SCY + y(i), where y(i) is inside +-SCH (one voice,
                         // no copper, mode 0: frames from FT)
-                        if (! cop_on && (r[0x05] & 1) && (r[0x2F] & 0x13) == 0x10 && !(r[0x30] & 1)) {
+                        if (! cop_on && scr_c != 1 && (r[0x05] & 1) && (r[0x2F] & 0x13) == 0x10 && !(r[0x30] & 1)) {
                             const int v = r[0xC4] & 0x20 ? 24 + (r[0xC4] & 7) : (r[0xC4] & 31) % 24;
                             const int cy = r[0xC5] | (r[0xC6] & 1) << 8, hh = r[0xC7], g = r[0xC8], x0 = r[0xCA];
                             for (int i = 0; i + 1 < SCN; ++i) {
@@ -490,7 +555,7 @@ int main (int argc, char** argv)
                                 const int Ra = x0 + 32 + i, Rb = Ra + 1;
                                 if (Rb >= RW) continue;
                                 const uint32_t lit = pal[r[0xC9]];
-                                if (pic[(size_t) L * 504 + Ra] != lit || pic[(size_t) L * 504 + Rb] != lit) FAIL ("frame %d: the trace breaks between columns %d and %d (line %d)", frame, i, i + 1, L);
+                                if (picD[(size_t) L * 504 + Ra] != lit || picD[(size_t) L * 504 + Rb] != lit) FAIL ("frame %d: the trace breaks between columns %d and %d (line %d)", frame, i, i + 1, L);
                                 ++n_trace;
                             }
                         }
@@ -516,7 +581,10 @@ int main (int argc, char** argv)
     std::printf ("DDR3 write queue: %u words lost (must be 0), %zu comparisons still waiting at the end\n", (unsigned) t->dbg_lost, cmpq.size());
     if (t->dbg_lost) FAIL ("capture words lost");
     std::printf ("SID writes %zu/%zu, OctoVIC writes %zu/%zu\n", swi, sw.size(), rwi, rw.size());
-    if (n_capcmp < 1000 || n_scope_lines < 300 || n_trace < 200) FAIL ("too little was checked");
+    if (n_capcmp < 1000 || n_scope_lines < 300 || n_trace < 100) FAIL ("too little was checked");
+    std::printf ("SCOPEKEY (Fix 72): frames with SCOPEKEY 0/1: %ld/%ld; trace pixels over the picture %ld; second output %ld pixels\n",
+                 n_s2frames[0], n_s2frames[1], s2_lit_n, n_s2px);
+    if (frames >= 13 && (n_s2frames[0] < 3 || n_s2frames[1] < 5 || s2_lit_n < 20000)) FAIL ("SCOPEKEY: too little was checked");
     std::printf (fails ? "OCTOSCOPE: FAIL (%d)\n" : "OCTOSCOPE: PASS\n", fails);
     delete t;
     return fails ? 1 : 0;

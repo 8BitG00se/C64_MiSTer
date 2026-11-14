@@ -121,6 +121,7 @@ shows. Positions and scrolls are in pixels of the VIC's hires (320-wide) grid.
 | CA | SCX0 | the x of its first sample (x 0 is the 40-column window's left edge); 304 samples, a pixel each |
 | CB | SCF | b0 the glow (a line more each way, in SCC + 1) |
 | CC-CE | VMUTE0-2 (r/w) | Fix 65, the mixer: a mute bit for each of the 24 SID voices - CC b0-7 voices 0-7, CD voices 8-15, CE voices 16-23 (voice = 3s + v, as in SCV); 1 = muted, 0 = plays. Reads back, so a program can flip one bit. The voice is silenced just before its SID's filter (its oscillator, sync and ring links, and the scope's view of it are unchanged). All 0 after a reset. Solo is a program's job: write FF to the other bits. |
+| CF | SCOPEKEY (r/w) | Fix 72, THE SCOPE OVER ANY PROGRAM (see below): 0 off, 1 all 24 voices' traces drawn over the picture. The hot key SHIFT+F3 (held) moves it on; a program may write it (the CPU only, not the copper). A reset leaves it as it is. |
 
 ### A layer (20 + 16*k)
 
@@ -297,6 +298,26 @@ jump to cycle 2 after a sync or test-bit wrap, and the rest of an early-ended cy
 (a range with one value) that the renderer applies when it reads. The renderer draws 2 pixels a clock into the same
 pipeline as the layers' pixels. The emulator's code for all this (sc_store, scope_line) is the reference;
 sim/octoscope checks the hardware against it sample for sample and pixel for pixel, with the DDR3 busy and held.
+
+### THE SCOPE OVER ANY PROGRAM (Fix 72)
+
+Hold **SHIFT+F3** for about a second, in anything - a game, a demo, BASIC, a program that has never heard of
+OctoVIC: the core draws all 24 SID voices over the picture by itself. Hold it again and they are gone. The
+program is not told and nothing of its own is touched (no layer, no copper, no scope register, no VRAM; OctoVIC
+need not even be unlocked); the F3 is not passed on to it (rtl/hotkeys.sv). SCOPEKEY ($D6CF) is the same switch
+for a program that wants it.
+
+- 8 rows, one a SID, each in its own colour (green, cyan, yellow, orange, pink, violet, blue, white); 3 traces a
+  row, the SID's voices 1-3. A trace is 120 pixels wide (raster X 6, 132 and 258 on: x -26, 100 and 226) and
+  +-16 lines tall; row k is raster lines 19 + 33k to 51 + 33k (on a 60 Hz picture +-14 lines, 28 + 29k on).
+- Each trace is the voice's shown capture - the same two whole cycles, held still, that the OCTOSCOPE layer
+  shows - 5 samples to 2 pixels, at 1/8 of the layer's full height: pixel x is sample 5x/2 at -(sample >> 3)
+  lines, joined to the pixel before it, so the trace never breaks.
+- A trace's pixels are drawn in the row's colour; inside the traces' boxes the picture is at half brightness, so
+  they can be read over anything.
+- It costs the program nothing: the captures are fetched from the DDR3 a row ahead (114 reads a row, one at a
+  time, behind every other user of OctoVIC's port) into one block of RAM, and the pixels are made as the beam
+  goes (rtl/octovic/scope_screen.sv). A row is drawn only once all of it is in.
 
 ## Animation
 
