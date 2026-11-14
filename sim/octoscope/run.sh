@@ -4,7 +4,11 @@
 # no late lines (see tb.cpp). Needs Verilator 5. FAILs (exit 1) on any mismatch.
 #   sim/octoscope/run.sh [frames seed busy% latmin latmax]
 set -e
-cd "$(dirname "$0")/../.." && R=$PWD && T=/tmp/octoscope && rm -rf $T && mkdir -p $T
+# Its work directory is its own (several jobs run this at once: a shared /tmp/octoscope let one wipe another's
+# build half way). OCTOSCOPE_TMP names one to keep (the GitHub check does, for its artifact); else it is removed.
+cd "$(dirname "$0")/../.." && R=$PWD
+if [ -n "$OCTOSCOPE_TMP" ]; then T=$OCTOSCOPE_TMP && rm -rf "$T" && mkdir -p "$T"
+else T=$(mktemp -d /tmp/octoscope.XXXXXX) && trap 'rm -rf "$T"' EXIT; fi
 # Verilator-only copies of three SID files (Quartus takes forms Verilator doesn't: "wire" function ports and
 # initialised wire arrays, procedural writes to a wire array) - the logic is untouched
 sed -e 's/(wire signed/(input signed/g' -e 's/(wire \[/(input [/g' \

@@ -43,7 +43,7 @@ jobs:
         run: sim/sprtable/run.sh
 
       - name: OCTOSCOPE (Fix 55) - every capture, latch and pixel against the emulator's code
-        run: sim/octoscope/run.sh
+        run: OCTOSCOPE_TMP=/tmp/octoscope sim/octoscope/run.sh
 
       - name: EXACT 50 Hz (Fix 48) - PLL writes, VIC frame, TOD, 1541/RTC enables, fast-loader handshake, tape
         run: sim/pal50/run.sh
