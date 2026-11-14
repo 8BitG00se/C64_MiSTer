@@ -18,10 +18,18 @@ mkdir -p "$OUT/tunes" || exit 1
 cp -f "$HERE/OCTOPLAY.PRG" "$OUT/OCTOPLAY.PRG" || exit 1
 for t in "$HERE"/tunes/*.sid; do cp -f "$t" "$OUT/tunes/" || exit 1; done
 
+# The disk is kept beside this script as a finished file, so a machine with no VICE (the GitHub
+# builder, and this container) still puts it on the card. With c1541 here it is made again from
+# the tunes, so the two can never drift apart.
 C1541=${C1541:-$(command -v c1541 || true)}
 D="$OUT/Octo Tunes.d64"
 if [ -z "$C1541" ]; then
-    echo "octoplay: no c1541 - the tunes disk was skipped (the .prg and the .sid files are in the payload)"
+    if [ -s "$HERE/Octo Tunes.d64" ]; then
+        cp -f "$HERE/Octo Tunes.d64" "$D" || exit 1
+        echo "octoplay: no c1541 - the kept Octo Tunes.d64 ($(wc -c < "$D") bytes) goes on as it is"
+        exit 0
+    fi
+    echo "octoplay: no c1541 and no kept disk - the tunes disk was skipped"
     rm -f "$D"
     exit 0
 fi
@@ -33,3 +41,5 @@ for t in "$HERE"/tunes/*.sid; do
 done
 "$C1541" "$@" >/dev/null 2>&1 || { echo "octoplay: c1541 could not make the disk"; exit 1; }
 echo "octoplay: $(basename "$D") $(wc -c < "$D") bytes, $(ls "$HERE"/tunes/*.sid | wc -l) tunes"
+# keep the copy beside this script in step, so a builder without VICE ships the same disk
+cmp -s "$D" "$HERE/Octo Tunes.d64" || { cp -f "$D" "$HERE/Octo Tunes.d64"; echo "octoplay: the kept Octo Tunes.d64 was updated - commit it"; }
