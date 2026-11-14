@@ -187,6 +187,8 @@ jobs:
           # a fix tried on its own branch (fix49-..., fix81-..., fix82-...) keeps its own reports
           # branch: build-reports-fix49 and so on. build-reports stays the release line's.
           case "${GITHUB_REF_NAME}" in fix[0-9]*) OUTB="build-reports-${GITHUB_REF_NAME%%-*}" ;; esac
+          # a trial line being put together before a burn keeps its own too
+          case "${GITHUB_REF_NAME}" in core[0-9]*-trial*) OUTB="build-reports-${GITHUB_REF_NAME}" ;; esac
           git checkout -q -b "$OUTB"
           git add -A
           git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Reports: $(cat result.txt) - RGB 256: $(cat rgb256/result.txt)"
