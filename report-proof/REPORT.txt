@@ -1,0 +1,18 @@
+OCTOPHONIC 64 - OLD-SOFTWARE REGRESSION TEST (Fix 69): whole-C64 RTL (Verilator)        (c) 2026 Mong00se
+last core: /tmp/rr/new  (rom.hex md5 c83b92c86d9bdfbc9687b943ee124c99)
+new core : /tmp/rr/proof  (rom.hex md5 96761dcdeeaf4c9f2d56a04d3b9dfa28)
+
+boot             CHANGED     320 frames
+                   picture: 215 frames differ, first frame 105, last 319
+                   side by side: boot - first changed frame 105.png (64000 pixels)
+code-stock       CHANGED     320 frames
+                   picture: 76 frames differ, first frame 105, last 180
+                   side by side: code-stock - first changed frame 105.png (64000 pixels)
+disk-logo        CHANGED     320 frames
+                   picture: 76 frames differ, first frame 105, last 180
+                   side by side: disk-logo - first changed frame 105.png (64000 pixels)
+disk-starfield   CHANGED     320 frames
+                   picture: 76 frames differ, first frame 105, last 180
+                   side by side: disk-starfield - first changed frame 105.png (64000 pixels)
+
+FAIL - not the same: boot, code-stock, disk-logo, disk-starfield

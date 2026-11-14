@@ -1,0 +1,10 @@
+OCTOPHONIC 64 - OLD-SOFTWARE REGRESSION TEST (Fix 69): whole-C64 RTL (Verilator)        (c) 2026 Mong00se
+last core: /tmp/rr/new  (rom.hex md5 c83b92c86d9bdfbc9687b943ee124c99)
+new core : /tmp/rr/new  (rom.hex md5 c83b92c86d9bdfbc9687b943ee124c99)
+
+boot             IDENTICAL   320 frames: every picture and the SID registers at every frame end the same
+code-stock       IDENTICAL   320 frames: every picture and the SID registers at every frame end the same
+disk-logo        IDENTICAL   320 frames: every picture and the SID registers at every frame end the same
+disk-starfield   IDENTICAL   320 frames: every picture and the SID registers at every frame end the same
+
+PASS - every RTL run is identical to the last core

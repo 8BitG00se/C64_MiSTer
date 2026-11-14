@@ -1,0 +1,32 @@
+/home/runner/work/C64_MiSTer/C64_MiSTer/new/rtl/dprom.vhd:37:25:warning: type of a shared variable must be a protected type [-Wshared]
+        shared variable ram : memory_t;
+                        ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/new/rtl/spram.vhd:30:25:warning: type of a shared variable must be a protected type [-Wshared]
+        shared variable ram : memory_t;
+                        ^
+fixnet: 2 lines taken out
+          if (BusA(3 downto 0) and BusB(3 downto 0)) > "0100" then
+                                                     ^
+/home/runner/work/C64_MiSTer/C64_MiSTer/new/rtl/t65/T65_ALU.vhd:234:54:warning: comparing non-numeric vector is unexpected
+          if (BusA(7 downto 4) and BusB(7 downto 4)) > "0100" then
+                                                     ^
+38996 fpga64_synth.v
+1:module t65_alu
+898:module t65_mcode
+6466:module t65
+9046:module dprom_12_8_1ccc760f3b784ccff8815b34b69f9515a92ba7bb
+9074:module dprom_14_8_816fd2b384512425da875266097db864d9475b11
+9102:module dprom_14_8_32fc7d22b7a049e94fd983d1435860bcca37487c
+9130:module dprom_14_8_c25e8f033339aef6dccff128a02a75a0c6816fff
+9158:module dprom_14_8_21c347b76d5a984a5d803c79a19371e2d693faca
+9186:module dprom_12_8_0ba780a177591573455f13681f8e55babe76cfb2
+9215:module dprom_12_8_3b52db935267f4f51e7b03fda2141d61d3d71bbe
+9244:module fpga64_keyboard
+20558:module cpu_6510
+20812:module cia_tod_clk
+20962:module sid_mix
+22285:module fpga64_rgbcolor
+22305:module video_vicii_656x_a93755f8273b0e8dc4b0ecc158e5853119a24bf0
+33783:module fpga64_buslogic
+35007:module spram_4_10
+35031:module fpga64_sid_iec
