@@ -53,6 +53,21 @@ FIRST POWER-ON
    It says CARD OK, or which file is missing - then flash again.
  - From then on, every power-on goes straight into Octophonic 64.
 
+SENDING FILES FROM THE PC (FileZilla) - works from the first power-on, nothing to set up
+ - Plug the MiSTer into the network (cable; for Wi-Fi see OPTIONAL below). In FileZilla's bar at the top:
+     Host: MiSTer     Username: root     Password: 1     Port: 21     then Quickconnect
+   If "MiSTer" is not found, type its address instead (a number like 192.168.x.x: the MiSTer menu,
+   Alt+F1, shows it, and so does your router's list of devices).
+ - You land in /root. Go to /media/fat - that is the SD card. Your files go in /media/fat/games/C64:
+   .d64 in Disks, demos (the .prg with its .reu) in Demos, and so on. Drag them across, then F1 on
+   the Octophonic start screen finds them. Port 22 instead of 21 is the same thing encrypted (SFTP).
+ - KNOW WHAT THIS IS: it is MiSTer's own file server, the same on every MiSTer, and root / 1 is
+   MiSTer's standard login - not a secret. Anyone on your home network can read, change or delete
+   every file on the card with it. That is fine at home. Do not use the MiSTer on a network you do
+   not trust, and never forward ports 21 or 22 to it on the router. For your own password, MiSTer's
+   own security_fixes.sh script (github.com/MiSTer-devel/Scripts_MiSTer) sets one; its ftp_off.sh
+   switches the file server off.
+
 THE FRONT SCREEN'S FIRMWARE (once, after the first power-on, with the MiSTer on the network)
  - The logo at power-on works with the Octophonic screen firmware you already have.
  - For each demo's OWN animation the screen needs firmware OCTO4: double-click
@@ -74,6 +89,8 @@ build 6 again - it is Core 7 as before.
 
 OPTIONAL, before the first power-on: with the card still in the PC, a drive called OCTOFUSION
 shows up. Put a wpa_supplicant.conf (Wi-Fi) or samba.sh on it and they are set up too.
+(samba.sh switches on a Windows share of the whole card, open to your network - only if you want one.
+FileZilla does not need it.)
 
 THE MISTER'S OWN MENU is still there: C=+F1 (on a PC keyboard Alt+F1) at READY or in the browser.
 Every MiSTer script (Scripts folder) works as normal.

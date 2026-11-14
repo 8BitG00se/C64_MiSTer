@@ -102,6 +102,19 @@ grep -q -- '-DEV-' "$C/octophonic/steps-done.txt" && bad "a DEV step is in steps
 ls "$C/octophonic/recipe/steps" | grep -q -- '-DEV-' && bad "a DEV step is on the card" || okk "no DEV step on the card ($(ls "$C/octophonic/recipe/steps" | wc -l) steps)"
 if [ -s "$C/menu.rbf.stock" ]; then okk "menu.rbf: the navy menu core (stock kept as menu.rbf.stock)"; else echo "  note: menu.rbf is the stock one (no navy menu core was built yet)"; fi
 
+echo "-- files over the network (Fix 19, step 090): MiSTer's own FTP and SFTP servers"
+# the start scripts in linux.img's /etc/init.d: read with debugfs when there is one, else the raw folder
+# entries are searched (<type byte 01 = a file> <name>) - as step 090 does
+LINIT=$(command -v debugfs >/dev/null 2>&1 && debugfs -R "ls -p /etc/init.d" "$C/linux/linux.img" 2>/dev/null | cut -d/ -f6 || true)
+lhas() {
+    if [ -n "$LINIT" ]; then printf '%s\n' "$LINIT" | grep -qx "$1"
+    else LC_ALL=C grep -a -q "$(printf '\001%s' "$1")" "$C/linux/linux.img" 2>/dev/null; fi
+}
+lhas S50proftpd && ! lhas _S50proftpd && okk "linux.img starts its FTP server at power-on (S50proftpd: port 21, root / MiSTer's standard password)" || bad "linux.img does not start an FTP server (no S50proftpd) - FileZilla could not reach this card"
+lhas S50sshd && ! lhas _S50sshd && okk "linux.img starts sshd at power-on (S50sshd: SFTP and ssh, port 22)" || bad "linux.img does not start sshd (no S50sshd)"
+grep -q '^090-network-file-transfer.sh .*FTP (21) on' "$C/octophonic/steps-done.txt" && okk "step 090 found FTP on when the card was built" || bad "step 090 did not find FTP on"
+[ ! -e "$C/linux/samba.sh" ] && okk "no linux/samba.sh: no Samba share is switched on" || bad "linux/samba.sh is on the card (a Samba share, open to the network, would be switched on)"
+
 echo "-- nothing personal or DEV in what Octophonic added"
 # the files that are not byte-for-byte the official release's: compare 7-Zip's CRCs
 OFF=${OFFICIAL_7Z:-}
@@ -128,6 +141,10 @@ while IFS= read -r f; do
     fi
 done < "$W/added.txt"
 [ "$HITS" = 0 ] && okk "no SSH key, share, IP address or PC path in any of them" || bad "personal strings found (above)"
+# linux.img is MiSTer's own, byte for byte: so the file servers and their login are exactly MiSTer's, nothing of ours
+if [ -n "$OFF" ] && [ -s "$OFF" ]; then
+    grep -qx 'files/linux/linux.img' "$W/added.txt" && bad "linux/linux.img is not the official release's" || okk "linux/linux.img is the official release's, untouched (its FTP/SFTP servers and login are MiSTer's own)"
+fi
 # MiSTer.ini must be MiSTer's own example plus the bootcore lines and vsync_adjust=2 (step 065, Fix 43)
 # and nothing else (so no one's video, share or other settings can be in it)
 if diff <(grep -v -E 'bootcore|^[[:space:]]*vsync_adjust' "$C/MiSTer_example.ini") <(grep -v -E 'bootcore|^[[:space:]]*vsync_adjust' "$INI") > "$W/ini.diff"; then
