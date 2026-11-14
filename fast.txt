@@ -1,0 +1,15 @@
+OK   fast: the Octophonic KERNAL reaches READY. (3.25 s); drive 8 can take the fast loader
+     |             OCTOPHONIC 64      NET     |
+     |8 SIDS       OCTOVIC 256        16M REU |
+     |                                        |
+     |38911 BASIC BYTES FREE                  |
+     |                                        |
+     |READY.                                  |
+     |L."*",8,1                               |
+     |                                        |
+     |SEARCHING FOR *                         |
+OK   fast: 3046 bytes at $0801: 0 wrong - the file is in memory as it is on the disk
+OK   fast: end address $13E7 (should be $13E7), ST $40 (should be $40)
+OK   fast: the loader's bank came in 3048 time(s) for 0.956 s and is out now; 3032 strobes to the drive, 3671 changes of CLK; heads on half-tracks 32-34
+TIME fast 12 blocks: 2.99 s from RETURN to READY. (SEARCHING at 0.03 s, LOADING at 1.70 s): 4.0 blocks a second over the whole load
+FASTLOAD_RUN_OK
