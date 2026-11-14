@@ -1,0 +1,68 @@
+WHAT TO TEST ON THIS CARD
+(c) 2026 Mong00se
+
+Most of what is new here has never run on real hardware. This is the order to go through it in,
+hardest-to-undo last. Each line says what should happen, so anything else is worth telling me.
+
+A WARNING FIRST
+  Installing the core or the OS restarts the MiSTer. Nothing on this card does that by itself.
+
+1. THE BOOT
+   Power on. You should get the white noise, then the Octophonic KERNAL start screen, with NO
+   MiSTer loading bar in between (Fix 32). The front screen (OLED) should be showing the KERNAL
+   box logo from the moment it comes up (Fix 20, Fix 51). The firmware updates itself the first
+   time a new card starts - the screen goes dark for about four minutes while it does
+   (Fix 37); octophonic/update.log says so.
+
+2. THE FAST LOADER                                                           (Fix 49 - NEW)
+   This is the one to check first, because everything else is quicker if it works.
+   Mount games/C64/Disks/Octo Tunes.d64 (press M on the start screen), then LOAD"*",8,1.
+   It should be seconds, not a minute. If anything loads WRONGLY, stop and say so - a fast
+   loader that corrupts a file is worse than a slow one. It falls back to the normal KERNAL
+   path by itself if the drive does not answer, so an ordinary-speed load is not a failure,
+   just a miss.
+
+3. OCTOPLAY AND THE TUNES                                                    (Fix 70 - NEW)
+   games/C64/Tools/OCTOPLAY.PRG. Mount Octo Tunes.d64, pick a tune. It should find all eight
+   SIDs by itself and the scroller should read 8 SIDS. F3/F5 switch the chip models.
+   The three tunes are new and nobody has heard them on hardware. Say which is worth keeping.
+
+4. THE SCOPE OVER ANY PROGRAM                                             (Fix 72, 82 - NEW)
+   Start anything that makes a noise - a demo, a game, OctoPlay - and HOLD SHIFT+F3 for about
+   a second. It steps: off, traces over the picture, scope on HDMI with the program on the CRT,
+   then the two swapped. The program should never notice; nothing of its own picture should
+   break. For the two-screen settings the analog output must be at the core's own timing
+   (vga_scaler=0, no scandoubler), the same as Split Screens needs.
+
+5. MY CHIPS, PER SID                                                         (Fix 81 - NEW)
+   Core menu (F12) -> My Chips. Load Chip A, B and C from games/C64/My Chips, then set SID 1
+   to SID 8 to whichever you want. Save settings to keep it.
+   Chip C is its model and filter curve only - it uses the core's waveforms.
+   Loading a chip overwrites one of the Custom filter slots, and Load Custom Filters overwrites
+   the chips' curves until you load them again. They share the same memory.
+
+6. THE CHIP PRESETS                                                                   (NEW)
+   F8 settings -> CHIP PRESET. It should now step through PLAIN, 6581, 8580 and MIXED instead
+   of sitting on PLAIN with nowhere to go. RETURN restarts the core into the one you picked.
+   Each preset keeps its OWN settings and its own chips, so set each one up once.
+   WILL RESTART THE MISTER.
+
+7. PER-VOICE MUTE                                                                  (Fix 65)
+   Any of the 24 voices can be muted from OctoVIC $D6CC-$D6CE. Not tested on hardware.
+
+8. THE HOT KEYS                                                                (Fix 58, 74)
+   In a game: hold SHIFT+F1 for the KERNAL, SHIFT+F2 for RUN/STOP+RESTORE, SHIFT+F4 to wipe and
+   restart. A quick tap must still reach the game as a normal F-key, and holding one must NOT
+   pass its F-key through (that was the IK+ palette bug).
+
+9. THE JOYSTICK PORTS                                                              (Fix 14)
+   The swapped ports are now the default, so a game should work without you changing ports.
+   An old saved config reads "No" on that line - set it once.
+
+10. RGB 256                                                                        (Fix 60)
+    A game with a pack (IK+, Uridium, Monty on the Run). You have run these before; this is a
+    check that nothing has broken, not a new feature.
+
+11. REWIND                                                                         (Fix 61)
+    In the RGB core, hold the Menu key (or WIN+F2) during a game and it should run backwards.
+    This has NEVER run on hardware. Try it on something you do not mind losing progress in.

@@ -281,6 +281,7 @@ IMG="$OUT/$NAME.img"
 SOURCE_DATE_EPOCH=$(git -C "$REPO" log -1 --format=%ct) python3 -I "$HERE/image/octofat.py" "$BASE" "$W/fat" "$IMG" OCTOFUSION
 sed "s/@BUILD@/$BUILD/g; s/@REL@/$REL/g; s/@MRF@/$MRF/g" "$HERE/image/How to flash.txt" > "$OUT/How to flash.txt"
 cp "$HERE/image/Check card.bat" "$HERE/image/Update front screen firmware.bat" "$HERE/image/update-front-screen.sh" "$OUT/"
+cp "$HERE/image/What to test.txt" "$OUT/"
 echo "$(stat -c %s "$IMG") bytes: $IMG"
 
 say "checking the image"
