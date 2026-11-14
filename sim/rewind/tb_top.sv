@@ -151,7 +151,7 @@ fpga64_sid_iec c64
 	.joyA(joyA), .joyB(joyB), .pot1(8'd0), .pot2(8'd0), .pot3(8'd0), .pot4(8'd0),
 	.sid_filter(2'b11), .sid_ver(8'd0), .sid_mode(3'd0), .sid_cfg(16'd0), .sid_fc_off_l(13'd0), .sid_fc_off_r(13'd0),
 	.sid_ld_clk(clk), .sid_ld_addr(12'd0), .sid_ld_data(16'd0), .sid_ld_wr(1'b0),
-	.chip_we(1'b0), .chip_wside(1'b0), .chip_wtbl(2'd0), .chip_widx(12'd0), .chip_wdata(8'd0), .chip_on(8'd0), .chip_bk(8'd0), .chip_fc(8'd0),
+	.chip_we(1'b0), .chip_wside(1'b0), .chip_wtbl(2'd0), .chip_widx(12'd0), .chip_wdata(8'd0), .chip_on(8'd0),
 	.sid_digifix(1'b1), .sid_quad(1'b1), .sid_oct(1'b1), .sid_fx_osd(2'b00),
 	.os_io_enable(1'b0), .os_io_strobe(1'b0), .os_io_din(16'd0),
 	.ogx_ddr_busy(1'b1), .ogx_ddr_dout(64'd0), .ogx_ddr_dout_ready(1'b0),
@@ -323,7 +323,9 @@ module sid_top #(parameter PHASE = 0)
 	// the OctoScope taps (Fix 55, from the testcard merge): not used here, but the C64 connects them
 	input   [2:0] sc_sel,
 	output [39:0] sc_rec,
-	output [15:0] sc_aud
+	output [15:0] sc_aud,
+	// the per-voice mute mask (Fix 65): the real sid_top takes it, so the stub must have the pin
+	input   [5:0] vmute
 );
 assign sc_rec = 40'd0;
 assign sc_aud = 16'd0;
