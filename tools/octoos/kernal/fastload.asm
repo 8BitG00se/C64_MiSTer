@@ -20,8 +20,8 @@
 ; One thing of the Octophonic KERNAL's is reached from that IRQ - the keyboard's decode vector
 ; ($028F -> keyhk in wedge2.asm): fastload.py puts a JMP to the stock decoder there in the bank.
 ;
-; WHO IS TALKING. The core listens to what the C64 sends under ATN (rtl/fpga64_sid_iec.vhd) and so knows
-; when the last thing said on the bus was "device 8, talk, on secondary address n" (n not 15, the
+; WHO IS TALKING. The core listens to what the C64 sends under ATN (rtl/fpga64_sid_iec.vhd) and so
+; knows when the last thing said on the bus was "device 8, talk, on secondary address n" (n not 15, the
 ; command channel) - whatever routine said it, whatever the KERNAL's variables hold:
 ;   $D03C  read: b7 the drive is talking the fast way, b0-6 a count. Write with b7 set: "it is";
 ;          with b7 clear: count one - which only counts while device 8 is the talker, or talking
@@ -32,9 +32,10 @@
 ;
 ; The serial bus's own ACPTR does the work - nothing changes at all - whenever: the drive is not the
 ; core's 1541 on its built-in ROM, or the port or the fast loader is switched off ($D03E); the
-; program has set the user port to outputs, or has the KERNAL's RS-232 going; the talker is not device 8, or it is the command
-; channel; fewer than 16 bytes have been read since the file was last addressed (a program that
-; reads a byte or a line at a time between other things); or the drive does not answer.
+; program has set the user port to outputs, or has the KERNAL's RS-232 going; the talker is not
+; device 8, or it is the command channel; fewer than 16 bytes have been read since the file was
+; last addressed (a program that reads a byte or a line at a time between other things); or the
+; drive does not answer.
 ; RAM used: ACPTR's own byte ($A4) and nothing else while the bytes come; $A5 and three bytes of
 ; stack when the drive has to be waited for.
 

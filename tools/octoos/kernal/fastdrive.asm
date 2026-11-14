@@ -8,9 +8,9 @@
 ; across - so whenever it stops (ATN: the C64 has started any serial bus command) the DOS's
 ; channel stands exactly where the C64 has read to, and the serial bus carries on from there.
 ;
-; WHERE THIS CODE LIVES: in a ROM of its own in the core's 1541, at $1000-$11FF (nothing is there in a
-; real 1541) - rtl/iec_drive/c1541_logic.sv, only while the drive runs the built-in standard ROM.
-; None of the drive's RAM is used, nothing has to be sent to the drive first. The C64 starts it
+; WHERE THIS CODE LIVES: in a ROM of its own in the core's 1541, at $1000-$11FF (nothing is there in
+; a real 1541) - rtl/iec_drive/c1541_logic.sv, only while the drive runs the built-in standard ROM.
+; No buffer and no spare RAM of the drive's is used, nothing is sent to the drive first. The C64 starts it
 ; with the DOS command  M-E $00 $10 <secondary address>  (fastload.asm).
 ;
 ; The wires (the core's "parallel port": C64 user port <-> the 1541's VIA 1, and the serial bus):
