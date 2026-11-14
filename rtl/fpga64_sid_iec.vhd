@@ -88,6 +88,10 @@ port(
 	-- SPLIT SCREENS: the VIC's picture alone (for the VGA output), in step with r/g/b
 	vic_rgb_out : out std_logic_vector(23 downto 0);
 	split       : in  std_logic := '0';
+	-- Fix 72, THE SCOPE OVER ANY PROGRAM: the hot key's pulse (OctoVIC's SCOPEKEY moves on)
+	scope_key   : in  std_logic := '0';
+	-- Fix 82, THE SCOPE ON THE SECOND SCREEN: SCOPEKEY is 2 or 3 - the VGA output takes vic_rgb_out
+	screen2     : out std_logic;
 	-- FINE SCROLL (Fix 42): the 4x pixel clock reaches the output (OctoVIC's quarter pixels on)
 	quarter     : in  std_logic := '0';
 	-- C64RGB 256 (Fix 60): the VIC's pixel as it comes out - its colour index, what made it
@@ -578,7 +582,9 @@ port (
 	sc_sel         : out std_logic_vector(2 downto 0);
 	sc_rec0, sc_rec1, sc_rec2, sc_rec3 : in std_logic_vector(39 downto 0);
 	sc_aud0, sc_aud1, sc_aud2, sc_aud3 : in std_logic_vector(15 downto 0);
-	vmute          : out std_logic_vector(23 downto 0)
+	vmute          : out std_logic_vector(23 downto 0);
+	scope_key      : in  std_logic;
+	screen2        : out std_logic
 );
 end component;
 
@@ -1038,7 +1044,9 @@ port map (
 	sc_aud1        => sc_aud2,
 	sc_aud2        => sc_aud3,
 	sc_aud3        => sc_aud4,
-	vmute          => vmute
+	vmute          => vmute,
+	scope_key      => scope_key,
+	screen2        => screen2
 );
 end generate;
 
@@ -1049,6 +1057,7 @@ g_nooct: if REWIND /= 0 generate
 	octo_do  <= x"FF";
 	octo_irq <= '0';
 	vmute    <= (others => '0');
+	screen2  <= '0';
 	ogx_ddr_addr <= (others => '0'); ogx_ddr_burstcnt <= (others => '0'); ogx_ddr_rd <= '0';
 	ogx_ddr_we <= '0'; ogx_ddr_din <= (others => '0'); ogx_ddr_be <= (others => '0');
 	vic_rgb_out <= octo_rgb;

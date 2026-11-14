@@ -8,7 +8,7 @@ set -e
 cd "$(dirname "$0")/../.." && R=$PWD && T=/tmp/sprtable && rm -rf $T && mkdir -p $T
 cd $R/sim/sprtable
 verilator --cc --exe -O3 -Wno-WIDTH -Wno-fatal --public-flat-rw --top-module octovic \
-  $R/rtl/octovic/octovic.sv $R/rtl/octovic/ovram.sv $R/rtl/octovic/octoscope.sv tb.cpp -o tb --Mdir obj >$T/build.txt 2>&1 \
+  $R/rtl/octovic/octovic.sv $R/rtl/octovic/ovram.sv $R/rtl/octovic/octoscope.sv $R/rtl/octovic/scope_screen.sv tb.cpp -o tb --Mdir obj >$T/build.txt 2>&1 \
   && make -s -j4 -C obj -f Voctovic.mk >>$T/build.txt 2>&1 || { tail -20 $T/build.txt; exit 1; }
 fail=0
 for mode in vblank flip; do

@@ -13,7 +13,7 @@ sed -e 's/^wire  \[7:0\] \(_st_out\|p_t_out\|ps__out\|pst_out\)\[/reg   [7:0] \1
 verilator --cc --exe -O3 -Wno-fatal -Wno-WIDTH -Wno-SELRANGE -Wno-PINMISSING -Wno-CASEINCOMPLETE -Wno-UNOPTFLAT --public-flat-rw \
   --top-module tb_top $R/sim/octoscope/tb_top.sv $T/sid_top.sv $R/rtl/sid/sid_voice.sv $T/sid_envelope.sv $R/rtl/sid/sid_dac.sv \
   $R/sim/octoscope/sid_tables_stub.sv $R/sim/octoscope/sid_filter_stub.sv \
-  $R/rtl/octovic/octovic.sv $R/rtl/octovic/ovram.sv $R/rtl/octovic/octoscope.sv \
+  $R/rtl/octovic/octovic.sv $R/rtl/octovic/ovram.sv $R/rtl/octovic/octoscope.sv $R/rtl/octovic/scope_screen.sv \
   $R/sim/octoscope/tb.cpp -o tb --Mdir $T/obj >$T/build.txt 2>&1 \
   && make -s -j4 -C $T/obj -f Vtb_top.mk >>$T/build.txt 2>&1 || { tail -30 $T/build.txt; echo "OCTOSCOPE: FAIL (build)"; exit 1; }
 $T/obj/tb ${1:-13} ${2:-1} ${3:-20} ${4:-6} ${5:-30} ${6:-0} | tee $T/result.txt
@@ -22,3 +22,6 @@ grep -q "OCTOSCOPE: PASS" $T/result.txt
 # (63 us) once a frame: still every sample, no word lost, no late line
 $T/obj/tb 13 2 50 20 80 2016 | tee $T/result_busy.txt
 grep -q "OCTOSCOPE: PASS" $T/result_busy.txt
+# Fix 72 / Fix 82: and a 263-line (60 Hz) picture - the scope screen's smaller rows, lines 16-255 compared
+NTSC=1 $T/obj/tb 13 2 50 20 80 2016 | tee $T/result_ntsc.txt
+grep -q "OCTOSCOPE: PASS" $T/result_ntsc.txt

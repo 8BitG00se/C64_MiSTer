@@ -11,7 +11,7 @@ build () {  # build <dir> <rtl> [flags]
   verilator --cc --exe -O3 -Wno-WIDTH -Wno-fatal --top-module octovic $3 "$2" $R/rtl/octovic/ovram.sv $OSC $R/sim/finescroll/tb.cpp -o tb --Mdir $1 >$T/build.txt 2>&1 \
     && make -s -j4 -C $1 -f Voctovic.mk >>$T/build.txt 2>&1 || { tail -30 $T/build.txt; exit 1; }
 }
-OSC=$R/rtl/octovic/octoscope.sv build $T/obj_new $R/rtl/octovic/octovic.sv
+OSC="$R/rtl/octovic/octoscope.sv $R/rtl/octovic/scope_screen.sv" build $T/obj_new $R/rtl/octovic/octovic.sv
 build $T/obj_old $T/old/octovic.sv -CFLAGS\ -DNOQUARTER
 QUARTER=1 $T/obj_new/tb $T/vram.bin $T/script.txt 15 $T/q1.rgb 3 25 6 40
 QUARTER=0 $T/obj_new/tb $T/vram.bin $T/script.txt 15 $T/q0.rgb 3 25 6 40

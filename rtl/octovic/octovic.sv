@@ -35,8 +35,10 @@ module octovic
 	input       [8:0] vic_y,       // its raster line
 	input       [3:0] vic_index,   // the pixel's colour (valid the clock after the strobe)
 	input      [23:0] vic_rgb,     // that colour through the core's palette
-	output reg [23:0] rgb,         // the picture
-	output reg [23:0] rgb_vic,     // SPLIT SCREENS: the VIC's picture alone (for the VGA output), in step with rgb
+	output     [23:0] rgb,         // the picture (Fix 72: the scope's traces over it, with SCOPEKEY = 1;
+	                               //   Fix 82: the scope screen instead, with SCOPEKEY = 2)
+	output     [23:0] rgb_vic,     // SPLIT SCREENS: the VIC's picture alone (for the VGA output), in step with rgb
+	                               //   (Fix 82: with SCOPEKEY = 2 the picture, with SCOPEKEY = 3 the scope screen)
 	input             split,       // SPLIT SCREENS: the menu option is on (read in STATUS b3)
 	input             quarter,     // FINE SCROLL (Fix 42): the 4x pixel clock reaches the output (OSD Quarter Pixels on,
 	                               //   no scandoubler) - STATUS b4; off, the FINE registers are not used
@@ -62,7 +64,13 @@ module octovic
 	input      [15:0] sc_aud0, sc_aud1, sc_aud2, sc_aud3,
 
 	// Fix 65: the mixer - one bit per voice (the scope's channel numbers: SID pair*6 + chip*3 + voice), 1 = muted
-	output     [23:0] vmute
+	output     [23:0] vmute,
+
+	// Fix 72, THE SCOPE OVER ANY PROGRAM: the hot key (a pulse: SCOPEKEY moves on)
+	input             scope_key,
+	// Fix 82, THE SCOPE ON THE SECOND SCREEN: SCOPEKEY is 2 or 3 - the VGA output must be given rgb_vic (as with
+	// Split Screens)
+	output            screen2
 );
 
 // THE CORE'S NAME, readable by the 6502 so the start screen, the settings page and the demos can
@@ -121,6 +129,19 @@ reg  [23:0] backdrop;
 // the height, the gain, the colour (the glow SCC + 1), the x of the first sample, b0 the glow
 reg   [7:0] scv, sch, scg, scc, scx0, scf;
 reg  [23:0] vmute_r;           // Fix 65: voice mute mask ($D6CC-$D6CE), 1 = that voice is muted
+// Fix 72, THE SCOPE OVER ANY PROGRAM (scope_screen.sv): SCOPEKEY ($D6CF) - 0 off; 1 all 24 voices' traces drawn
+// over the picture, whatever is running. Fix 82, THE SCOPE ON THE SECOND SCREEN: 2 the scope screen (a picture of
+// its own) on HDMI and the program's picture on the VGA output; 3 the two swapped. Set by the hot key (SHIFT+F3:
+// 0 -> 1 -> 2 -> 3 -> 0) or a program; a reset leaves it as it is (the scope stays up when a game is restarted).
+reg   [1:0] scr = 2'd0;
+assign      screen2 = scr[1];
+reg  [23:0] rgb_m, rgb_v;      // OctoVIC's own two pictures (rgb and rgb_vic before Fix 72)
+wire [23:0] s2_rgb;            // the scope screen's pixel; it is a trace's; it is in a trace's box
+wire        s2_lit, s2_box;
+// the traces over the picture: a trace's pixel in its colour, the picture at half brightness inside the boxes
+wire [23:0] rgb_o   = s2_lit ? s2_rgb : s2_box ? {1'b0, rgb_m[23:17], 1'b0, rgb_m[15:9], 1'b0, rgb_m[7:1]} : rgb_m;
+assign      rgb     = (scr == 2'd1) ? rgb_o : (scr == 2'd2) ? s2_rgb : rgb_m;
+assign      rgb_vic = (scr == 2'd2) ? rgb_m : (scr == 2'd3) ? s2_rgb : rgb_v;
 assign      vmute = vmute_r;
 reg   [8:0] scy;
 // the scope as the renderer draws a line of it (latched from the registers at the scope pass's start)
@@ -234,6 +255,12 @@ wire        rw_cpu = cpu_w;
 // SPACE AUDIT: the VDATA write (register $04, from the CPU, FIFO not full) - as the case below does it
 wire        wf_we = !reset && rw_en && rw_a == 8'h04 && rw_cpu && !wf_full;
 ovlab #(.AW(6), .DW(32)) wfm (.clk(clk), .we(wf_we), .wa(wf_w), .wd({vaddr, rw_d}), .ra(wf_r), .q(wf_q));
+
+// Fix 72: SCOPEKEY - the hot key moves it on; the CPU (not the copper) writes it; no reset
+always @(posedge clk) begin
+	if (scope_key) scr <= scr + 2'd1;
+	else if (!reset && cpu_w && addr == 8'hCF) scr <= din[1:0];
+end
 
 always @(posedge clk) begin
 	pal_we <= 0;
@@ -408,6 +435,7 @@ always @(*) begin
 		8'hB0: dout = h_stall;      8'hB1: dout = {6'd0, h_lead};
 		8'hB2: dout = vlost;
 		8'hCC: dout = vmute_r[7:0];  8'hCD: dout = vmute_r[15:8];  8'hCE: dout = vmute_r[23:16];   // Fix 65
+		8'hCF: dout = {6'd0, scr};                                                                    // Fix 72: SCOPEKEY
 		8'hB3: dout = sysinfo;      8'hB4: dout = CORE_DATE[7:0]; 8'hB5: dout = CORE_DATE[15:8]; 8'hB6: dout = CORE_DATE[23:16];
 		8'hB8, 8'hB9, 8'hBA, 8'hBB, 8'hBC, 8'hBD, 8'hBE, 8'hBF: dout = CORE_TAG[8*(7 - addr[2:0]) +: 8];
 		8'h50: dout = mula[7:0];    8'h51: dout = mula[15:8];    8'h52: dout = mulb[7:0];    8'h53: dout = mulb[15:8];
@@ -462,6 +490,10 @@ reg     [7:0] blt_wdata;
 reg    [63:0] blt_rdata;
 reg           blt_got;
 reg           blt_got_clr;     // from the blitter: it has the word
+// Fix 72: the scope screen's read (scope_screen.sv) - held until taken, like the blitter's
+wire          s2_rreq;
+reg           s2_rack;
+wire   [11:0] s2_raddr;
 
 reg  [TW-1:0] cmd_tag;
 (* ramstyle = "MLAB, no_rw_check" *) reg  [TW-1:0] tf[32];          // the tags of the reads on their way, in order
@@ -481,7 +513,7 @@ assign sq_take = !reset && port_free && sq_valid && wf_empty
 always @(posedge clk) begin
 	pf_clr <= 0;
 	if (reset) begin
-		ddr_rd <= 0; ddr_we <= 0; wf_r <= 0; tf_w <= 0; rqf_rp <= 0; blt_wack <= 0; blt_rack <= 0;
+		ddr_rd <= 0; ddr_we <= 0; wf_r <= 0; tf_w <= 0; rqf_rp <= 0; blt_wack <= 0; blt_rack <= 0; s2_rack <= 0;
 	end
 	else begin
 		if (accepted_rd) begin tf[tf_w] <= cmd_tag; tf_w <= tf_w + 5'd1; end
@@ -518,6 +550,12 @@ always @(posedge clk) begin
 				ddr_rd   <= 1;
 				rqf_rp   <= rqf_rp + 3'd1;
 			end
+			else if (s2_rreq && !s2_rack && room) begin     // Fix 72: the scope screen's captures, one word at a time
+				ddr_addr <= VBASE + 29'h00200000 + {17'd0, s2_raddr};
+				cmd_tag  <= {{(TW-13){1'b0}}, 1'b1, 6'd0, 1'b1, 2'd0, K_LS};     // (b12 with b5: the scope screen's word)
+				ddr_rd   <= 1;
+				s2_rack  <= 1;
+			end
 			else if (blt_wreq && !blt_wack) begin           // version 2: the blitter, when nothing else wants the port
 				ddr_addr <= VBASE + {8'd0, blt_waddr[23:3]};
 				ddr_din  <= {8{blt_wdata}};
@@ -534,6 +572,7 @@ always @(posedge clk) begin
 		end
 		if (!blt_wreq) blt_wack <= 0;
 		if (!blt_rreq) blt_rack <= 0;
+		if (!s2_rreq)  s2_rack  <= 0;
 	end
 end
 
@@ -592,8 +631,8 @@ wire          df_pop;
 // waiting) - a line is done when its own are in, not when the port is empty (the blitter's and the
 // VDATA port's reads kept it from ever being empty, so a line waited thousands of clocks at its end)
 reg  [6:0] ren_out;
-wire       ren_kind_acc = cmd_tag[2:0] != K_VRD && cmd_tag[2:0] != K_BLT;
-wire       ren_kind_pop = df_tq[2:0] != K_VRD && df_tq[2:0] != K_BLT;
+wire       ren_kind_acc = cmd_tag[2:0] != K_VRD && cmd_tag[2:0] != K_BLT && !(cmd_tag[2:0] == K_LS && cmd_tag[12]);   // (K_LS b12: the scope screen's, Fix 72)
+wire       ren_kind_pop = df_tq[2:0] != K_VRD && df_tq[2:0] != K_BLT && !(df_tq[2:0] == K_LS && df_tq[12]);
 always @(posedge clk) begin
 	if (reset) ren_out <= 0;
 	else ren_out <= ren_out + ((accepted_rd && ren_kind_acc) ? 7'd1 : 7'd0) - ((df_pop && ren_kind_pop) ? 7'd1 : 7'd0);
@@ -724,20 +763,20 @@ always @(posedge clk) begin
 		vh = (c[0] & c[4]) ? bdl[d_slot] : vc;     // HIDEVIC: the VIC is left out of this picture - the backdrop instead
 		q  = lb_q[d_bank];
 		op = d1_in & q[29] & show_ok;
-		rgb_vic <= vc;                              // SPLIT SCREENS: the VIC alone, whatever CTRL says
+		rgb_v <= vc;                                // SPLIT SCREENS: the VIC alone, whatever CTRL says
 		// the cell: its colour (o_n), what is under its layer pixel (u_n), and what it is for the sub-pixels:
 		// a layer/sprite pixel (its hold-back and pass), the VIC in front (pass 7, never held back), or nothing
 		if (!c[0])                                  begin o_n = vc;                 u_n = vc;          aop = 1;  ad = 0;       az = 3'd7;   end
 		else if (c[2] | c[4])                       begin o_n = op ? q[23:0] : vh;  u_n = vh;          aop = op; ad = q[28:27]; az = q[26:24]; end
 		else if (c[3] && vic_index == kdl[d_slot])  begin o_n = op ? q[23:0] : bdl[d_slot]; u_n = bdl[d_slot]; aop = op; ad = q[28:27]; az = q[26:24]; end
 		else                                        begin o_n = vc;                 u_n = vc;          aop = 1;  ad = 0;       az = 3'd7;   end
-		rgb <= fpick(2'd0, aop, ad, az, o_n, u_n, f_op, f_d, f_z, f_out);
+		rgb_m <= fpick(2'd0, aop, ad, az, o_n, u_n, f_op, f_d, f_z, f_out);
 		fp_op <= f_op; fp_d <= f_d; fp_z <= f_z; fp_out <= f_out;      // this cell becomes the one to the left
 		f_op <= aop; f_d <= ad; f_z <= az; f_out <= o_n; f_under <= u_n;
 		f_ph <= 2'd1;
 	end
 	else if (f_ph != 2'd0) begin
-		rgb  <= fpick(f_ph, f_op, f_d, f_z, f_out, f_under, fp_op, fp_d, fp_z, fp_out);
+		rgb_m <= fpick(f_ph, f_op, f_d, f_z, f_out, f_under, fp_op, fp_d, fp_z, fp_out);
 		f_ph <= f_ph + 2'd1;
 	end
 end
@@ -1499,6 +1538,10 @@ end
 //  trace; with the glow, a line further each way in SCC + 1. Exactly the emulator's scope_line.
 // ---------------------------------------------------------------------------------
 wire        sc_latched;
+wire  [4:0] s2_ch;                  // Fix 72: the scope screen's look-up
+wire [11:0] s2_word;
+wire [33:0] s2_desc;
+wire        s2_zero;
 octoscope scope
 (
 	.clk(clk), .reset(reset), .ce_1m(sid_ce),
@@ -1506,14 +1549,26 @@ octoscope scope
 	.aud0(sc_aud0), .aud1(sc_aud1), .aud2(sc_aud2), .aud3(sc_aud3),
 	.latch_req(sc_lreq), .latch_now(sc_latched), .tick_done(), .gen(sc_gen), .r_ok(sc_rok),
 	.wq_valid(sq_valid), .wq_addr(sq_addr), .wq_data(sq_data), .wq_be(sq_be), .wq_full(sq_full), .wq_pop(sq_take),
-	.r_ch(sc_ch), .r_slot(sc_slot), .r_word(sc_word), .r_desc(sc_desc), .r_zero(sc_zero)
+	.r_ch(sc_ch), .r_slot(sc_slot), .r_word(sc_word), .r_desc(sc_desc), .r_zero(sc_zero),
+	.r2_ch(s2_ch), .r2_word(s2_word), .r2_desc(s2_desc), .r2_zero(s2_zero)
+);
+
+// Fix 72, THE SCOPE SCREEN: all 24 voices drawn by the core itself (scope_screen.sv) while SCOPEKEY is not 0.
+// Its reads: tag K_LS with b5 and b12, taken here as they are popped.
+scope_screen screen2_u
+(
+	.clk(clk), .reset(reset), .on(scr != 0), .ntsc(nl < 9'd290),
+	.pix_en(pix_en), .vic_x(vic_x), .vic_y(vic_y), .rgb(s2_rgb), .lit(s2_lit), .box(s2_box),
+	.latched(sc_latched), .r_ok(sc_rok), .q_ch(s2_ch), .q_word(s2_word), .q_desc(s2_desc), .q_zero(s2_zero),
+	.rreq(s2_rreq), .raddr(s2_raddr), .rack(s2_rack),
+	.ans(df_pop && df_tq[2:0] == K_LS && df_tq[5] && df_tq[12]), .ans_d(df_dq)
 );
 
 // the line cache: the shown capture of one channel, 38 words (written by the consumer as they come back)
 wire [63:0] scq;
 ovram #(.AW(6), .DW(64)) scache
 (
-	.clk(clk), .we(df_pop && df_tq[2:0] == K_LS && df_tq[5]), .wa(df_tq[11:6]), .wd(df_dq),
+	.clk(clk), .we(df_pop && df_tq[2:0] == K_LS && df_tq[5] && !df_tq[12]), .wa(df_tq[11:6]), .wd(df_dq),
 	.ra(sc_w[8:3]), .q(scq)
 );
 

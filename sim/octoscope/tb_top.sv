@@ -16,6 +16,9 @@ module tb_top
 	input       [3:0] vic_index,
 	input      [23:0] vic_rgb,
 	output     [23:0] rgb,
+	output     [23:0] rgb2,         // Fix 72: OctoVIC's second picture (rgb_vic), the hot key, SCOPEKEY as it stands
+	input             scope_key,
+	output      [1:0] dbg_scr,
 	input             quarter,
 	output     [28:0] ddr_addr,
 	output            ddr_rd, ddr_we,
@@ -69,13 +72,15 @@ octovic octo
 (
 	.clk(clk), .reset(reset), .cs(cs), .wr(wr), .rd(rd), .addr(addr), .din(din), .dout(dout),
 	.pix_en(pix_en), .vic_x(vic_x), .vic_y(vic_y), .vic_index(vic_index), .vic_rgb(vic_rgb),
-	.rgb(rgb), .rgb_vic(), .split(1'b0), .quarter(quarter),
+	.rgb(rgb), .rgb_vic(rgb2), .split(1'b0), .quarter(quarter),
 	.ddr_addr(ddr_addr), .ddr_burstcnt(), .ddr_rd(ddr_rd), .ddr_we(ddr_we), .ddr_din(ddr_din), .ddr_be(ddr_be),
 	.ddr_busy(ddr_busy), .ddr_dout(ddr_dout), .ddr_dout_ready(ddr_dout_ready), .irq(),
 	.sid_ce(sid_ce), .sc_sel(sc_sel),
 	.sc_rec0(rec[0]), .sc_rec1(rec[1]), .sc_rec2(rec[2]), .sc_rec3(rec[3]),
-	.sc_aud0(aud[0]), .sc_aud1(aud[1]), .sc_aud2(aud[2]), .sc_aud3(aud[3])
+	.sc_aud0(aud[0]), .sc_aud1(aud[1]), .sc_aud2(aud[2]), .sc_aud3(aud[3]),
+	.vmute(), .scope_key(scope_key), .screen2()
 );
+assign dbg_scr = octo.scr;
 assign dbg_tick  = octo.scope.tick_done;
 assign dbg_latch = octo.scope.latch_now;
 assign dbg_comp  = octo.scope.comp_w;

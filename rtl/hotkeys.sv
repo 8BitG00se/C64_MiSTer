@@ -3,7 +3,8 @@
 // about a second:
 //   SHIFT+F1  back to the KERNAL start screen (the OSD's Reset)
 //   SHIFT+F2  RUN/STOP+RESTORE (break out, the program stays in memory)
-//   SHIFT+F3  (spare)
+//   SHIFT+F3  the scope over any program (Fix 72, Fix 82): all 24 SID voices' traces over the picture ->
+//             the scope on HDMI, the picture on VGA -> the two swapped -> off
 //   SHIFT+F4  wipe and restart (memory cleared, as at power-on)
 //
 // Fix 74 - the hot key never reaches the game. This module sits in the keyboard stream on its way

@@ -59,7 +59,13 @@ module octoscope
 	output reg  [6:0] r_slot,         // channel x 3 + slot
 	output reg [11:0] r_word,         // its first word (slot x 38), a clock after r_slot
 	output reg [33:0] r_desc,         // {hole on, hole start, hole value, fill from, fill value}
-	output reg        r_zero          // nothing captured since reset: all 0
+	output reg        r_zero,         // nothing captured since reset: all 0
+
+	// Fix 72, the scope screen (scope_screen.sv): a second look-up of its own, the same answers 2 clocks after r2_ch
+	input       [4:0] r2_ch,
+	output reg [11:0] r2_word,
+	output reg [33:0] r2_desc,
+	output reg        r2_zero
 );
 
 localparam SCN = 304;
@@ -76,6 +82,14 @@ reg  [6:0] dm_ra;
 always @(posedge clk) begin
 	if (dm_we) dmem[dm_wa] <= dm_wd;
 	r_desc <= dmem[dm_ra];
+end
+
+// Fix 72: the scope screen's own copy of the rules (a second read port; written with the first)
+reg [33:0] dmem2[0:95];
+reg  [6:0] dm2_ra;
+always @(posedge clk) begin
+	if (dm_we) dmem2[dm_wa] <= dm_wd;
+	r2_desc <= dmem2[dm2_ra];
 end
 
 // each channel: its capture {n, cycle, on, age, tick, hole on, hole start, hole value} (51), its slots
@@ -128,6 +142,16 @@ always @(posedge clk) begin
 	r_slot <= {r_ch, 1'b0} + {2'd0, r_ch} + {5'd0, disp[r_ch]};
 	r_zero <= disp_z[r_ch];
 	r_word <= r_slot * 12'd38;
+end
+// Fix 72: the same for the scope screen (slot x 38 by adding: 32 + 4 + 2)
+reg  [6:0] r2_slot;
+reg        r2_z1;
+always @(posedge clk) begin
+	dm2_ra  <= {r2_ch, 1'b0} + {2'd0, r2_ch} + {5'd0, disp[r2_ch]};
+	r2_slot <= {r2_ch, 1'b0} + {2'd0, r2_ch} + {5'd0, disp[r2_ch]};
+	r2_z1   <= disp_z[r2_ch];
+	r2_zero <= r2_z1;
+	r2_word <= {r2_slot, 5'd0} + {3'd0, r2_slot, 2'd0} + {4'd0, r2_slot, 1'b0};
 end
 
 // ---------------------------------------------------------------------------------
