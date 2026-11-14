@@ -319,8 +319,14 @@ module sid_top #(parameter PHASE = 0)
 	output [11:0] tbl_acc,
 	input  [31:0] chip_ql, chip_qr,
 	input   [1:0] chip_on, chip_bk, chip_fc,
-	input         eq_any
+	input         eq_any,
+	// the OctoScope taps (Fix 55, from the testcard merge): not used here, but the C64 connects them
+	input   [2:0] sc_sel,
+	output [39:0] sc_rec,
+	output [15:0] sc_aud
 );
+assign sc_rec = 40'd0;
+assign sc_aud = 16'd0;
 reg [7:0] regs [0:63] /* verilator public_flat_rd */;
 reg       wr_any = 0;
 always @(posedge clk) begin
