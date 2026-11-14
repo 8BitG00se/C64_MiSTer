@@ -1,0 +1,60 @@
+ 11. State Machine - |sys_top|emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|fdc1772:fdc|sd_state
+ 12. State Machine - |sys_top|emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|fdc1772:fdc|data_transfer_state
+ 13. State Machine - |sys_top|emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|fdc1772:fdc|seek_state
+ 14. State Machine - |sys_top|emu:emu|rewind:rewind|state
+ 15. State Machine - |sys_top|emu:emu|fpga64_sid_iec:fpga64|preCycle
+ 16. State Machine - |sys_top|emu:emu|fpga64_sid_iec:fpga64|cpu_6510:cpu|T65:cpu|ALU_Op_r
+ 17. State Machine - |sys_top|emu:emu|fpga64_sid_iec:fpga64|cpu_6510:cpu|T65:cpu|Write_Data_r
+ 18. State Machine - |sys_top|emu:emu|fpga64_sid_iec:fpga64|cpu_6510:cpu|T65:cpu|Set_Addr_To_r
+ 19. State Machine - |sys_top|emu:emu|fpga64_sid_iec:fpga64|sid_fx:fx|fetch
+ 20. State Machine - |sys_top|emu:emu|reu:reu|state
+ 21. State Machine - |sys_top|emu:emu|cartridge:cartridge|ez_rom:ez_rom|am29f040:rom1|state
+ 22. State Machine - |sys_top|emu:emu|cartridge:cartridge|ez_rom:ez_rom|am29f040:rom1|unlock
+ 23. State Machine - |sys_top|emu:emu|cartridge:cartridge|ez_rom:ez_rom|am29f040:rom0|state
+ 24. State Machine - |sys_top|emu:emu|cartridge:cartridge|ez_rom:ez_rom|am29f040:rom0|unlock
+ 25. State Machine - |sys_top|emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|current_state
+ 26. State Machine - |sys_top|emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|current_read_state
+ 27. State Machine - |sys_top|emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|operation_address
+ 28. State Machine - |sys_top|emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|dprio_cur_state
+ 29. State Machine - |sys_top|emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|dyn_phase_shift:dyn_phase_shift_inst|dps_current_state
+ 30. State Machine - |sys_top|emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|dps_extra_kick:dps_extra_inst|dps_current_state
+ 31. State Machine - |sys_top|emu:emu|rewind:rewind|wst
+ 33. State Machine - |sys_top|emu:emu|fpga64_sid_iec:fpga64|video_vicii_656x:vic|vicCycle
+ 34. State Machine - |sys_top|emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|T65:cpu|ALU_Op_r
+ 35. State Machine - |sys_top|emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|T65:cpu|Write_Data_r
+ 36. State Machine - |sys_top|emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|T65:cpu|Set_Addr_To_r
+ 39. State Machine - |sys_top|emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_voice:chip[1].v3|sid_envelope:adsr|state
+ 42. State Machine - |sys_top|emu:emu|iec_drive:iec_drive|c1581_multi:c1581|c1581_drv:drives[0].c1581_drv|fdc1772:fdc|floppy:fdd[0].floppy|sec_state
+ 43. State Machine - |sys_top|emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_voice:chip[1].v2|sid_envelope:adsr|state
+ 44. State Machine - |sys_top|emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_voice:chip[1].v1|sid_envelope:adsr|state
+ 45. State Machine - |sys_top|emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_voice:chip[0].v3|sid_envelope:adsr|state
+ 46. State Machine - |sys_top|emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_voice:chip[0].v2|sid_envelope:adsr|state
+ 47. State Machine - |sys_top|emu:emu|fpga64_sid_iec:fpga64|sid_top:sid|sid_voice:chip[0].v1|sid_envelope:adsr|state
+ 48. State Machine - |sys_top|emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|state
+ 49. State Machine - |sys_top|emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_logic:c1541_logic|T65:cpu|ALU_Op_r
+ 50. State Machine - |sys_top|emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_logic:c1541_logic|T65:cpu|Write_Data_r
+ 51. State Machine - |sys_top|emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_logic:c1541_logic|T65:cpu|Set_Addr_To_r
+ 58. State Machine - |sys_top|emu:emu|iec_drive:iec_drive|c1541_multi:c1541|c1541_drv:drives[0].c1541_drv|c1541_track:c1541_track|dma_state
+ 92. Source assignments for emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i
+ 93. Source assignments for emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|altera_pll_dps_lcell_comb:lcell_cntsel_int_0
+ 94. Source assignments for emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|altera_pll_dps_lcell_comb:lcell_cntsel_int_1
+ 95. Source assignments for emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|altera_pll_dps_lcell_comb:lcell_cntsel_int_2
+ 96. Source assignments for emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|altera_pll_dps_lcell_comb:lcell_cntsel_int_3
+ 97. Source assignments for emu:emu|pll:pll|pll_0002:pll_inst|altera_pll:altera_pll_i|altera_pll_dps_lcell_comb:lcell_cntsel_int_4
+ 98. Source assignments for emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0
+ 99. Source assignments for emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|altera_std_synchronizer:altera_std_synchronizer_inst
+100. Source assignments for emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|dyn_phase_shift:dyn_phase_shift_inst
+101. Source assignments for emu:emu|pll_cfg:pll_cfg|altera_pll_reconfig_top:pll_cfg_inst|altera_pll_reconfig_core:NM28_reconfig.reconfig_core.altera_pll_reconfig_core_inst0|fpll_dprio_init:fpll_dprio_init_inst
+102. Source assignments for emu:emu|sdram:sdram
+103. Source assignments for emu:emu|sdram:sdram|altddio_out:sdramclk_ddr
+104. Source assignments for emu:emu|sdram:sdram|altddio_out:sdramclk_ddr|ddio_out_b2j:auto_generated
+105. Source assignments for emu:emu|fpga64_sid_iec:fpga64|chip_bank:chips|altsyncram:side[0].tbl[0].mem[0][7]__10|altsyncram_s9n1:auto_generated
+106. Source assignments for emu:emu|fpga64_sid_iec:fpga64|chip_bank:chips|altsyncram:side[0].tbl[0].mem[0][7]__11|altsyncram_s9n1:auto_generated
+107. Source assignments for emu:emu|fpga64_sid_iec:fpga64|chip_bank:chips|altsyncram:side[0].tbl[1].mem[0][7]__12|altsyncram_s9n1:auto_generated
+108. Source assignments for emu:emu|fpga64_sid_iec:fpga64|chip_bank:chips|altsyncram:side[0].tbl[1].mem[0][7]__13|altsyncram_s9n1:auto_generated
+109. Source assignments for emu:emu|fpga64_sid_iec:fpga64|chip_bank:chips|altsyncram:side[0].tbl[2].mem[0][7]__14|altsyncram_s9n1:auto_generated
+110. Source assignments for emu:emu|fpga64_sid_iec:fpga64|chip_bank:chips|altsyncram:side[0].tbl[2].mem[0][7]__15|altsyncram_s9n1:auto_generated
+111. Source assignments for emu:emu|fpga64_sid_iec:fpga64|chip_bank:chips|altsyncram:side[0].tbl[3].mem[0][7]__16|altsyncram_s9n1:auto_generated
+112. Source assignments for emu:emu|fpga64_sid_iec:fpga64|chip_bank:chips|altsyncram:side[0].tbl[3].mem[0][7]__17|altsyncram_s9n1:auto_generated
+113. Source assignments for emu:emu|fpga64_sid_iec:fpga64|chip_bank:chips|altsyncram:side[1].tbl[0].mem[0][7]__18|altsyncram_s9n1:auto_generated
+114. Source assignments for emu:emu|fpga64_sid_iec:fpga64|chip_bank:chips|altsyncram:side[1].tbl[0].mem[0][7]__19|altsyncram_s9n1:auto_generated
