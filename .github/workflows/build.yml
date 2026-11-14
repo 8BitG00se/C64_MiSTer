@@ -8,7 +8,7 @@ name: Build core
 
 on:
   push:
-    branches: [ master, octovic, octovic2, octophonic-v1.1, octovic-mem, octophonic-core3, rgb256, fix82-scope-second-screen ]
+    branches: [ master, octovic, octovic2, octophonic-v1.1, octovic-mem, octophonic-core3, rgb256 ]
   workflow_dispatch:
 
 permissions:
@@ -38,6 +38,12 @@ jobs:
         run: |
           for i in 1 2 3 4 5; do sudo apt-get update -qq >/dev/null 2>&1; sudo apt-get install -y -qq verilator >/dev/null && break; echo "apt: try $i failed"; sleep 30; done; command -v verilator >/dev/null
           sim/regmap/run.sh
+
+      - name: My Chips per SID - every SID plays the chip its menu line says, model, filter curve and waveforms (Fix 81)
+        if: matrix.variant == 'octophonic'
+        continue-on-error: true
+        timeout-minutes: 20
+        run: sim/perslot/run.sh
 
       - name: OctoVIC sprite table, frame by frame against the emulator's model (DDR3 idle, busy, held; no VDATA byte lost)
         if: matrix.variant == 'octophonic'
@@ -178,8 +184,9 @@ jobs:
           OUTB=build-reports; [ "${GITHUB_REF_NAME}" = rgb256 ] && OUTB=build-reports-rgb256
           # Build 12 branches (and their seeds) each keep their own, too
           case "${GITHUB_REF_NAME}" in build12*) OUTB="build-reports-${GITHUB_REF_NAME}" ;; esac
-          # Fix 72 / Fix 82 work branches keep their own as well (build-reports is the release line's)
-          case "${GITHUB_REF_NAME}" in fix82*) OUTB="build-reports-fix82" ;; esac
+          # a fix tried on its own branch (fix49-..., fix81-..., fix82-...) keeps its own reports
+          # branch: build-reports-fix49 and so on. build-reports stays the release line's.
+          case "${GITHUB_REF_NAME}" in fix[0-9]*) OUTB="build-reports-${GITHUB_REF_NAME%%-*}" ;; esac
           git checkout -q -b "$OUTB"
           git add -A
           git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Reports: $(cat result.txt) - RGB 256: $(cat rgb256/result.txt)"

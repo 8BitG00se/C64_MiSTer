@@ -11,11 +11,48 @@ off his C64 Reloaded MK2 (the SIDWeaver VST's rips - `Source/ChipClones.h` and
 | CSG 8580R5 3591 | 8580 | all 4096 positions, 3 pulse widths | measured registers 1-255 |
 | MOS 8580R5 4687 | 8580 | all 4096 positions, 3 pulse widths | measured registers 1-255 |
 
-`chips/mkchips.py` turns them into one `.CHP` file per chip. In the core's menu (Audio & Video):
-**Load My Chip: Left SIDs** (SIDs 1 3 5 7) and **Load My Chip: Right SIDs** (2 4 6 8), and
-**My Chips: On / Off** to compare with the core's own models. A loaded chip sets that side's model
-(6581/8580), its combined waveforms and its filter curve; the Left/Right SIDs and Filter menu
-settings apply again when My Chips is Off.
+`chips/mkchips.py` turns them into one `.CHP` file per chip (on the card: `games/C64/My Chips`).
+
+## Any chip on any SID (Fix 81)
+
+The core's menu has a **My Chips** page:
+
+| Line | What it does |
+|---|---|
+| My Chips: On / Off | Off = every SID is the core's own chip again (to compare) |
+| Load Chip A | a `.CHP`: its model, its filter curve and its combined waveforms |
+| Load Chip B | the same, a second chip |
+| Load Chip C (filter only) | a third chip's model and filter curve; its combined waveforms are the core's own for that model |
+| SID 1 ... SID 8 | which chip that SID is: Chip A, Chip B, Chip C, or Core |
+
+Three chips are held at once and each of the eight SIDs is set on its own, so any arrangement of
+them works - all eight the same chip, a different chip on each side, one odd SID out, and so on.
+**Core** means that SID is the core's own model, as the Left SIDs / Right SIDs and filter lines on
+the Audio & Video page say. A SID set to a chip that has not been loaded is Core too.
+
+The first choice on every SID line is what the core did before Fix 81 (SIDs 1 3 5 7 chip A, SIDs
+2 4 6 8 chip B), so settings saved before, and Octophonic Main's MY CHIP LEFT / MY CHIP RIGHT lines
+(which load chips A and B), play exactly as they did. The three loaded files are remembered and
+come back with the core; the SID lines are saved with the core's settings.
+
+A SID with a chip has that chip's model (6581/8580) and its filter curve; the Fc Offset
+(Adjustable) does not apply to it.
+
+### Why three chips and not eight
+
+- **Models**: free - one bit a SID.
+- **Filter curves**: each SID pair's filter already holds four curves (Default, Custom 1-3:
+  `sid_tables.sv`, 8 M10K a pair). Chip A's curve goes into Custom 1 of every pair, B's into
+  Custom 2, C's into Custom 3, and each SID's `cfg` picks its own. No new memory. (So loading a
+  chip replaces that Custom filter, as it did before for 1 and 2, and Load Custom Filters replaces
+  the chips' curves until they are loaded again.)
+- **Combined waveforms**: 16 M10K a chip (4 tables x 4096). `chip_bank.sv` holds two chips' and
+  every lookup reads both, so any SID can take either - but there is no room for all eight (128
+  M10K; 32 are free), and that is why chip C is filter only. A third set would cost 16 M10K.
+- **The menu**: MiSTer's menu can remember files for single-digit file indexes only, and 2, 3 and
+  6 are the free ones - three loads that come back by themselves.
+
+`rtl/sid/chip_slots.sv` is the whole of it: the three loads and each SID's pick.
 
 ## The .CHP file (18688 bytes)
 
@@ -26,7 +63,7 @@ settings apply again when My Chips is Off.
 | $2000-$2FFF | P+S (pulse + saw) |
 | $3000-$3FFF | P+S+T |
 | $4000-$47FF | filter curve: 1024 x 16 bits, low byte first |
-| $4800 | model: 0 6581, 1 8580 - writing it switches the chip on |
+| $4800 | model: 0 6581, 1 8580 - writing it switches the chip on (the SIDs set to it) |
 | $4810 | the chip's name (text; not used by the core) |
 
 ## How the measurements map onto the core
@@ -64,8 +101,8 @@ waveform there).
 = 0.8235 * f`; the 8580 path agrees (`F0 = 5*Fc`, 12.4 kHz at the top). The 6581 path reads
 `F0 = curve[{cfg, Fc[10:1]}] / 2`, so a curve entry is `2 * 0.8235 * Hz`. The VST's curves give
 Hz per register high byte (`Fc[10:3]`); each of the 1024 entries (`Fc[10:1]`) interpolates
-between two of them. The curve is loaded into Custom filter slot 1 (left) or 2 (right) through
-the existing Load Custom Filters path, and the side's `cfg` is set to it. With a chip on, the
+between two of them. The curve is loaded into Custom filter slot 1 (chip A), 2 (B) or 3 (C) through
+the existing Load Custom Filters path, and a SID's `cfg` is set to its chip's. With a chip on, the
 8580 path uses the loaded curve too (`sid_tables.sv`: `chipf`), so an 8580 chip gets its own
 cutoff curve, and the Fc offset (Adjustable) is off. The rest of the filter (resonance, mixing,
 the 6581's distortion) is the core's model for that chip's type.
@@ -76,7 +113,7 @@ at their own slope beyond what was measured (as in the VST). The two 8580R5s mea
 
 ## Memory and timing
 
-`rtl/sid/chip_bank.sv` holds both sides' four tables: 8 x 4096 x 8 bits = 256 Kbit, 32 M10K
+`rtl/sid/chip_bank.sv` holds chip A's and chip B's four tables: 8 x 4096 x 8 bits = 256 Kbit, 32 M10K
 blocks, shared by all four SID pairs. Each pair looks a waveform up on alternate clocks (states
 1, 3 ... 11 of its 32-clock microsecond); pairs 3 and 4 run their state one clock behind
 (`sid_top #(PHASE(1))`), so one port of each memory serves pairs 1 and 3 and the other pairs 2
@@ -89,3 +126,13 @@ microsecond on voice 3 of all 8 SIDs, compared with the measurement at the oscil
 See sim/chips/results.txt. In short: S+T 100% everywhere; every pulse combination 100% at the
 pulse width that was carried ($800); the other widths 92-100% (the pulse-width effect the single
 table does not carry).
+
+## Fix 81's test (sim/perslot)
+
+`sim/perslot/run.sh`: chip_slots + chip_bank + the four SID pairs wired as in fpga64_sid_iec.vhd,
+the whole SID (voices, tables, filter), in Verilator. Chips go in through the file loads; 38
+arrangements (the fixed ones, 24 random, reloads, My Chips Off, a chip not loaded) and every SID
+is checked against the file of the chip it should be: its model (silent output), its filter (the
+F0 the filter takes at 48 cutoff values = the file's curve), its waveforms (OSC3 at all 4096
+positions of the four combinations = the file's tables) and its sound (SIDs set alike sound
+alike, SIDs set differently do not). sim/perslot/results.txt holds the run.
