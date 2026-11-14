@@ -27,6 +27,9 @@ entity fpga64_buslogic is
 		clk         : in std_logic;
 		reset       : in std_logic;
 		bios        : in std_logic_vector(1 downto 0);
+		fl_bank     : in std_logic := '0';   -- OCTOPHONIC FAST LOAD (Fix 49): the fast loader's ROM bank is in
+		fl_trap     : in std_logic := '0';   --   the 6510 is fetching an instruction at $EE13 (and the fast loader is on)
+		fl_set      : out std_logic;         --   ...from the Octophonic KERNAL ROM: the bank comes in, from this cycle
 
 		cpuHasBus   : in std_logic;
 		aec         : in std_logic;
@@ -94,6 +97,9 @@ architecture rtl of fpga64_buslogic is
 	signal romData_c64std : std_logic_vector(7 downto 0);
 	signal romData_c64gs  : std_logic_vector(7 downto 0);
 	signal romData_c64jap : std_logic_vector(7 downto 0);
+	signal romData_fl     : std_logic_vector(7 downto 0);
+	signal fl_act         : std_logic;
+	signal fl_set_i       : std_logic;
 	signal c64gs_ena      : std_logic := '0';
 	signal c64std_ena     : std_logic := '0';
 	signal c64jap_ena     : std_logic := '0';
@@ -189,7 +195,35 @@ begin
 		q => romData_c64jap
 	);
 
-	romData <= romData_c64jap when c64jap_ena = '1' else
+	-- OCTOPHONIC FAST LOAD (Fix 49, (c) 2026 Mong00se): the fast loader's ROM bank. The Octophonic KERNAL
+	-- has no room left, so the loader's 6502 code (tools/octoos/kernal/fastload.asm) sits in a second bank:
+	-- Commodore's stock BASIC and KERNAL - the standard ROM already here - with the loader where the tape
+	-- routines were. Only the 4K that differs is kept ($F000-$FFFF, octo_fastload.mif).
+	-- The bank comes in by itself: as the 6510 fetches the instruction at $EE13 - ACPTR, the KERNAL's "a
+	-- byte from the serial bus" - from the Octophonic KERNAL ROM (fl_trap, and the ROM is what it reads
+	-- there), the bank is in from that very cycle (fl_set; fpga64_sid_iec.vhd keeps it in until the loader
+	-- writes to $D03D), and in the bank $EE13 reads JMP $F72C: the loader. Nothing in the KERNAL is changed.
+	fastload: entity work.dprom
+	generic map ("rtl/roms/octo_fastload.mif", 12)
+	port map
+	(
+		wrclock => clk,
+		rdclock => clk,
+
+		rdaddress => std_logic_vector(cpuAddr(11 downto 0)),
+		q => romData_fl
+	);
+
+	fl_set_i <= fl_trap and cs_romLoc and not (c64jap_ena or c64std_ena or c64gs_ena);
+	fl_set   <= fl_set_i;
+	fl_act   <= (fl_bank and not (c64jap_ena or c64std_ena or c64gs_ena)) or fl_set_i;
+
+	romData <= X"4C"          when fl_act = '1' and cpuAddr = X"EE13" else
+				  X"2C"          when fl_act = '1' and cpuAddr = X"EE14" else
+				  X"F7"          when fl_act = '1' and cpuAddr = X"EE15" else
+				  romData_fl     when fl_act = '1' and cpuAddr(15 downto 12) = X"F" else
+				  romData_c64std when fl_act = '1' else
+				  romData_c64jap when c64jap_ena = '1' else
 				  romData_c64std when c64std_ena = '1' else
 				  romData_c64gs  when c64gs_ena  = '1' else
 				  romData_c64;

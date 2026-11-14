@@ -8,6 +8,9 @@
 #     x64sc (copied into rt/, the runtime, beside its SD card)
 #   5 SHELL.PRG (the browser)
 #   6 romtest: the new ROM against the stock ROMs, side by side (../test/romtest.cpp)
+# FAST LOAD (Fix 49): fastdrive.asm (the 1541's side) and fastload.asm (the C64's side) are assembled
+# with the rest; fastload.py puts them into the fast loader's ROM bank, rtl/roms/octo_fastload.mif
+# (and, for the emulator, its octo_fastload.h: the bank as changes to the stock KERNAL).
 # so a KERNAL change can never be in one and not the other.
 #   OCTO_EMU      the emulator's tree (tools/mkpatch.py, src/vice/src/octophonic, rt/) - needed
 #   OCTO_MACHINE  a folder with C64Machine.h (SIDWeaver's Source/Emulation, with Source above it) - romtest
@@ -23,8 +26,11 @@ T=${TMPDIR:-/tmp}/octokernal; mkdir -p "$T/roms"
 acme -f plain -o octo.bin -l octo.lbl octo.asm
 acme -f plain -o wedge.bin -l wedge.lbl wedge.asm
 acme -f plain -o wedge2.bin -l wedge2.lbl wedge2.asm
+acme -f plain -o fastdrive.bin -l fastdrive.lbl fastdrive.asm
 python3 patch.py "$T/roms"
 python3 refscan.py                                  # no piece over stock code something still calls
+python3 fastload.py "$R/rtl/roms/octo_fastload.mif" "$T/octo_fastload.h"
+[ -d "$OCTO_EMU/src/vice/src/octophonic" ] && for h in octo_fastload.h octo_fastdrive.h; do cmp -s "$T/$h" "$OCTO_EMU/src/vice/src/octophonic/$h" || cp "$T/$h" "$OCTO_EMU/src/vice/src/octophonic/$h"; done
 cp "$V/C64/chargen-901225-01.bin" "$T/roms/"
 python3 mkmif.py "$R/rtl/roms/octo_C64.mif"
 P="$OCTO_EMU/src/vice/src/octophonic/octo_rompatch.h"

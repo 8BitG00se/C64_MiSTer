@@ -55,6 +55,7 @@ module c1541_drv
 	output        par_stb_o,
 
 	input         ext_en,
+	input         par_en,       // OCTOPHONIC FAST LOAD: the parallel port's pins are wired
 	output [14:0] rom_addr,
 	input   [7:0] rom_data,
 
@@ -206,6 +207,7 @@ c1541_logic c1541_logic
 	.iec_data_out(iec_data_o),
 
 	.ext_en(ext_en),
+	.par_en(par_en),
 	.rom_addr(rom_addr),
 	.rom_data(rom_data),
 

@@ -1,0 +1,52 @@
+# FAST LOAD (Fix 49): the whole C64 and its 1541 in Verilator - the Octophonic KERNAL loads a file from a
+# disk with the fast loader, through the real ROM bank, CIAs, VIAs and drive logic, and with it switched
+# off; the memory loaded and the time taken are checked. The results (and the VHDL as Verilog, for running
+# the test without GHDL) are kept on the branch sim-<branch>.                       (c) 2026 Mong00se
+name: Fast load simulation
+
+on:
+  push:
+    branches: [ 'fix49*' ]
+    paths: [ 'rtl/**', 'c64.sv', 'sim/fastload/**', 'sim/rewind/vhdl2v.sh', 'tools/octoos/kernal/**', '.github/workflows/fastload-sim.yml' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          sudo apt-get update -qq >/dev/null
+          sudo apt-get install -y -qq ghdl verilator >/dev/null
+          ghdl --version | head -1; verilator --version
+      - name: The C64 and the 1541's VIA as Verilog (GHDL)
+        run: |
+          mkdir -p /tmp/fastload
+          sim/fastload/vhdl2v.sh /tmp/fastload 2>&1 | tee /tmp/fastload/vhdl2v.txt
+      - name: The fast load test
+        continue-on-error: true
+        run: |
+          if [ -x sim/fastload/run.sh ]; then sim/fastload/run.sh /tmp/fastload 2>&1 | tee /tmp/fastload/run.txt; fi
+      - name: Keep the results
+        if: always()
+        run: |
+          mkdir -p /tmp/keep && cd /tmp/fastload
+          cp -f *.txt *.log *.png /tmp/keep/ 2>/dev/null || true
+          gzip -9 -c fpga64_synth.v > /tmp/keep/fpga64_synth.v.gz 2>/dev/null || true
+          gzip -9 -c via6522_synth.v > /tmp/keep/via6522_synth.v.gz 2>/dev/null || true
+          cd /tmp/keep
+          echo "$(git -C $GITHUB_WORKSPACE rev-parse --short HEAD) $(date -u +%Y-%m-%dT%H:%MZ)" > result.txt
+          git init -q
+          git checkout -q -b "sim-${GITHUB_REF_NAME}"
+          git add -A
+          git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Fast load sim: $(cat result.txt)"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "sim-${GITHUB_REF_NAME}"

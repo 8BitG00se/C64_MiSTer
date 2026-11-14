@@ -178,6 +178,8 @@ jobs:
           OUTB=build-reports; [ "${GITHUB_REF_NAME}" = rgb256 ] && OUTB=build-reports-rgb256
           # Build 12 branches (and their seeds) each keep their own, too
           case "${GITHUB_REF_NAME}" in build12*) OUTB="build-reports-${GITHUB_REF_NAME}" ;; esac
+          # Fix 49 (the fast loader) is tried on its own branch: its reports never replace the release line's
+          case "${GITHUB_REF_NAME}" in fix49*) OUTB="build-reports-fix49" ;; esac
           git checkout -q -b "$OUTB"
           git add -A
           git -c user.name="Octophonic build" -c user.email="noreply@github.com" commit -qm "Reports: $(cat result.txt) - RGB 256: $(cat rgb256/result.txt)"
