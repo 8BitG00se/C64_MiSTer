@@ -29,6 +29,9 @@ tools/sdcard/
     085-oled-pics.sh    the front screen's title cards (tty2oled/pics_pri)
     087-oled-script.sh  octophonic/oled.sh, Main's helper for the front screen
     088-oled-firmware.sh  the screen's firmware to Octophonic OCTO4 (only a screen already on Octophonic firmware)
+    090-network-file-transfer.sh  Fix 19: FileZilla into the card - checks MiSTer's own FTP (21) and SFTP (22)
+                        servers are on (they are, in linux.img); adds and changes nothing. See its header
+                        for what is open on the network and to whom
     095-stock-menu-core.sh  menu.rbf: MiSTer's own (white noise) menu core back, if the old navy one was in
     900-DEV-ssh-key.sh          Neal's ssh key + the startup hook
     910-DEV-mister-ini-crt.sh   Neal's JVC CRT video settings
@@ -91,6 +94,11 @@ A step whose name contains `-DEV-` is Neal's own setup and **the runner skips it
 - his SSH public key, or the `OCTOPHONIC SSH KEY` block in `linux/user-startup.sh`
 - his JVC CRT video settings in `MiSTer.ini`
 - anything about his network share
+
+File transfer on the release card is NOT a DEV matter: it is MiSTer's own FTP and SFTP servers, which
+every MiSTer card runs (user root, MiSTer's standard password). Step 090 checks they are on and
+`image/check-image.sh` checks it again in the finished image; no key, address, share or password of
+Neal's is involved.
 
 That is the whole point of the split: the image is built by the same steps, with the dev ones
 left out, rather than by a separate script that might fall behind.
