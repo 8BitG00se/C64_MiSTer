@@ -34,6 +34,7 @@ entity cpu_6510 is
 		do      : out unsigned(7 downto 0);
 		addr    : out unsigned(15 downto 0);
 		we      : out std_logic;
+		sync    : out std_logic;   -- OCTOPHONIC FAST LOAD (Fix 49): this cycle fetches an instruction
 
 		diIO    : in  unsigned(7 downto 0);
 		doIO    : out unsigned(7 downto 0);
@@ -77,6 +78,7 @@ begin
 		DI      => localDi,
 		DO      => localDo,
 		NMI_ack => nmi_ack,
+		Sync    => sync,
 		St_o    => st_o(159 downto 0),
 		St_i    => st_i(159 downto 0),
 		St_ld   => st_ld

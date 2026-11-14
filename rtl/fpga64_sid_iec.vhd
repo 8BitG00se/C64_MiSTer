@@ -79,6 +79,11 @@ port(
 	ntscMode    : in  std_logic;
 	sysinfo     : in  std_logic_vector(7 downto 0) := (others => '0');   -- OCTOPHONIC Fix 59: SDRAM and REU size for OctoVIC $B3
 	exact50     : in  std_logic;   -- OCTOPHONIC Fix 48: Exact 50 Hz (clk32 = 31,449,600 Hz) - keeps the TOD at a true 50 Hz
+	-- OCTOPHONIC FAST LOAD (Fix 49): the fast loader is switched on (the menu); drives 8 and 9 can take it
+	-- (the core's 1541 on the built-in standard ROM, parallel port on)
+	fl_en       : in  std_logic := '0';
+	fl_ok       : in  std_logic_vector(1 downto 0) := "00";
+	fl_busy     : out std_logic;
 	hsync       : out std_logic;
 	vsync       : out std_logic;
 	palette     : in  unsigned(2 downto 0);
@@ -377,6 +382,21 @@ signal vicDi        : unsigned(7 downto 0);
 signal vicDiAec     : unsigned(7 downto 0);
 signal vicAddr      : unsigned(15 downto 0);
 signal vicData      : unsigned(7 downto 0);
+signal vicData_fl   : unsigned(7 downto 0);            -- FAST LOAD: the VIC's data with $D03E's status
+signal fl_bank      : std_logic := '0';
+signal fl_trap      : std_logic;
+signal fl_set       : std_logic;
+signal cpuSync      : std_logic;
+signal fl_cnt       : unsigned(6 downto 0) := (others => '0');
+signal fl_fast      : std_logic := '0';
+signal fl_talk8     : std_logic := '0';
+signal fl_tsa       : unsigned(7 downto 0) := (others => '1');
+signal fl_atn_d     : std_logic := '0';
+signal fl_clk_d     : std_logic := '0';
+signal fl_n         : unsigned(3 downto 0) := (others => '0');
+signal fl_sh        : unsigned(7 downto 0) := (others => '0');
+signal fl_b0        : unsigned(7 downto 0) := (others => '0');
+signal fl_b1        : unsigned(7 downto 0) := (others => '0');
 signal lastVicDi    : unsigned(7 downto 0);
 signal vicAddr1514  : unsigned(1 downto 0);
 signal colorData    : unsigned(3 downto 0);
@@ -760,6 +780,9 @@ port map (
 	clk => clk32,
 	reset => reset,
 	bios => bios,
+	fl_bank => fl_bank,
+	fl_trap => fl_trap,
+	fl_set => fl_set,
 
 	cpuHasBus => cpuHasBus,
 	aec => aec,
@@ -778,7 +801,7 @@ port map (
 	cpuAddr => cpuAddr,
 	cpuData => cpuDo,
 	vicAddr => vicAddr,
-	vicData => vicData,
+	vicData => vicData_fl,
 	sidData => sid_rd,
 	colorData => colorData,
 	cia1Data => cia1Do,
@@ -930,6 +953,81 @@ begin
 		end if;
 	end if;
 end process;
+
+-- OCTOPHONIC FAST LOAD (Fix 49, (c) 2026 Mong00se). The fast loader's ROM bank (fpga64_buslogic.vhd)
+-- comes in as the 6510 fetches the instruction at $EE13 from the Octophonic KERNAL ROM (fl_set) and goes
+-- out on any write to $D03D. Three of the VIC-II's unused registers are the loader's (fastload.asm):
+--   $D03C  read: b7 "the drive is talking the fast way", b0-6 a count. Write with b7 set: "it is"; with
+--          b7 clear: count one - while device 8 is the talker, or talking the fast way. ATN low clears both.
+--   $D03D  read: the secondary address device 8 was last told to talk on.   write: the bank out.
+--   $D03E  read: b7 0 a fast loader is here, b0 0 drive 8 can take it, b1 0 drive 9 can.
+-- A stock VIC-II, and this one with the fast loader off, reads $FF in all three (fl_en is 0 in the RGB
+-- companion core: its rewind does not carry the bank).
+-- "Device 8 is the talker": the core listens to what the C64 itself sends under ATN. After ATN goes low
+-- the C64 lets CLK go once ("ready to send") and then eight times more for every byte, a bit on DATA
+-- each time. If, when ATN is let go, the last two bytes were $48 (device 8: talk) and $60-$6E (a
+-- secondary address, not the command channel's), device 8 is the talker, whatever routine said so.
+fl_trap <= '1' when fl_en = '1' and cpuSync = '1' and dma_active = '0' and cpuAddr_pre = x"EE13" else '0';
+process(clk32)
+begin
+	if rising_edge(clk32) then
+		fl_atn_d <= cia2_pao(3);
+		fl_clk_d <= cia2_pao(4);
+		if reset = '1' or fl_en = '0' then
+			fl_bank  <= '0';
+			fl_cnt   <= (others => '0');
+			fl_fast  <= '0';
+			fl_talk8 <= '0';
+			fl_tsa   <= (others => '1');
+			fl_n     <= (others => '0');
+		else
+			if fl_set = '1' then
+				fl_bank <= '1';
+			end if;
+			if pulseWr_io = '1' and cs_vic = '1' and cpuAddr(5 downto 0) = "111101" then
+				fl_bank <= '0';
+			end if;
+			if pulseWr_io = '1' and cs_vic = '1' and cpuAddr(5 downto 0) = "111100" then
+				if cpuDo(7) = '1' then
+					fl_fast <= '1';
+				elsif fl_talk8 = '1' or fl_fast = '1' then
+					fl_cnt <= fl_cnt + 1;
+				end if;
+			end if;
+			if cia2_pao(3) = '1' then                        -- ATN low
+				fl_cnt  <= (others => '0');
+				fl_fast <= '0';
+				if fl_atn_d = '0' then
+					fl_n     <= (others => '0');
+					fl_b0    <= (others => '0');
+					fl_b1    <= (others => '0');
+					fl_talk8 <= '0';
+				elsif fl_clk_d = '1' and cia2_pao(4) = '0' then  -- the C64 lets CLK go
+					if fl_n /= 0 then
+						fl_sh <= (not cia2_pao(5)) & fl_sh(7 downto 1);
+					end if;
+					if fl_n = 8 then
+						fl_n  <= (others => '0');
+						fl_b0 <= fl_b1;
+						fl_b1 <= (not cia2_pao(5)) & fl_sh(7 downto 1);
+					else
+						fl_n <= fl_n + 1;
+					end if;
+				end if;
+			elsif fl_atn_d = '1' then                        -- ATN let go
+				if fl_b0 = x"48" and fl_b1(7 downto 4) = x"6" and fl_b1(3 downto 0) /= x"F" then
+					fl_talk8 <= '1';
+					fl_tsa   <= fl_b1;
+				end if;
+			end if;
+		end if;
+	end if;
+end process;
+fl_busy <= fl_fast;
+vicData_fl <= "011111" & not fl_ok(1) & not fl_ok(0) when fl_en = '1' and cpuAddr(5 downto 0) = "111110" else
+              fl_fast & fl_cnt                       when fl_en = '1' and cpuAddr(5 downto 0) = "111100" else
+              fl_tsa                                 when fl_en = '1' and cpuAddr(5 downto 0) = "111101" else
+              vicData;
 
 cs_octo  <= cs_sid and octo_unlock and cpuAddr(9) and not cpuAddr(8);
 cs_sid_s <= cs_sid and not cs_octo;
@@ -1600,6 +1698,7 @@ port map (
 	addr => cpuAddr_pre,
 	do => cpuDo_pre,
 	we => cpuWe_pre,
+	sync => cpuSync,
 
 	diIO => cpuIO(7) & cpuIO(6) & cpuIO(5) & cass_sense & cpuIO(3) & "111",
 	doIO => cpuIO,

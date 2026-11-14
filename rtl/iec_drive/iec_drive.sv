@@ -59,6 +59,7 @@ module iec_drive #(parameter PARPORT=1,DUALROM=1,DRIVES=2)
 	input   [7:0] rom_data,
 	input         rom_wr,
 	input         rom_std,
+	output  [N:0] fast_ok,      // OCTOPHONIC FAST LOAD (Fix 49): a 1541 on the built-in standard ROM, parallel port wired
 
 	input         DDRAM_BUSY,
 	output  [7:0] DDRAM_BURSTCNT,
@@ -140,6 +141,7 @@ c1541_multi #(.PARPORT(PARPORT), .DUALROM(DUALROM), .DRIVES(DRIVES)) c1541
 	.rom_data(rom_data),
 	.rom_wr(~rom_addr[15] & rom_wr),
 	.rom_std(rom_std),
+	.fast_ok(fast_ok),
 
 	.img_mounted(img_mounted),
 	.img_size(img_size),

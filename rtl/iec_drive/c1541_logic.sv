@@ -24,6 +24,7 @@ module c1541_logic
 	output       iec_data_out,
 
 	input        ext_en,
+	input        par_en,        // OCTOPHONIC FAST LOAD (Fix 49): the parallel port's pins are wired (ext_en: the extra RAM too)
 	output[14:0] rom_addr,
 	input  [7:0] rom_data,
 
@@ -63,8 +64,26 @@ wire  [7:0] cpu_di =
 	 uc1_cs    ? uc1_do :
 	 uc3_cs    ? uc3_do :
 	 extram_cs ? extram_do :
+	 fl_cs     ? fl_do :
 	 rom_cs    ? rom_data :
 	 8'hFF;
+
+// OCTOPHONIC FAST LOAD (Fix 49, (c) 2026 Mong00se): the fast loader's drive routine, in a ROM of its own at
+// $1000-$11FF (where a 1541 has nothing) - tools/octoos/kernal/fastdrive.asm. It rests on DOS 2.6's own
+// routines, so it is only there beside the built-in standard ROM (par_en without ext_en).
+wire fl_cs = par_en & ~ext_en & (cpu_a[15:9] == 7'b0001000);
+wire [7:0] fl_do;
+iecdrv_mem #(8,9,"rtl/iec_drive/c1541_fastload.mif") fastload
+(
+	.clock_a(clk),
+	.address_a(9'd0),
+	.data_a(8'd0),
+	.wren_a(1'b0),
+
+	.clock_b(clk),
+	.address_b(cpu_a[8:0]),
+	.q_b(fl_do)
+);
 
 wire [23:0] cpu_a;
 wire  [7:0] cpu_do;
@@ -152,7 +171,7 @@ iecdrv_via6522 uc1
 
 	.port_a_o(uc1_pa_o),
 	.port_a_t(uc1_pa_oe),
-	.port_a_i((ext_en ? par_data_in : {7'h7F,tr00_sense_n}) & (uc1_pa_o  | ~uc1_pa_oe)),
+	.port_a_i((par_en ? par_data_in : {7'h7F,tr00_sense_n}) & (uc1_pa_o  | ~uc1_pa_oe)),
 
 	.port_b_o(uc1_pb_o),
 	.port_b_t(uc1_pb_oe),
@@ -166,7 +185,7 @@ iecdrv_via6522 uc1
 
 	.cb1_o(uc1_cb1_o),
 	.cb1_t(uc1_cb1_oe),
-	.cb1_i((ext_en ? par_stb_in : 1'b1) & (uc1_cb1_o | ~uc1_cb1_oe)),
+	.cb1_i((par_en ? par_stb_in : 1'b1) & (uc1_cb1_o | ~uc1_cb1_oe)),
 
 	.cb2_o(uc1_cb2_o),
 	.cb2_t(uc1_cb2_oe),

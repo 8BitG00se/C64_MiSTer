@@ -60,6 +60,7 @@ module c1541_multi #(parameter PARPORT=1,DUALROM=1,DRIVES=2)
 	input   [7:0] rom_data,
 	input         rom_wr,
 	input         rom_std,
+	output  [N:0] fast_ok,      // OCTOPHONIC FAST LOAD (Fix 49): this drive is up, on the built-in standard ROM, with the parallel port
 
 	input         DDRAM_BUSY,
 	output  [7:0] DDRAM_BURSTCNT,
@@ -83,7 +84,16 @@ iecdrv_sync clk_sync(clk, iec_clk_i,  iec_clk);
 wire [N:0] reset_drv;
 iecdrv_sync #(NDR) rst_sync(clk, reset, reset_drv);
 
-wire stdrom = (DUALROM || PARPORT) ? rom_std : 1'b1;
+// OCTOPHONIC FAST LOAD (Fix 49): until a drive ROM has been loaded from a file, the drive runs
+// Commodore's standard ROM (c1541_rom.mif) whatever the System ROM line says - the Octophonic fast
+// loader (tools/octoos/kernal/fastdrive.asm) needs the DOS it was written for, and a stock 1541
+// is what every program expects. A loaded ROM (System ROM C64+C1541) is used exactly as before.
+reg rom_loaded = 0;
+always @(posedge clk_sys) if (rom_wr) rom_loaded <= 1;
+reg rom_loaded_d = 0;
+always @(posedge clk) rom_loaded_d <= rom_loaded;
+
+wire stdrom = (DUALROM || PARPORT) ? (rom_std | ~rom_loaded_d) : 1'b1;
 
 reg ph2_r;
 reg ph2_f;
@@ -185,12 +195,18 @@ assign     iec_clk_o  = &{iec_clk_d  | reset_drv};
 assign     iec_data_o = &{iec_data_d | reset_drv};
 
 wire [N:0] ext_en = {NDR{rom_sz[1] & ~stdrom & |PARPORT}} & ~reset_drv;
+// OCTOPHONIC FAST LOAD (Fix 49): the parallel port's pins (VIA 1 port A, CB1, CA2) are also wired
+// when the drive runs the built-in standard ROM, which never touches them - so the fast loader's
+// routine can (c1541_logic.sv: its ROM at $1000). The 8K of extra RAM at $8000 stays with ext_en (a
+// loaded 32K ROM).
+wire [N:0] par_en = ext_en | ({NDR{stdrom & |PARPORT}} & ~reset_drv);
+assign     fast_ok = {NDR{stdrom & |PARPORT}} & ~reset_drv;
 wire [7:0] par_data_d[NDR];
 wire [N:0] par_stb_d;
-assign     par_stb_o = &{par_stb_d | ~ext_en};
+assign     par_stb_o = &{par_stb_d | ~par_en};
 always_comb begin
 	par_data_o = 8'hFF;
-	for(int i=0; i<NDR; i=i+1) if(ext_en[i]) par_data_o = par_data_o & par_data_d[i];
+	for(int i=0; i<NDR; i=i+1) if(par_en[i]) par_data_o = par_data_o & par_data_d[i];
 end
 
 wire [N:0] led_drv;
@@ -237,6 +253,7 @@ generate
 			.par_stb_o(par_stb_d[i]),
 
 			.ext_en(ext_en[i]),
+			.par_en(par_en[i]),
 			.rom_addr(drv_addr[i]),
 			.rom_data(drv_data[i]),
 

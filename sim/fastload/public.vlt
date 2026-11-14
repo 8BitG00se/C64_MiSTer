@@ -1,0 +1,18 @@
+`verilator_config
+public_flat_rw -module "tb_top" -var "sdram"
+public_flat_rd -module "c1541_logic" -var "cpu_a"
+lint_off -rule WIDTH
+lint_off -rule UNUSED
+lint_off -rule UNOPTFLAT
+lint_off -rule CASEINCOMPLETE
+lint_off -rule PINMISSING
+lint_off -rule DECLFILENAME
+lint_off -rule MULTIDRIVEN
+lint_off -rule BLKANDNBLK
+lint_off -rule COMBDLY
+lint_off -rule INITIALDLY
+lint_off -rule LATCH
+lint_off -rule SELRANGE
+lint_off -rule CMPCONST
+lint_off -rule UNSIGNED
+lint_off -rule PROCASSWIRE

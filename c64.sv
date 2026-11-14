@@ -210,6 +210,7 @@ localparam CONF_STR = {
 	"P3,Drives;",
 	"P3O[58:57],Enable Drive #8,If Mounted,Always,Never;",
 	"P3O[44],Parallel port,Enabled,Disabled;",
+	"P3O[126],Fast loader,On,Off;",
 	"P3O[86:85],Drives OSD,Activity Only,If Mounted,Debug,Off;",
 	"P3-;",
 	"P3O[80:78],Drive RPM    (G64),300.0,300.1,300.5,301.0,302.0,299.0,299.5,299.9;",
@@ -474,6 +475,13 @@ wire load_tap   = ioctl_index == 'hC1;
 wire load_flt   = ioctl_index == 7;
 wire load_rom   = ioctl_index == 8;
 wire load_c1581 = ioctl_index == 9;
+
+// OCTOPHONIC FAST LOAD (Fix 49): a System ROM file has been loaded over the built-in KERNAL (the fast loader
+// goes with the built-in one only); and "the drive is talking the fast way" (until the next ATN): the user
+// port stays wired to the drive for as long, however slowly the program reads
+wire fl_busy;
+reg  kernal_loaded = 0;
+always @(posedge clk_sys) if(load_rom && !ioctl_addr[16:14] && ioctl_download && ioctl_wr) kernal_loaded <= 1;
 
 // OCTOPHONIC: MY CHIPS - Neal's own SID chips, measured off his C64 Reloaded MK2 (chips/, docs/CHIPS.md).
 // Fix 81: three chips loaded at once (file indexes 2, 3 and 6: chips A, B and C) and each of the eight SIDs
@@ -1280,8 +1288,19 @@ fpga64_sid_iec fpga64
 	.pause(freeze),
 	.pause_out(c64_pause),
 	.bios(status[15:14]),
-	
-	.turbo_mode({(status[47:46] == 2'd2) & ~disk_access, status[47:46] == 2'd0}),   // OCTOPHONIC V1.1: C128 (a program turns turbo on at $D030) the default
+	// OCTOPHONIC FAST LOAD (Fix 49): on by default; it needs the parallel port (status[44]), the core's drive
+	// alone on the serial bus (no external IEC: status[25]) and the Octophonic KERNAL as built in (not a
+	// System ROM file loaded over it). Not in the RGB companion core: its rewind does not carry the loader's
+	// ROM bank
+`ifdef RGB256
+	.fl_en(1'b0),
+`else
+	.fl_en(~status[126] & ~status[44] & ~status[25] & ~kernal_loaded),
+`endif
+	.fl_ok({1'b0, drive_fast_ok}),         // drive 8 can take it (there is no drive 9 in this core)
+	.fl_busy(fl_busy),
+
+	.turbo_mode({(status[47:46] == 2'd2) & ~disk_access & ~fl_busy, status[47:46] == 2'd0}),   // OCTOPHONIC V1.1: C128 (a program turns turbo on at $D030) the default
 	.turbo_speed(status[49:48]),
 
 	.ps2_key(key),
@@ -1504,6 +1523,7 @@ assign drive_we[1] = 1'b0;
 assign sd_rd[1] = 1'b0;
 assign sd_wr[1] = 1'b0;
 
+wire drive_fast_ok;   // OCTOPHONIC FAST LOAD (Fix 49): drive 8 is a 1541 on the built-in standard ROM with its parallel port wired
 iec_drive #(.DRIVES(1)) iec_drive
 (
 	.clk(clk_sys),
@@ -1552,6 +1572,7 @@ iec_drive #(.DRIVES(1)) iec_drive
 	.rom_data(ioctl_data),
 	.rom_wr(((load_rom && ioctl_addr[16:14]) || load_c1581) && ioctl_download && ioctl_wr),
 	.rom_std(status[14]),
+	.fast_ok(drive_fast_ok),
 
 	.DDRAM_BUSY(drv_ddram_busy),
 	.DDRAM_BURSTCNT(drv_ddram_burstcnt),
@@ -2100,7 +2121,7 @@ always_comb begin
 	USER_OUT[0] = 1;
 	USER_OUT[1] = 1;
 
-	if(disk_parport & disk_access) begin
+	if(disk_parport & (disk_access | fl_busy)) begin
 		drive_par_i = pb_o;
 		drive_stb_i = pc2_n_o;
 		pb_i        = drive_par_o;
